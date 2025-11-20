@@ -3,7 +3,7 @@
 //! 本包为 Mortar 对话系统提供“绑钉”（绑定）系统，将其与 Bevy 游戏引擎集成。
 
 use bevy::prelude::*;
-use mortar_compiler::Node;
+use mortar_compiler::{Choice, Node};
 use std::collections::HashMap;
 
 #[macro_use]
@@ -30,7 +30,9 @@ impl Plugin for MortarPlugin {
                 (
                     system::process_mortar_events_system,
                     system::check_pending_start_system,
-                ),
+                    system::handle_pending_jump_system,
+                )
+                    .chain(),
             );
     }
 }
@@ -72,6 +74,10 @@ pub struct MortarRuntime {
     ///
     /// 等待启动的节点 (path, node)。
     pub pending_start: Option<(String, String)>,
+    /// Pending jump to another node (path, node).
+    ///
+    /// 等待跳转到另一个节点 (path, node)。
+    pub pending_jump: Option<(String, String)>,
 }
 
 /// The state of a dialogue.
@@ -144,6 +150,27 @@ impl DialogueState {
     /// 重置到节点开始处。
     pub fn reset(&mut self) {
         self.text_index = 0;
+    }
+
+    /// Checks if the current node has choices.
+    ///
+    /// 检查当前节点是否有选项。
+    pub fn has_choices(&self) -> bool {
+        self.node_data.choice.is_some()
+    }
+
+    /// Gets the available choices.
+    ///
+    /// 获取可用的选项。
+    pub fn get_choices(&self) -> Option<&Vec<Choice>> {
+        self.node_data.choice.as_ref()
+    }
+
+    /// Gets the next node name (for automatic jumps).
+    ///
+    /// 获取下一个节点名称（用于自动跳转）。
+    pub fn get_next_node(&self) -> Option<&str> {
+        self.node_data.next.as_deref()
     }
 }
 

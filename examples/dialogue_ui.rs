@@ -14,6 +14,7 @@ fn main() {
             (
                 button_interaction_system,
                 handle_continue_button,
+                handle_choice_buttons,
                 update_dialogue_text,
                 update_button_states,
             ),
@@ -184,9 +185,18 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
 fn button_interaction_system(
     mut continue_button_query: Query<
         (&Interaction, &mut BackgroundColor, &mut BorderColor),
-        (Changed<Interaction>, With<ContinueButton>),
+        (
+            Changed<Interaction>,
+            With<ContinueButton>,
+            Without<ChoiceButton>,
+        ),
+    >,
+    mut choice_button_query: Query<
+        (&Interaction, &mut BackgroundColor, &mut BorderColor),
+        (Changed<Interaction>, With<ChoiceButton>),
     >,
 ) {
+    // Continue button interaction
     for (interaction, mut bg_color, mut border_color) in continue_button_query.iter_mut() {
         match *interaction {
             Interaction::Pressed => {
@@ -200,6 +210,24 @@ fn button_interaction_system(
             Interaction::None => {
                 *bg_color = BackgroundColor(Color::srgb(0.3, 0.5, 0.3));
                 *border_color = BorderColor::all(Color::srgb(0.5, 0.7, 0.5));
+            }
+        }
+    }
+
+    // Choice button interaction
+    for (interaction, mut bg_color, mut border_color) in choice_button_query.iter_mut() {
+        match *interaction {
+            Interaction::Pressed => {
+                *bg_color = BackgroundColor(Color::srgb(0.25, 0.35, 0.5));
+                *border_color = BorderColor::all(Color::srgb(0.5, 0.6, 0.8));
+            }
+            Interaction::Hovered => {
+                *bg_color = BackgroundColor(Color::srgb(0.35, 0.45, 0.6));
+                *border_color = BorderColor::all(Color::srgb(0.6, 0.7, 0.9));
+            }
+            Interaction::None => {
+                *bg_color = BackgroundColor(Color::srgb(0.3, 0.4, 0.55));
+                *border_color = BorderColor::all(Color::srgb(0.5, 0.6, 0.75));
             }
         }
     }
@@ -217,11 +245,31 @@ fn handle_continue_button(
         if *interaction == Interaction::Pressed
             && let Some(state) = &runtime.active_dialogue
         {
-            if state.has_next_text() {
-                events.write(MortarEvent::NextText);
-            } else {
-                info!("Example: Node '{}' has ended", state.current_node);
+            // Always send NextText event, system will handle node transitions
+            events.write(MortarEvent::NextText);
+            if !state.has_next_text() {
+                info!(
+                    "Example: Reached end of text in node '{}'",
+                    state.current_node
+                );
             }
+        }
+    }
+}
+
+/// Handles clicks on choice buttons.
+///
+/// 处理选项按钮的点击事件。
+fn handle_choice_buttons(
+    choice_query: Query<(&Interaction, &ChoiceButton), Changed<Interaction>>,
+    mut events: MessageWriter<MortarEvent>,
+) {
+    for (interaction, choice_button) in &choice_query {
+        if *interaction == Interaction::Pressed {
+            info!("Example: Choice button {} pressed", choice_button.index);
+            events.write(MortarEvent::SelectChoice {
+                index: choice_button.index,
+            });
         }
     }
 }
@@ -256,21 +304,76 @@ fn update_dialogue_text(
 /// 根据对话状态更新按钮的状态。
 fn update_button_states(
     runtime: Res<MortarRuntime>,
-    mut button_query: Query<&mut Text, With<ContinueButton>>,
+    mut continue_query: Query<
+        (&mut Text, &mut Visibility),
+        (With<ContinueButton>, Without<ChoiceButton>),
+    >,
+    mut choice_query: Query<
+        (&ChoiceButton, &mut Text, &mut Visibility, &Children),
+        Without<ContinueButton>,
+    >,
+    mut text_query: Query<&mut TextColor>,
 ) {
     if !runtime.is_changed() {
         return;
     }
 
-    for mut text in button_query.iter_mut() {
+    // Update continue button
+    for (mut text, mut visibility) in continue_query.iter_mut() {
         if let Some(state) = &runtime.active_dialogue {
-            **text = if state.has_next_text() {
-                "继续".to_string()
+            if state.has_choices() && !state.has_next_text() {
+                *visibility = Visibility::Hidden;
             } else {
-                "已结束".to_string()
-            };
+                *visibility = Visibility::Visible;
+                **text = if state.has_next_text() {
+                    "继续".to_string()
+                } else {
+                    "继续".to_string()
+                };
+            }
         } else {
+            *visibility = Visibility::Visible;
             **text = "继续".to_string();
+        }
+    }
+
+    // Update choice buttons
+    if let Some(state) = &runtime.active_dialogue {
+        if let Some(choices) = state.get_choices()
+            && !state.has_next_text()
+        {
+            for (choice_button, mut text, mut visibility, children) in choice_query.iter_mut() {
+                if let Some(choice) = choices.get(choice_button.index) {
+                    *visibility = Visibility::Visible;
+                    **text = choice.text.clone();
+
+                    // Update text color to active
+                    for child in children.iter() {
+                        if let Ok(mut text_color) = text_query.get_mut(child) {
+                            *text_color = TextColor(Color::srgb(0.9, 0.9, 0.9));
+                        }
+                    }
+                } else {
+                    *visibility = Visibility::Hidden;
+                }
+            }
+        } else {
+            // Hide all choice buttons when not needed
+            for (_, _, mut visibility, children) in choice_query.iter_mut() {
+                *visibility = Visibility::Hidden;
+
+                // Reset text color
+                for child in children.iter() {
+                    if let Ok(mut text_color) = text_query.get_mut(child) {
+                        *text_color = TextColor(Color::srgb(0.4, 0.4, 0.4));
+                    }
+                }
+            }
+        }
+    } else {
+        // Hide all choice buttons when no active dialogue
+        for (_, _, mut visibility, _) in choice_query.iter_mut() {
+            *visibility = Visibility::Hidden;
         }
     }
 }
