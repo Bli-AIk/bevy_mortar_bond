@@ -90,13 +90,31 @@ impl MortarAssetLoader {
         reader: &mut dyn Reader,
         source_path: &Path,
     ) -> Result<MortaredData, Box<dyn std::error::Error + Send + Sync>> {
-        let mortared_path = source_path.with_extension("mortared");
+        // 简化：直接编译源文件，不检查 .mortared 文件
+        info!("Compiling .mortar file: {:?}", source_path);
 
-        if Self::should_recompile(source_path, &mortared_path)? {
-            Self::compile_mortar_source(reader, source_path, &mortared_path).await
-        } else {
-            Self::load_mortared_file(&mortared_path)
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes).await?;
+        let source_content = std::str::from_utf8(&bytes)?;
+
+        let language = Self::detect_language();
+        let (parse_result, diagnostics) =
+            ParseHandler::parse_source_code_with_diagnostics_and_language(
+                source_content,
+                source_path.to_string_lossy().to_string(),
+                false,
+                language,
+            );
+
+        if diagnostics.has_errors() {
+            diagnostics.print_diagnostics(source_content);
+            return Err("Mortar compilation failed with errors".into());
         }
+
+        let program = parse_result?;
+        let json = Serializer::serialize_to_json(&program, true)?;
+
+        Deserializer::from_json(&json).map_err(Into::into)
     }
 
     async fn load_mortared_direct(
