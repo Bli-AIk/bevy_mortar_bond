@@ -2,5 +2,20 @@ node Start {
     text: "这是一个最基本的的对话节点示例，完全没有 event。"
     text: "这里只有几个 text。"
     text: "好啦，我们也说的差不多了……"
-    text: "结束啦！"
+    text: "让我们进入下一个节点……"
+} -> NextNode
+
+node NextNode {
+    text: "着陆成功。"
+    choice: [
+        "是的！" -> EndNode,
+        "不，我坠机了！（啥）" -> return,
+    ],
 }
+
+node EndNode {
+    text: "结束啦。"
+}
+
+
+

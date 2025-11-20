@@ -1,7 +1,7 @@
 {
   "metadata": {
     "version": "0.4.0",
-    "generated_at": "2025-11-20T10:11:04.928047082Z"
+    "generated_at": "2025-11-20T12:50:49.399915352Z"
   },
   "nodes": [
     {
@@ -17,7 +17,34 @@
           "text": "好啦，我们也说的差不多了……"
         },
         {
-          "text": "结束啦！"
+          "text": "让我们进入下一个节点……"
+        }
+      ],
+      "next": "NextNode"
+    },
+    {
+      "name": "NextNode",
+      "texts": [
+        {
+          "text": "着陆成功。"
+        }
+      ],
+      "choice": [
+        {
+          "text": "是的！",
+          "next": "EndNode"
+        },
+        {
+          "text": "不，我坠机了！（啥）",
+          "action": "return"
+        }
+      ]
+    },
+    {
+      "name": "EndNode",
+      "texts": [
+        {
+          "text": "结束啦。"
         }
       ]
     }

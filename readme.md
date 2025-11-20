@@ -5,7 +5,7 @@
 
 > Current Status: 🚧 Early Development (Initial version in progress)
 
-**bevy_mortar_bond** — Bevy ‘bond’ (bind) plug-in for mortar language.
+**bevy_mortar_bond** — Bevy ‘bonding’ (binding) plug-in for mortar language.
 
 | English         | Simplified Chinese                 |
 |-----------------|---------------------------------|

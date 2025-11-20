@@ -1,3 +1,7 @@
+//! This module defines the `MortarAsset` and `MortarAssetLoader`.
+//!
+//! 本模块定义了 `MortarAsset` 和 `MortarAssetLoader`。
+
 use bevy::asset::io::Reader;
 use bevy::asset::{Asset, AssetLoader, LoadContext};
 use bevy::log::{info, warn};
@@ -6,15 +10,27 @@ use bevy::tasks::ConditionalSendFuture;
 use mortar_compiler::{Deserializer, Language, MortaredData, ParseHandler, Serializer};
 use std::path::{Path, PathBuf};
 
+/// A Bevy asset representing a Mortar dialogue file.
+///
+/// 代表 Mortar 对话文件的 Bevy 资源。
 #[derive(Asset, TypePath, Debug)]
 pub struct MortarAsset {
+    /// The parsed data from the Mortar file.
+    ///
+    /// 从 Mortar 文件解析的数据。
     pub data: MortaredData,
 }
 
+/// An asset loader for `.mortar` and `.mortared` files.
+///
+/// 用于 `.mortar` 和 `.mortared` 文件的资源加载器。
 #[derive(Default)]
 pub struct MortarAssetLoader;
 
 impl MortarAssetLoader {
+    /// Detects the system language to provide better diagnostics.
+    ///
+    /// 检测系统语言以提供更好的诊断信息。
     fn detect_language() -> Language {
         let locale = std::env::var("LANG")
             .or_else(|_| std::env::var("LANGUAGE"))
@@ -28,8 +44,12 @@ impl MortarAssetLoader {
         }
     }
 
+    /// Finds the base path of the assets directory.
+    ///
+    /// 查找 `assets` 目录的基本路径。
     fn find_asset_base_path() -> Option<PathBuf> {
         // Try multiple possible locations for the assets directory
+        // 尝试多个 `assets` 目录的可能位置
         let candidates = [
             PathBuf::from("assets"),
             PathBuf::from("crates/bevy_mortar_bond/assets"),
@@ -44,6 +64,10 @@ impl MortarAssetLoader {
         None
     }
 
+    /// Checks if a `.mortar` file needs to be recompiled.
+    ///
+    
+    /// 检查 `.mortar` 文件是否需要重新编译。
     fn should_recompile(
         source_fs_path: &Path,
         mortared_fs_path: &Path,
@@ -71,6 +95,9 @@ impl MortarAssetLoader {
         }
     }
 
+    /// Compiles a `.mortar` source file into `MortaredData`.
+    ///
+    /// 将 `.mortar` 源文件编译为 `MortaredData`。
     async fn compile_mortar_source(
         reader: &mut dyn Reader,
         source_path: &Path,
@@ -101,6 +128,7 @@ impl MortarAssetLoader {
         let json = Serializer::serialize_to_json(&program, true)?;
 
         // Write the compiled file
+        // 写入编译后的文件
         let write_path = base_path.join(mortared_path);
         if let Err(e) = std::fs::write(&write_path, json.as_bytes()) {
             warn!(
@@ -112,6 +140,9 @@ impl MortarAssetLoader {
         Deserializer::from_json(&json).map_err(Into::into)
     }
 
+    /// Loads a pre-compiled `.mortared` file.
+    ///
+    /// 加载预编译的 `.mortared` 文件。
     fn load_mortared_file(
         mortared_fs_path: &Path,
     ) -> Result<MortaredData, Box<dyn std::error::Error + Send + Sync>> {
@@ -120,6 +151,9 @@ impl MortarAssetLoader {
         Deserializer::from_json(&json).map_err(Into::into)
     }
 
+    /// Loads a `.mortared` file directly from the asset reader.
+    ///
+    /// 直接从资源读取器加载 `.mortared` 文件。
     async fn load_mortared_direct(
         reader: &mut dyn Reader,
         path: &Path,
@@ -139,6 +173,9 @@ impl AssetLoader for MortarAssetLoader {
     type Settings = ();
     type Error = Box<dyn std::error::Error + Send + Sync>;
 
+    /// Loads a Mortar asset.
+    ///
+    /// 加载 Mortar 资源。
     fn load(
         &self,
         reader: &mut dyn Reader,
@@ -154,6 +191,7 @@ impl AssetLoader for MortarAssetLoader {
                     let mortared_path = path.with_extension("mortared");
 
                     // Find the actual assets directory
+                    // 查找实际的 `assets` 目录
                     let base_path = Self::find_asset_base_path()
                         .ok_or("Cannot find assets directory")?;
 
@@ -185,6 +223,9 @@ impl AssetLoader for MortarAssetLoader {
         })
     }
 
+    /// The extensions of the assets this loader supports.
+    ///
+    /// 此加载器支持的资源扩展名。
     fn extensions(&self) -> &[&str] {
         &["mortar", "mortared"]
     }
