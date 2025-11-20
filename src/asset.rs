@@ -1,7 +1,6 @@
 use bevy::asset::io::Reader;
 use bevy::asset::{Asset, AssetLoader, LoadContext};
 use bevy::log::{info, warn};
-use bevy::prelude;
 use bevy::prelude::TypePath;
 use bevy::tasks::ConditionalSendFuture;
 use mortar_compiler::{Deserializer, Language, MortaredData, ParseHandler, Serializer};
@@ -21,7 +20,7 @@ impl MortarAssetLoader {
             .or_else(|_| std::env::var("LANGUAGE"))
             .unwrap_or_default()
             .to_lowercase();
-        
+
         if locale.starts_with("zh") {
             Language::Chinese
         } else {
@@ -29,16 +28,20 @@ impl MortarAssetLoader {
         }
     }
 
-    fn should_recompile(source_path: &Path, mortared_path: &Path) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
-        let source_meta = std::fs::metadata(source_path)
-            .map_err(|_| "Cannot access .mortar file metadata")?;
-        
+    fn should_recompile(
+        source_path: &Path,
+        mortared_path: &Path,
+    ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+        let source_meta =
+            std::fs::metadata(source_path).map_err(|_| "Cannot access .mortar file metadata")?;
+
         let Ok(compiled_meta) = std::fs::metadata(mortared_path) else {
             return Ok(true);
         };
-        
-        if let (Ok(source_time), Ok(compiled_time)) = 
-            (source_meta.modified(), compiled_meta.modified()) {
+
+        if let (Ok(source_time), Ok(compiled_time)) =
+            (source_meta.modified(), compiled_meta.modified())
+        {
             Ok(source_time > compiled_time)
         } else {
             Ok(true)
@@ -73,47 +76,25 @@ impl MortarAssetLoader {
         let program = parse_result?;
         let json = Serializer::serialize_to_json(&program, true)?;
 
-        if let Err(e) = std::fs::write(mortared_path, json.as_bytes()) {
-            warn!("Failed to write .mortared file: {}", e);
-        }
-
-        Deserializer::from_json(&json).map_err(Into::into)
-    }
-
-    fn load_mortared_file(mortared_path: &Path) -> Result<MortaredData, Box<dyn std::error::Error + Send + Sync>> {
-        info!("Loading existing .mortared file: {:?}", mortared_path);
-        let json = std::fs::read_to_string(mortared_path)?;
-        Deserializer::from_json(&json).map_err(Into::into)
-    }
-
-    async fn load_mortar_file(
-        reader: &mut dyn Reader,
-        source_path: &Path,
-    ) -> Result<MortaredData, Box<dyn std::error::Error + Send + Sync>> {
-        // 简化：直接编译源文件，不检查 .mortared 文件
-        info!("Compiling .mortar file: {:?}", source_path);
-
-        let mut bytes = Vec::new();
-        reader.read_to_end(&mut bytes).await?;
-        let source_content = std::str::from_utf8(&bytes)?;
-
-        let language = Self::detect_language();
-        let (parse_result, diagnostics) =
-            ParseHandler::parse_source_code_with_diagnostics_and_language(
-                source_content,
-                source_path.to_string_lossy().to_string(),
-                false,
-                language,
+        // Prepend the "assets" directory to the path for writing
+        let write_path = Path::new("assets").join(mortared_path);
+        if let Err(e) = std::fs::write(&write_path, json.as_bytes()) {
+            warn!(
+                "Failed to write .mortared file to {:?}: {}",
+                write_path, e
             );
-
-        if diagnostics.has_errors() {
-            diagnostics.print_diagnostics(source_content);
-            return Err("Mortar compilation failed with errors".into());
         }
 
-        let program = parse_result?;
-        let json = Serializer::serialize_to_json(&program, true)?;
+        Deserializer::from_json(&json).map_err(Into::into)
+    }
 
+    fn load_mortared_file(
+        mortared_path: &Path,
+    ) -> Result<MortaredData, Box<dyn std::error::Error + Send + Sync>> {
+        // Prepend the "assets" directory to the path for reading
+        let read_path = Path::new("assets").join(mortared_path);
+        info!("Loading existing .mortared file: {:?}", read_path);
+        let json = std::fs::read_to_string(&read_path)?;
         Deserializer::from_json(&json).map_err(Into::into)
     }
 
@@ -122,11 +103,11 @@ impl MortarAssetLoader {
         path: &Path,
     ) -> Result<MortaredData, Box<dyn std::error::Error + Send + Sync>> {
         info!("Loading .mortared file: {:?}", path);
-        
+
         let mut bytes = Vec::new();
         reader.read_to_end(&mut bytes).await?;
         let json = std::str::from_utf8(&bytes)?;
-        
+
         Deserializer::from_json(json).map_err(Into::into)
     }
 }
@@ -141,15 +122,28 @@ impl AssetLoader for MortarAssetLoader {
         reader: &mut dyn Reader,
         _settings: &Self::Settings,
         load_context: &mut LoadContext<'_>,
-    ) -> impl ConditionalSendFuture<Output = prelude::Result<Self::Asset, Self::Error>> {
+    ) -> impl ConditionalSendFuture<Output = Result<Self::Asset, Self::Error>> {
         Box::pin(async move {
             let path = load_context.path();
             let asset_path = load_context.asset_path();
 
-            info!("Loading mortar file: {:?}", path);
-
             let data = match path.extension().and_then(|s| s.to_str()) {
-                Some("mortar") => Self::load_mortar_file(reader, path).await?,
+                Some("mortar") => {
+                    let mortared_path = path.with_extension("mortared");
+
+                    // We need to construct the full path to check metadata
+                    let source_fs_path = Path::new("assets").join(path);
+                    let mortared_fs_path = Path::new("assets").join(&mortared_path);
+
+                    let recompile =
+                        Self::should_recompile(&source_fs_path, &mortared_fs_path).unwrap_or(true);
+
+                    if recompile {
+                        Self::compile_mortar_source(reader, path, &mortared_path).await?
+                    } else {
+                        Self::load_mortared_file(&mortared_path)?
+                    }
+                }
                 Some("mortared") => Self::load_mortared_direct(reader, path).await?,
                 _ => return Err("Unsupported file extension".into()),
             };
@@ -161,8 +155,6 @@ impl AssetLoader for MortarAssetLoader {
                 data.functions.len(),
                 data.variables.len()
             );
-
-            // TODO: 具体的逻辑处理（例如：节点验证、函数绑定等）
 
             Ok(MortarAsset { data })
         })
