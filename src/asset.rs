@@ -4,7 +4,7 @@ use bevy::log::{info, warn};
 use bevy::prelude::TypePath;
 use bevy::tasks::ConditionalSendFuture;
 use mortar_compiler::{Deserializer, Language, MortaredData, ParseHandler, Serializer};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Asset, TypePath, Debug)]
 pub struct MortarAsset {
@@ -28,22 +28,45 @@ impl MortarAssetLoader {
         }
     }
 
+    fn find_asset_base_path() -> Option<PathBuf> {
+        // Try multiple possible locations for the assets directory
+        let candidates = [
+            PathBuf::from("assets"),
+            PathBuf::from("crates/bevy_mortar_bond/assets"),
+            PathBuf::from("../bevy_mortar_bond/assets"),
+        ];
+
+        for candidate in &candidates {
+            if candidate.exists() && candidate.is_dir() {
+                return Some(candidate.clone());
+            }
+        }
+        None
+    }
+
     fn should_recompile(
-        source_path: &Path,
-        mortared_path: &Path,
+        source_fs_path: &Path,
+        mortared_fs_path: &Path,
     ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
         let source_meta =
-            std::fs::metadata(source_path).map_err(|_| "Cannot access .mortar file metadata")?;
+            std::fs::metadata(source_fs_path).map_err(|_| "Cannot access .mortar file metadata")?;
 
-        let Ok(compiled_meta) = std::fs::metadata(mortared_path) else {
+        let Ok(compiled_meta) = std::fs::metadata(mortared_fs_path) else {
+            info!("No existing .mortared file found, will compile");
             return Ok(true);
         };
 
         if let (Ok(source_time), Ok(compiled_time)) =
             (source_meta.modified(), compiled_meta.modified())
         {
-            Ok(source_time > compiled_time)
+            let needs_recompile = source_time > compiled_time;
+            info!(
+                "Checking recompile: source modified={:?}, compiled modified={:?}, needs_recompile={}",
+                source_time, compiled_time, needs_recompile
+            );
+            Ok(needs_recompile)
         } else {
+            info!("Cannot read modification times, will compile");
             Ok(true)
         }
     }
@@ -52,6 +75,7 @@ impl MortarAssetLoader {
         reader: &mut dyn Reader,
         source_path: &Path,
         mortared_path: &Path,
+        base_path: &Path,
     ) -> Result<MortaredData, Box<dyn std::error::Error + Send + Sync>> {
         info!("Compiling .mortar file: {:?}", source_path);
 
@@ -76,8 +100,8 @@ impl MortarAssetLoader {
         let program = parse_result?;
         let json = Serializer::serialize_to_json(&program, true)?;
 
-        // Prepend the "assets" directory to the path for writing
-        let write_path = Path::new("assets").join(mortared_path);
+        // Write the compiled file
+        let write_path = base_path.join(mortared_path);
         if let Err(e) = std::fs::write(&write_path, json.as_bytes()) {
             warn!(
                 "Failed to write .mortared file to {:?}: {}",
@@ -89,12 +113,10 @@ impl MortarAssetLoader {
     }
 
     fn load_mortared_file(
-        mortared_path: &Path,
+        mortared_fs_path: &Path,
     ) -> Result<MortaredData, Box<dyn std::error::Error + Send + Sync>> {
-        // Prepend the "assets" directory to the path for reading
-        let read_path = Path::new("assets").join(mortared_path);
-        info!("Loading existing .mortared file: {:?}", read_path);
-        let json = std::fs::read_to_string(&read_path)?;
+        info!("Loading existing .mortared file: {:?}", mortared_fs_path);
+        let json = std::fs::read_to_string(mortared_fs_path)?;
         Deserializer::from_json(&json).map_err(Into::into)
     }
 
@@ -131,17 +153,20 @@ impl AssetLoader for MortarAssetLoader {
                 Some("mortar") => {
                     let mortared_path = path.with_extension("mortared");
 
-                    // We need to construct the full path to check metadata
-                    let source_fs_path = Path::new("assets").join(path);
-                    let mortared_fs_path = Path::new("assets").join(&mortared_path);
+                    // Find the actual assets directory
+                    let base_path = Self::find_asset_base_path()
+                        .ok_or("Cannot find assets directory")?;
+
+                    let source_fs_path = base_path.join(path);
+                    let mortared_fs_path = base_path.join(&mortared_path);
 
                     let recompile =
                         Self::should_recompile(&source_fs_path, &mortared_fs_path).unwrap_or(true);
 
                     if recompile {
-                        Self::compile_mortar_source(reader, path, &mortared_path).await?
+                        Self::compile_mortar_source(reader, path, &mortared_path, &base_path).await?
                     } else {
-                        Self::load_mortared_file(&mortared_path)?
+                        Self::load_mortared_file(&mortared_fs_path)?
                     }
                 }
                 Some("mortared") => Self::load_mortared_direct(reader, path).await?,
