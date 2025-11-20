@@ -34,68 +34,72 @@ pub fn process_mortar_events_system(
                 dev_info!("Started node: {} in {}", node, path);
             }
             MortarEvent::NextText => {
-                if let Some(state) = &mut runtime.active_dialogue
-                    && !state.next_text()
-                {
-                    dev_info!("Reached end of node: {}", state.current_node);
+                let Some(state) = &mut runtime.active_dialogue else {
+                    continue;
+                };
+                if state.next_text() {
+                    continue;
+                }
 
-                    // Check if there are choices
-                    if state.has_choices() {
-                        dev_info!("Node has choices, waiting for user selection");
-                    } else if let Some(next_node) = state.get_next_node() {
-                        // Automatic jump to next node
-                        if next_node == "return" {
-                            dev_info!("Return instruction, stopping dialogue");
-                            runtime.active_dialogue = None;
-                        } else {
-                            dev_info!("Auto-jumping to next node: {}", next_node);
-                            let path = state.mortar_path.clone();
-                            runtime.pending_jump = Some((path, next_node.to_string()));
-                        }
-                    } else {
-                        dev_info!("Node ended without next or choices");
+                dev_info!("Reached end of node: {}", state.current_node);
+
+                if state.has_choices() {
+                    dev_info!("Node has choices, waiting for user selection");
+                    continue;
+                }
+
+                if let Some(next_node) = state.get_next_node() {
+                    if next_node == "return" {
+                        dev_info!("Return instruction, stopping dialogue");
                         runtime.active_dialogue = None;
+                    } else {
+                        dev_info!("Auto-jumping to next node: {}", next_node);
+                        let path = state.mortar_path.clone();
+                        runtime.pending_jump = Some((path, next_node.to_string()));
                     }
+                } else {
+                    dev_info!("Node ended without next or choices");
+                    runtime.active_dialogue = None;
                 }
             }
             MortarEvent::SelectChoice { index } => {
-                if let Some(state) = &runtime.active_dialogue {
-                    if let Some(choices) = state.get_choices() {
-                        if let Some(choice) = choices.get(*index) {
-                            dev_info!("Choice selected: {} - {}", index, choice.text);
+                let Some(state) = &runtime.active_dialogue else {
+                    warn!("No active dialogue to select choice from");
+                    continue;
+                };
+                let Some(choices) = state.get_choices() else {
+                    warn!("No choices available in current node");
+                    continue;
+                };
+                let Some(choice) = choices.get(*index) else {
+                    warn!("Invalid choice index: {}", index);
+                    continue;
+                };
 
-                            // Check action field first (for return)
-                            if let Some(action) = &choice.action {
-                                if action == "return" {
-                                    dev_info!("Choice action is return, stopping dialogue");
-                                    runtime.active_dialogue = None;
-                                } else {
-                                    dev_info!("Unknown choice action: {}", action);
-                                    runtime.active_dialogue = None;
-                                }
-                            }
-                            // Then check next field for node jumps
-                            else if let Some(next_node) = &choice.next {
-                                if next_node == "return" {
-                                    dev_info!("Choice leads to return, stopping dialogue");
-                                    runtime.active_dialogue = None;
-                                } else {
-                                    dev_info!("Choice leads to node: {}", next_node);
-                                    let path = state.mortar_path.clone();
-                                    runtime.pending_jump = Some((path, next_node.clone()));
-                                }
-                            } else {
-                                dev_info!("Choice has no next node or action, stopping dialogue");
-                                runtime.active_dialogue = None;
-                            }
-                        } else {
-                            warn!("Invalid choice index: {}", index);
-                        }
+                dev_info!("Choice selected: {} - {}", index, choice.text);
+
+                if let Some(action) = &choice.action {
+                    if action == "return" {
+                        dev_info!("Choice action is return, stopping dialogue");
                     } else {
-                        warn!("No choices available in current node");
+                        dev_info!("Unknown choice action: {}", action);
+                    }
+                    runtime.active_dialogue = None;
+                    continue;
+                }
+
+                if let Some(next_node) = &choice.next {
+                    if next_node == "return" {
+                        dev_info!("Choice leads to return, stopping dialogue");
+                        runtime.active_dialogue = None;
+                    } else {
+                        dev_info!("Choice leads to node: {}", next_node);
+                        let path = state.mortar_path.clone();
+                        runtime.pending_jump = Some((path, next_node.clone()));
                     }
                 } else {
-                    warn!("No active dialogue to select choice from");
+                    dev_info!("Choice has no next node or action, stopping dialogue");
+                    runtime.active_dialogue = None;
                 }
             }
             MortarEvent::StopDialogue => {
@@ -115,16 +119,23 @@ pub fn check_pending_start_system(
     registry: Res<MortarRegistry>,
     assets: Res<Assets<MortarAsset>>,
 ) {
-    if let Some((path, node)) = runtime.pending_start.clone()
-        && let Some(handle) = registry.get(&path)
-        && let Some(asset) = assets.get(handle)
-        && let Some(node_data) = asset.data.nodes.iter().find(|n| n.name == node)
-    {
-        let state = DialogueState::new(path.clone(), node.clone(), node_data.clone());
-        runtime.active_dialogue = Some(state);
-        runtime.pending_start = None;
-        dev_info!("Started pending node: {} in {}", node, path);
-    }
+    let Some((path, node)) = runtime.pending_start.clone() else {
+        return;
+    };
+    let Some(handle) = registry.get(&path) else {
+        return;
+    };
+    let Some(asset) = assets.get(handle) else {
+        return;
+    };
+    let Some(node_data) = asset.data.nodes.iter().find(|n| n.name == node) else {
+        return;
+    };
+
+    let state = DialogueState::new(path.clone(), node.clone(), node_data.clone());
+    runtime.active_dialogue = Some(state);
+    runtime.pending_start = None;
+    dev_info!("Started pending node: {} in {}", node, path);
 }
 
 /// Handles pending jumps to other nodes.
