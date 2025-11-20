@@ -43,8 +43,41 @@
 3. **基本使用**：
 
    ```rust
-   // <待补充>
+   use bevy::prelude::*;
+   use bevy_mortar_bond::MortarPlugin;
+
+   fn main() {
+       App::new()
+           .add_plugins(DefaultPlugins)
+           .add_plugins(MortarPlugin)
+           .run();
+   }
    ```
+
+## 示例
+
+### 运行示例
+
+1. **对话UI示例** - 展示基本的对话框和可点击的选项按钮：
+   ```bash
+   cargo run --example dialogue_ui
+   ```
+
+2. **动态对话示例** - 展示动态增减选项数量的对话系统：
+   ```bash
+   cargo run --example dynamic_dialogue
+   ```
+
+### 示例说明
+
+- **dialogue_ui**: 一个简单的对话显示区域和3个固定的选项按钮
+  - 点击选项按钮会更新对话文本
+  - 按钮有鼠标悬停和点击的视觉反馈
+  
+- **dynamic_dialogue**: 支持动态修改选项数量
+  - 点击"增加选项"可添加新选项（最多10个）
+  - 点击"减少选项"可移除最后一个选项（最少保留1个）
+  - 所有选项都可以点击并触发对话更新
 
 ## 依赖
 
