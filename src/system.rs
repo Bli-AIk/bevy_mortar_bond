@@ -39,8 +39,9 @@ pub fn process_mortar_events_system(
                     && !state.next_text()
                 {
                     info!("Reached end of node: {}", state.current_node);
-                    // It is possible to handle the logic of ending a node here, such as jumping to other nodes.
-                    // 可以在这里处理节点结束逻辑，比如跳转到其他节点。
+                    // TODO: Handle the logic of ending a node here, such as jumping to other nodes.
+                    // TODO: 在这里处理节点结束逻辑，比如跳转到其他节点。
+
                 }
             }
             MortarEvent::SelectChoice { index } => {
