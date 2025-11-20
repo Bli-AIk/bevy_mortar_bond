@@ -213,13 +213,13 @@ fn handle_continue_button(
     runtime: Res<MortarRuntime>,
 ) {
     for interaction in &interaction_query {
-        if *interaction == Interaction::Pressed {
-            if let Some(state) = &runtime.active_dialogue {
-                if state.has_next_text() {
-                    events.write(MortarEvent::NextText);
-                } else {
-                    info!("节点 '{}' 已结束", state.current_node);
-                }
+        if *interaction == Interaction::Pressed
+            && let Some(state) = &runtime.active_dialogue
+        {
+            if state.has_next_text() {
+                events.write(MortarEvent::NextText);
+            } else {
+                info!("Example: Node '{}' has ended", state.current_node);
             }
         }
     }
