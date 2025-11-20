@@ -6,6 +6,8 @@ use bevy::prelude::*;
 use mortar_compiler::Node;
 use std::collections::HashMap;
 
+#[macro_use]
+mod debug;
 mod asset;
 mod system;
 

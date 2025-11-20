@@ -22,7 +22,7 @@ pub fn process_mortar_events_system(
                                 DialogueState::new(path.clone(), node.clone(), node_data.clone());
                             runtime.active_dialogue = Some(state);
                             runtime.pending_start = None;
-                            info!("Started node: {} in {}", node, path);
+                            dev_log!("Started node: {} in {}", node, path);
                         } else {
                             warn!("Node '{}' not found in '{}'", node, path);
                         }
@@ -38,7 +38,7 @@ pub fn process_mortar_events_system(
                 if let Some(state) = &mut runtime.active_dialogue
                     && !state.next_text()
                 {
-                    info!("Reached end of node: {}", state.current_node);
+                    dev_log!("Reached end of node: {}", state.current_node);
                     // TODO: Handle the logic of ending a node here, such as jumping to other nodes.
                     // TODO: 在这里处理节点结束逻辑，比如跳转到其他节点。
 
@@ -47,12 +47,12 @@ pub fn process_mortar_events_system(
             MortarEvent::SelectChoice { index } => {
                 // TODO: Implement choice selection logic.
                 // TODO: 实现选项选择逻辑。
-                info!("Choice selected: {}", index);
+                dev_log!("Choice selected: {}", index);
             }
             MortarEvent::StopDialogue => {
                 runtime.active_dialogue = None;
                 runtime.pending_start = None;
-                info!("Dialogue stopped");
+                dev_log!("Dialogue stopped");
             }
         }
     }
@@ -74,6 +74,6 @@ pub fn check_pending_start_system(
         let state = DialogueState::new(path.clone(), node.clone(), node_data.clone());
         runtime.active_dialogue = Some(state);
         runtime.pending_start = None;
-        info!("Started pending node: {} in {}", node, path);
+        dev_log!("Started pending node: {} in {}", node, path);
     }
 }

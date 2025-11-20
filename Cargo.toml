@@ -8,6 +8,15 @@ repository = "https://github.com/Bli-AIk/bevy_mortar_bond"
 description = "Bevy integration plug-in for mortar language"
 
 [dependencies]
+
 bevy = "0.17.2"
+
 mortar_compiler = { path = "../../../mortar/crates/mortar_compiler" }
+
 serde_json = "1.0"
+
+
+
+[features]
+
+dev-logs = []
