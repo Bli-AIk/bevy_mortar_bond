@@ -1,5 +1,6 @@
 node Start {
     text: "这是一个最基本的的对话节点示例，完全没有 event。"
-
     text: "这里只有几个 text。"
+    text: "好啦，我们也说的差不多了……"
+    text: "结束啦！"
 }
