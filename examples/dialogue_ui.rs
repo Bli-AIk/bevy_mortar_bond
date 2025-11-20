@@ -50,14 +50,15 @@ fn load_initial_dialogue(
     mut events: MessageWriter<MortarEvent>,
 ) {
     let path = "Demo.mortar".to_string();
-    info!("开始加载文件: {}", &path);
+    info!("Example: Start loading files: {}", &path);
     let handle = asset_server.load(&path);
     registry.register(path.clone(), handle);
 
-    info!("发送 StartNode 事件: {} / Start", &path);
+    const START_NODE: &str = "Start";
+    info!("Example: Send StartNode event: {} / {}", &path, START_NODE);
     events.write(MortarEvent::StartNode {
         path,
-        node: "Start".to_string(),
+        node: START_NODE.to_string(),
     });
 }
 

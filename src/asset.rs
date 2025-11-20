@@ -85,7 +85,9 @@ impl MortarAssetLoader {
             let needs_recompile = source_time > compiled_time;
             dev_info!(
                 "Checking recompile: source modified={:?}, compiled modified={:?}, needs_recompile={}",
-                source_time, compiled_time, needs_recompile
+                source_time,
+                compiled_time,
+                needs_recompile
             );
             Ok(needs_recompile)
         } else {
