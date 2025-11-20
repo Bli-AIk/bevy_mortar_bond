@@ -9,9 +9,10 @@ fn main() {
             button_interaction_system,
             handle_continue_button,
             handle_load_button,
+            handle_file_select_button,
             update_dialogue_text,
             update_button_states,
-            handle_text_input,
+            update_file_display,
         ))
         .run();
 }
@@ -31,12 +32,49 @@ struct ContinueButton;
 struct LoadButton;
 
 #[derive(Component)]
-struct FileInput;
+struct FileSelectButton;
 
-#[derive(Resource, Default)]
-struct InputState {
-    file_path: String,
-    is_focused: bool,
+#[derive(Resource)]
+struct FileListState {
+    files: Vec<String>,
+    current_index: usize,
+}
+
+impl Default for FileListState {
+    fn default() -> Self {
+        // 扫描 assets 目录下的 .mortar 文件
+        let mut files = Vec::new();
+        if let Ok(entries) = std::fs::read_dir("assets") {
+            for entry in entries.flatten() {
+                if let Ok(file_type) = entry.file_type() {
+                    if file_type.is_file() {
+                        if let Some(name) = entry.file_name().to_str() {
+                            if name.ends_with(".mortar") {
+                                files.push(name.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        files.sort();
+        Self {
+            files,
+            current_index: 0,
+        }
+    }
+}
+
+impl FileListState {
+    fn current_file(&self) -> Option<&str> {
+        self.files.get(self.current_index).map(|s| s.as_str())
+    }
+    
+    fn next_file(&mut self) {
+        if !self.files.is_empty() {
+            self.current_index = (self.current_index + 1) % self.files.len();
+        }
+    }
 }
 
 fn setup(
@@ -45,11 +83,8 @@ fn setup(
 ) {
     commands.spawn(Camera2d);
     
-    // 初始化输入状态，默认文件名为 Demo.mortar
-    commands.insert_resource(InputState {
-        file_path: "Demo.mortar".to_string(),
-        is_focused: false,
-    });
+    // 初始化文件列表
+    commands.init_resource::<FileListState>();
 
     let font = asset_server.load("Unifont.otf");
 
@@ -73,22 +108,22 @@ fn setup(
                     ..default()
                 })
                 .with_children(|parent| {
-                    // 文件输入框
+                    // 文件选择按钮（点击切换）
                     parent
                         .spawn((
+                            Button,
                             Node {
                                 width: Val::Percent(70.0),
                                 height: Val::Px(50.0),
                                 padding: UiRect::all(Val::Px(10.0)),
                                 border: UiRect::all(Val::Px(2.0)),
-                                justify_content: JustifyContent::Start,
+                                justify_content: JustifyContent::Center,
                                 align_items: AlignItems::Center,
                                 ..default()
                             },
-                            BackgroundColor(Color::srgb(0.2, 0.2, 0.2)),
-                            BorderColor::all(Color::srgb(0.5, 0.5, 0.5)),
-                            Interaction::None,
-                            FileInput,
+                            BackgroundColor(Color::srgb(0.25, 0.25, 0.35)),
+                            BorderColor::all(Color::srgb(0.5, 0.5, 0.6)),
+                            FileSelectButton,
                         ))
                         .with_children(|parent| {
                             parent.spawn((
@@ -240,10 +275,9 @@ fn button_interaction_system(
         >,
         Query<
             (&Interaction, &mut BackgroundColor, &mut BorderColor),
-            (Changed<Interaction>, With<FileInput>),
+            (Changed<Interaction>, With<FileSelectButton>),
         >,
     )>,
-    mut input_state: ResMut<InputState>,
 ) {
     // 继续按钮交互
     for (interaction, mut bg_color, mut border_color) in queries.p0().iter_mut() {
@@ -281,23 +315,20 @@ fn button_interaction_system(
         }
     }
 
-    // 输入框交互
+    // 文件选择按钮交互
     for (interaction, mut bg_color, mut border_color) in queries.p2().iter_mut() {
         match *interaction {
             Interaction::Pressed => {
-                input_state.is_focused = true;
-                *bg_color = BackgroundColor(Color::srgb(0.25, 0.25, 0.35));
-                *border_color = BorderColor::all(Color::srgb(0.6, 0.6, 0.8));
+                *bg_color = BackgroundColor(Color::srgb(0.2, 0.2, 0.3));
+                *border_color = BorderColor::all(Color::srgb(0.4, 0.4, 0.5));
             }
             Interaction::Hovered => {
-                *bg_color = BackgroundColor(Color::srgb(0.25, 0.25, 0.25));
-                *border_color = BorderColor::all(Color::srgb(0.6, 0.6, 0.6));
+                *bg_color = BackgroundColor(Color::srgb(0.3, 0.3, 0.4));
+                *border_color = BorderColor::all(Color::srgb(0.6, 0.6, 0.7));
             }
             Interaction::None => {
-                if !input_state.is_focused {
-                    *bg_color = BackgroundColor(Color::srgb(0.2, 0.2, 0.2));
-                    *border_color = BorderColor::all(Color::srgb(0.5, 0.5, 0.5));
-                }
+                *bg_color = BackgroundColor(Color::srgb(0.25, 0.25, 0.35));
+                *border_color = BorderColor::all(Color::srgb(0.5, 0.5, 0.6));
             }
         }
     }
@@ -307,12 +338,9 @@ fn handle_continue_button(
     interaction_query: Query<&Interaction, (Changed<Interaction>, With<ContinueButton>)>,
     mut events: MessageWriter<MortarEvent>,
     runtime: Res<MortarRuntime>,
-    mut input_state: ResMut<InputState>,
 ) {
     for interaction in &interaction_query {
         if *interaction == Interaction::Pressed {
-            input_state.is_focused = false;
-            
             if let Some(state) = &runtime.active_dialogue {
                 if state.has_next_text() {
                     events.write(MortarEvent::NextText);
@@ -324,25 +352,40 @@ fn handle_continue_button(
     }
 }
 
+fn handle_file_select_button(
+    interaction_query: Query<&Interaction, (Changed<Interaction>, With<FileSelectButton>)>,
+    mut file_state: ResMut<FileListState>,
+) {
+    for interaction in &interaction_query {
+        if *interaction == Interaction::Pressed {
+            file_state.next_file();
+            info!("切换到文件: {:?}", file_state.current_file());
+        }
+    }
+}
+
 fn handle_load_button(
     interaction_query: Query<&Interaction, (Changed<Interaction>, With<LoadButton>)>,
     asset_server: Res<AssetServer>,
     mut registry: ResMut<MortarRegistry>,
+    mut runtime: ResMut<MortarRuntime>,
     mut events: MessageWriter<MortarEvent>,
-    mut input_state: ResMut<InputState>,
+    file_state: Res<FileListState>,
 ) {
     for interaction in &interaction_query {
         if *interaction == Interaction::Pressed {
-            input_state.is_focused = false;
-            
-            if input_state.file_path.is_empty() {
-                warn!("文件路径为空");
+            let Some(file_name) = file_state.current_file() else {
+                warn!("没有可用的文件");
                 continue;
-            }
+            };
 
-            let path = input_state.file_path.clone();
+            let path = file_name.to_string();
             
             info!("尝试加载文件: {}", path);
+            
+            // 重置当前对话状态
+            runtime.active_dialogue = None;
+            runtime.pending_start = None;
             
             // 检查是否已注册
             if registry.get(&path).is_none() {
@@ -363,98 +406,21 @@ fn handle_load_button(
     }
 }
 
-fn handle_text_input(
-    keys: Res<ButtonInput<KeyCode>>,
-    mut input_state: ResMut<InputState>,
-    mut input_query: Query<&mut Text, With<FileInput>>,
+// 更新文件选择按钮的显示
+fn update_file_display(
+    file_state: Res<FileListState>,
+    mut button_query: Query<&mut Text, With<FileSelectButton>>,
 ) {
-    if !input_state.is_focused {
+    if !file_state.is_changed() {
         return;
     }
-
-    let mut modified = false;
-
-    // 处理退格键
-    if keys.just_pressed(KeyCode::Backspace) {
-        input_state.file_path.pop();
-        modified = true;
-    }
-
-    // 处理回车键（失去焦点）
-    if keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::Escape) {
-        input_state.is_focused = false;
-        modified = true;
-    }
-
-    // 处理常见字符输入
-    for key in keys.get_just_pressed() {
-        let c = match key {
-            KeyCode::KeyA => Some('a'),
-            KeyCode::KeyB => Some('b'),
-            KeyCode::KeyC => Some('c'),
-            KeyCode::KeyD => Some('d'),
-            KeyCode::KeyE => Some('e'),
-            KeyCode::KeyF => Some('f'),
-            KeyCode::KeyG => Some('g'),
-            KeyCode::KeyH => Some('h'),
-            KeyCode::KeyI => Some('i'),
-            KeyCode::KeyJ => Some('j'),
-            KeyCode::KeyK => Some('k'),
-            KeyCode::KeyL => Some('l'),
-            KeyCode::KeyM => Some('m'),
-            KeyCode::KeyN => Some('n'),
-            KeyCode::KeyO => Some('o'),
-            KeyCode::KeyP => Some('p'),
-            KeyCode::KeyQ => Some('q'),
-            KeyCode::KeyR => Some('r'),
-            KeyCode::KeyS => Some('s'),
-            KeyCode::KeyT => Some('t'),
-            KeyCode::KeyU => Some('u'),
-            KeyCode::KeyV => Some('v'),
-            KeyCode::KeyW => Some('w'),
-            KeyCode::KeyX => Some('x'),
-            KeyCode::KeyY => Some('y'),
-            KeyCode::KeyZ => Some('z'),
-            KeyCode::Digit0 => Some('0'),
-            KeyCode::Digit1 => Some('1'),
-            KeyCode::Digit2 => Some('2'),
-            KeyCode::Digit3 => Some('3'),
-            KeyCode::Digit4 => Some('4'),
-            KeyCode::Digit5 => Some('5'),
-            KeyCode::Digit6 => Some('6'),
-            KeyCode::Digit7 => Some('7'),
-            KeyCode::Digit8 => Some('8'),
-            KeyCode::Digit9 => Some('9'),
-            KeyCode::Period => Some('.'),
-            KeyCode::Slash => Some('/'),
-            KeyCode::Minus => Some('-'),
-            KeyCode::Space => Some(' '),
-            _ => None,
+    
+    for mut text in button_query.iter_mut() {
+        **text = if let Some(file) = file_state.current_file() {
+            file.to_string()
+        } else {
+            "无可用文件".to_string()
         };
-
-        if let Some(ch) = c {
-            input_state.file_path.push(ch);
-            modified = true;
-        }
-    }
-
-    // 更新输入框显示
-    if modified || input_state.is_changed() {
-        for mut text in input_query.iter_mut() {
-            **text = if input_state.file_path.is_empty() {
-                if input_state.is_focused {
-                    "_".to_string()
-                } else {
-                    "Demo.mortar".to_string()
-                }
-            } else {
-                if input_state.is_focused {
-                    format!("{}|", input_state.file_path)
-                } else {
-                    input_state.file_path.clone()
-                }
-            };
-        }
     }
 }
 
@@ -495,8 +461,10 @@ fn update_button_states(
             **text = if state.has_next_text() {
                 "继续".to_string()
             } else {
-                "下一个节点".to_string()
+                "已结束".to_string()
             };
+        } else {
+            **text = "继续".to_string();
         }
     }
 }
