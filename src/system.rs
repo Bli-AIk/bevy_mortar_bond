@@ -1,7 +1,7 @@
-use bevy::prelude::{MessageReader, Res, ResMut};
+use crate::{DialogueState, MortarAsset, MortarEvent, MortarRegistry, MortarRuntime};
 use bevy::asset::Assets;
 use bevy::log::{info, warn};
-use crate::{DialogueState, MortarAsset, MortarEvent, MortarRegistry, MortarRuntime};
+use bevy::prelude::{MessageReader, Res, ResMut};
 
 /// Processes Mortar events.
 ///
@@ -18,11 +18,8 @@ pub fn process_mortar_events_system(
                 if let Some(handle) = registry.get(path) {
                     if let Some(asset) = assets.get(handle) {
                         if let Some(node_data) = asset.data.nodes.iter().find(|n| n.name == *node) {
-                            let state = DialogueState::new(
-                                path.clone(),
-                                node.clone(),
-                                node_data.clone(),
-                            );
+                            let state =
+                                DialogueState::new(path.clone(), node.clone(), node_data.clone());
                             runtime.active_dialogue = Some(state);
                             runtime.pending_start = None;
                             info!("Started node: {} in {}", node, path);
@@ -38,12 +35,12 @@ pub fn process_mortar_events_system(
                 }
             }
             MortarEvent::NextText => {
-                if let Some(state) = &mut runtime.active_dialogue {
-                    if !state.next_text() {
-                        info!("Reached end of node: {}", state.current_node);
-                        // It is possible to handle the logic of ending a node here, such as jumping to other nodes.
-                        // 可以在这里处理节点结束逻辑，比如跳转到其他节点。
-                    }
+                if let Some(state) = &mut runtime.active_dialogue
+                    && !state.next_text()
+                {
+                    info!("Reached end of node: {}", state.current_node);
+                    // It is possible to handle the logic of ending a node here, such as jumping to other nodes.
+                    // 可以在这里处理节点结束逻辑，比如跳转到其他节点。
                 }
             }
             MortarEvent::SelectChoice { index } => {
@@ -68,20 +65,14 @@ pub fn check_pending_start_system(
     registry: Res<MortarRegistry>,
     assets: Res<Assets<MortarAsset>>,
 ) {
-    if let Some((path, node)) = runtime.pending_start.clone() {
-        if let Some(handle) = registry.get(&path) {
-            if let Some(asset) = assets.get(handle) {
-                if let Some(node_data) = asset.data.nodes.iter().find(|n| n.name == node) {
-                    let state = DialogueState::new(
-                        path.clone(),
-                        node.clone(),
-                        node_data.clone(),
-                    );
-                    runtime.active_dialogue = Some(state);
-                    runtime.pending_start = None;
-                    info!("Started pending node: {} in {}", node, path);
-                }
-            }
-        }
+    if let Some((path, node)) = runtime.pending_start.clone()
+        && let Some(handle) = registry.get(&path)
+        && let Some(asset) = assets.get(handle)
+        && let Some(node_data) = asset.data.nodes.iter().find(|n| n.name == node)
+    {
+        let state = DialogueState::new(path.clone(), node.clone(), node_data.clone());
+        runtime.active_dialogue = Some(state);
+        runtime.pending_start = None;
+        info!("Started pending node: {} in {}", node, path);
     }
 }

@@ -66,7 +66,6 @@ impl MortarAssetLoader {
 
     /// Checks if a `.mortar` file needs to be recompiled.
     ///
-    
     /// 检查 `.mortar` 文件是否需要重新编译。
     fn should_recompile(
         source_fs_path: &Path,
@@ -131,10 +130,7 @@ impl MortarAssetLoader {
         // 写入编译后的文件
         let write_path = base_path.join(mortared_path);
         if let Err(e) = std::fs::write(&write_path, json.as_bytes()) {
-            warn!(
-                "Failed to write .mortared file to {:?}: {}",
-                write_path, e
-            );
+            warn!("Failed to write .mortared file to {:?}: {}", write_path, e);
         }
 
         Deserializer::from_json(&json).map_err(Into::into)
@@ -192,8 +188,8 @@ impl AssetLoader for MortarAssetLoader {
 
                     // Find the actual assets directory
                     // 查找实际的 `assets` 目录
-                    let base_path = Self::find_asset_base_path()
-                        .ok_or("Cannot find assets directory")?;
+                    let base_path =
+                        Self::find_asset_base_path().ok_or("Cannot find assets directory")?;
 
                     let source_fs_path = base_path.join(path);
                     let mortared_fs_path = base_path.join(&mortared_path);
@@ -202,7 +198,8 @@ impl AssetLoader for MortarAssetLoader {
                         Self::should_recompile(&source_fs_path, &mortared_fs_path).unwrap_or(true);
 
                     if recompile {
-                        Self::compile_mortar_source(reader, path, &mortared_path, &base_path).await?
+                        Self::compile_mortar_source(reader, path, &mortared_path, &base_path)
+                            .await?
                     } else {
                         Self::load_mortared_file(&mortared_fs_path)?
                     }

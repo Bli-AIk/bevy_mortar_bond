@@ -3,8 +3,8 @@
 //! 本包为 Mortar 对话系统提供“绑钉”（绑定）系统，将其与 Bevy 游戏引擎集成。
 
 use bevy::prelude::*;
-use std::collections::HashMap;
 use mortar_compiler::Node;
+use std::collections::HashMap;
 
 mod asset;
 mod system;
@@ -23,7 +23,13 @@ impl Plugin for MortarPlugin {
             .init_resource::<MortarRegistry>()
             .init_resource::<MortarRuntime>()
             .add_message::<MortarEvent>()
-            .add_systems(Update, (system::process_mortar_events_system, system::check_pending_start_system));
+            .add_systems(
+                Update,
+                (
+                    system::process_mortar_events_system,
+                    system::check_pending_start_system,
+                ),
+            );
     }
 }
 
@@ -106,7 +112,10 @@ impl DialogueState {
     ///
     /// 获取当前显示的文本。
     pub fn current_text(&self) -> Option<&str> {
-        self.node_data.texts.get(self.text_index).map(|s| s.text.as_str())
+        self.node_data
+            .texts
+            .get(self.text_index)
+            .map(|s| s.text.as_str())
     }
 
     /// Checks if there is more text to display.
@@ -158,4 +167,3 @@ pub enum MortarEvent {
     /// 停止当前对话。
     StopDialogue,
 }
-
