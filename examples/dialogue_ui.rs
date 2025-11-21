@@ -23,6 +23,7 @@ fn main() {
                 handle_continue_button,
                 handle_choice_buttons,
                 update_dialogue_text,
+                manage_choice_buttons,
                 update_button_states,
             ),
         )
@@ -71,12 +72,19 @@ fn handle_continue_button(
         if *interaction == Interaction::Pressed
             && let Some(state) = &runtime.active_dialogue
         {
-            events.write(MortarEvent::NextText);
-            if !state.has_next_text() {
-                info!(
-                    "Example: Reached end of text in node '{}'",
-                    state.current_node
-                );
+            // If a choice is selected, confirm it
+            if state.selected_choice.is_some() {
+                info!("Example: Confirming choice selection");
+                events.write(MortarEvent::ConfirmChoice);
+            } else {
+                // Otherwise, advance text
+                events.write(MortarEvent::NextText);
+                if !state.has_next_text() {
+                    info!(
+                        "Example: Reached end of text in node '{}'",
+                        state.current_node
+                    );
+                }
             }
         }
     }

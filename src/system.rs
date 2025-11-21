@@ -63,7 +63,7 @@ pub fn process_mortar_events_system(
                 }
             }
             MortarEvent::SelectChoice { index } => {
-                let Some(state) = &runtime.active_dialogue else {
+                let Some(state) = &mut runtime.active_dialogue else {
                     warn!("No active dialogue to select choice from");
                     continue;
                 };
@@ -71,12 +71,37 @@ pub fn process_mortar_events_system(
                     warn!("No choices available in current node");
                     continue;
                 };
-                let Some(choice) = choices.get(*index) else {
+                if *index >= choices.len() {
                     warn!("Invalid choice index: {}", index);
+                    continue;
+                }
+
+                dev_info!(
+                    "Choice marked as selected: {} - {}",
+                    index,
+                    choices[*index].text
+                );
+                state.selected_choice = Some(*index);
+            }
+            MortarEvent::ConfirmChoice => {
+                let Some(state) = &mut runtime.active_dialogue else {
+                    warn!("No active dialogue to confirm choice from");
+                    continue;
+                };
+                let Some(choice_index) = state.selected_choice else {
+                    warn!("No choice selected to confirm");
+                    continue;
+                };
+                let Some(choices) = state.get_choices() else {
+                    warn!("No choices available in current node");
+                    continue;
+                };
+                let Some(choice) = choices.get(choice_index) else {
+                    warn!("Invalid choice index: {}", choice_index);
                     continue;
                 };
 
-                dev_info!("Choice selected: {} - {}", index, choice.text);
+                dev_info!("Choice confirmed: {} - {}", choice_index, choice.text);
 
                 if let Some(action) = &choice.action {
                     if action == "return" {

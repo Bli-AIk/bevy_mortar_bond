@@ -97,6 +97,10 @@ pub struct DialogueState {
     ///
     /// 当前文本索引。
     pub text_index: usize,
+    /// The currently selected choice (if any).
+    ///
+    /// 当前选中的选项（如果有）。
+    pub selected_choice: Option<usize>,
     /// A snapshot of the node data (to avoid repeated queries).
     ///
     /// 节点数据的快照（避免重复查询）。
@@ -112,6 +116,7 @@ impl DialogueState {
             mortar_path,
             current_node: node_name,
             text_index: 0,
+            selected_choice: None,
             node_data,
         }
     }
@@ -187,10 +192,14 @@ pub enum MortarEvent {
     ///
     /// 步进到下一条文本。
     NextText,
-    /// Selects a choice.
+    /// Selects a choice (marks it as selected without confirming).
     ///
-    /// 选择一个选项。
+    /// 选中一个选项（标记为已选，但不确认）。
     SelectChoice { index: usize },
+    /// Confirms the currently selected choice and proceeds.
+    ///
+    /// 确认当前选中的选项并继续。
+    ConfirmChoice,
     /// Stops the current dialogue.
     ///
     /// 停止当前对话。
