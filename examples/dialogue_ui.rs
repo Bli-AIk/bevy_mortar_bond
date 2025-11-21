@@ -49,7 +49,7 @@ fn load_initial_dialogue(
     mut registry: ResMut<MortarRegistry>,
     mut events: MessageWriter<MortarEvent>,
 ) {
-    let path = "Demo.mortar".to_string();
+    let path = "demo.mortar".to_string();
     info!("Example: Start loading files: {}", &path);
     let handle = asset_server.load(&path);
     registry.register(path.clone(), handle);
@@ -166,60 +166,59 @@ fn manage_choice_buttons(
     }
 
     // Create new buttons if we have choices
-    if let Some(state) = &runtime.active_dialogue {
-        if let Some(choices) = state.get_choices()
-            && !state.has_next_text()
-        {
-            let font = asset_server.load("Unifont.otf");
+    if let Some(state) = &runtime.active_dialogue
+        && let Some(choices) = state.get_choices()
+        && !state.has_next_text()
+    {
+        let font = asset_server.load("Unifont.otf");
 
-            for (index, choice) in choices.iter().enumerate() {
-                let is_selected = state.selected_choice == Some(index);
+        for (index, choice) in choices.iter().enumerate() {
+            let is_selected = state.selected_choice == Some(index);
 
-                let (bg_color, border_color, text_color) = if is_selected {
-                    // Selected style
-                    (
-                        Color::srgb(0.3, 0.4, 0.6),
-                        Color::srgb(0.5, 0.7, 0.9),
-                        Color::srgb(1.0, 1.0, 1.0),
-                    )
-                } else {
-                    // Normal style
-                    (
-                        Color::srgb(0.2, 0.25, 0.35),
-                        Color::srgb(0.4, 0.5, 0.65),
-                        Color::srgb(0.85, 0.85, 0.85),
-                    )
-                };
+            let (bg_color, border_color, text_color) = if is_selected {
+                // Selected style
+                (
+                    Color::srgb(0.3, 0.4, 0.6),
+                    Color::srgb(0.5, 0.7, 0.9),
+                    Color::srgb(1.0, 1.0, 1.0),
+                )
+            } else {
+                // Normal style
+                (
+                    Color::srgb(0.2, 0.25, 0.35),
+                    Color::srgb(0.4, 0.5, 0.65),
+                    Color::srgb(0.85, 0.85, 0.85),
+                )
+            };
 
-                commands.entity(container).with_children(|parent| {
-                    parent
-                        .spawn((
-                            Button,
-                            Node {
-                                width: Val::Percent(100.0),
-                                height: Val::Px(60.0),
-                                justify_content: JustifyContent::Center,
-                                align_items: AlignItems::Center,
-                                border: UiRect::all(Val::Px(3.0)),
+            commands.entity(container).with_children(|parent| {
+                parent
+                    .spawn((
+                        Button,
+                        Node {
+                            width: Val::Percent(100.0),
+                            height: Val::Px(60.0),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            border: UiRect::all(Val::Px(3.0)),
+                            ..default()
+                        },
+                        BackgroundColor(bg_color),
+                        BorderColor::all(border_color),
+                        ChoiceButton { index },
+                    ))
+                    .with_children(|parent| {
+                        parent.spawn((
+                            Text::new(&choice.text),
+                            TextFont {
+                                font: font.clone(),
+                                font_size: 20.0,
                                 ..default()
                             },
-                            BackgroundColor(bg_color),
-                            BorderColor::all(border_color),
-                            ChoiceButton { index },
-                        ))
-                        .with_children(|parent| {
-                            parent.spawn((
-                                Text::new(&choice.text),
-                                TextFont {
-                                    font: font.clone(),
-                                    font_size: 20.0,
-                                    ..default()
-                                },
-                                TextColor(text_color),
-                            ));
-                        });
-                });
-            }
+                            TextColor(text_color),
+                        ));
+                    });
+            });
         }
     }
 }
