@@ -14,9 +14,44 @@ use bevy::prelude::*;
 use bevy_mortar_bond::{MortarEvent, MortarPlugin, MortarRegistry, MortarRuntime};
 use utils::ui::*;
 
+/// Resource to track the current dialogue file and available files.
+///
+/// 资源：跟踪当前对话文件和可用文件。
+#[derive(Resource)]
+struct DialogueFiles {
+    files: Vec<String>,
+    current_index: usize,
+}
+
+impl Default for DialogueFiles {
+    fn default() -> Self {
+        Self {
+            files: vec![
+                "demo.mortar".to_string(),
+                "basic.mortar".to_string(),
+                "branch_interpolation.mortar".to_string(),
+                "control_flow.mortar".to_string(),
+                "performance_system.mortar".to_string(),
+            ],
+            current_index: 0,
+        }
+    }
+}
+
+impl DialogueFiles {
+    fn current(&self) -> &str {
+        &self.files[self.current_index]
+    }
+
+    fn next(&mut self) {
+        self.current_index = (self.current_index + 1) % self.files.len();
+    }
+}
+
 fn main() {
     App::new()
         .add_plugins((DefaultPlugins, MortarPlugin))
+        .init_resource::<DialogueFiles>()
         .add_systems(Startup, (setup, load_initial_dialogue).chain())
         .add_systems(
             Update,
@@ -24,6 +59,8 @@ fn main() {
                 button_interaction_system,
                 handle_continue_button,
                 handle_choice_buttons,
+                handle_reload_button,
+                handle_switch_file_button,
                 update_dialogue_text,
                 manage_choice_buttons,
                 update_button_states,
@@ -48,8 +85,9 @@ fn load_initial_dialogue(
     asset_server: Res<AssetServer>,
     mut registry: ResMut<MortarRegistry>,
     mut events: MessageWriter<MortarEvent>,
+    dialogue_files: Res<DialogueFiles>,
 ) {
-    let path = "demo.mortar".to_string();
+    let path = dialogue_files.current().to_string();
     info!("Example: Start loading files: {}", &path);
     let handle = asset_server.load(&path);
     registry.register(path.clone(), handle);
@@ -252,6 +290,80 @@ fn update_button_states(
         } else {
             *visibility = Visibility::Visible;
             **text = "继续".to_string();
+        }
+    }
+}
+
+/// Handles clicks on the "Reload" button.
+///
+/// 处理"重载"按钮的点击事件。
+fn handle_reload_button(
+    interaction_query: Query<&Interaction, (Changed<Interaction>, With<ReloadButton>)>,
+    asset_server: Res<AssetServer>,
+    mut registry: ResMut<MortarRegistry>,
+    mut events: MessageWriter<MortarEvent>,
+    dialogue_files: Res<DialogueFiles>,
+    runtime: Res<MortarRuntime>,
+) {
+    for interaction in &interaction_query {
+        if *interaction == Interaction::Pressed {
+            let path = dialogue_files.current().to_string();
+            info!("Example: Reload file: {}", &path);
+
+            // Stop current dialogue
+            events.write(MortarEvent::StopDialogue);
+
+            // Reload asset
+            let handle = asset_server.load(&path);
+            registry.register(path.clone(), handle);
+
+            // Restart from the current node or Start
+            let start_node = runtime
+                .active_dialogue
+                .as_ref()
+                .map(|state| state.current_node.clone())
+                .unwrap_or_else(|| "Start".to_string());
+
+            info!("Example: 重新启动节点: {} / {}", &path, &start_node);
+            events.write(MortarEvent::StartNode {
+                path,
+                node: start_node,
+            });
+        }
+    }
+}
+
+/// Handles clicks on the "Switch File" button.
+///
+/// 处理"切换文件"按钮的点击事件。
+fn handle_switch_file_button(
+    interaction_query: Query<&Interaction, (Changed<Interaction>, With<SwitchFileButton>)>,
+    asset_server: Res<AssetServer>,
+    mut registry: ResMut<MortarRegistry>,
+    mut events: MessageWriter<MortarEvent>,
+    mut dialogue_files: ResMut<DialogueFiles>,
+) {
+    for interaction in &interaction_query {
+        if *interaction == Interaction::Pressed {
+            // Stop current dialogue
+            events.write(MortarEvent::StopDialogue);
+
+            // Switch to next file
+            dialogue_files.next();
+            let path = dialogue_files.current().to_string();
+            info!("Example: Switch to file: {}", &path);
+
+            // Load new file
+            let handle = asset_server.load(&path);
+            registry.register(path.clone(), handle);
+
+            // Start from the beginning
+            const START_NODE: &str = "Start";
+            info!("Example: Start a new file node: {} / {}", &path, START_NODE);
+            events.write(MortarEvent::StartNode {
+                path,
+                node: START_NODE.to_string(),
+            });
         }
     }
 }

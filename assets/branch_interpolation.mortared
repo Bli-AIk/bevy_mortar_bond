@@ -1,0 +1,327 @@
+{
+  "metadata": {
+    "version": "0.4.0",
+    "generated_at": "2025-11-21T13:46:52.839717625Z"
+  },
+  "variables": [
+    {
+      "name": "is_forest",
+      "type": "Boolean"
+    },
+    {
+      "name": "is_city",
+      "type": "Boolean"
+    },
+    {
+      "name": "is_male",
+      "type": "Boolean"
+    },
+    {
+      "name": "is_female",
+      "type": "Boolean"
+    }
+  ],
+  "enums": [
+    {
+      "name": "Location",
+      "variants": [
+        "forest",
+        "city",
+        "town"
+      ]
+    },
+    {
+      "name": "Gender",
+      "variants": [
+        "male",
+        "female",
+        "other"
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "Start",
+      "texts": [
+        {
+          "text": "欢迎来到{place}，{greet}！",
+          "interpolated_parts": [
+            {
+              "type": "text",
+              "content": "欢迎来到"
+            },
+            {
+              "type": "placeholder",
+              "content": "{place}"
+            },
+            {
+              "type": "text",
+              "content": "，"
+            },
+            {
+              "type": "placeholder",
+              "content": "{greet}"
+            },
+            {
+              "type": "text",
+              "content": "！"
+            }
+          ]
+        }
+      ],
+      "branches": [
+        {
+          "name": "place",
+          "cases": [
+            {
+              "condition": "is_forest",
+              "text": "森林"
+            },
+            {
+              "condition": "is_city",
+              "text": "城市"
+            }
+          ]
+        },
+        {
+          "name": "greet",
+          "cases": [
+            {
+              "condition": "is_male",
+              "text": "先生"
+            },
+            {
+              "condition": "is_female",
+              "text": "女士"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "LocationDesc",
+      "texts": [
+        {
+          "text": "你现在在{location}，周围有{object}。",
+          "interpolated_parts": [
+            {
+              "type": "text",
+              "content": "你现在在"
+            },
+            {
+              "type": "placeholder",
+              "content": "{location}"
+            },
+            {
+              "type": "text",
+              "content": "，周围有"
+            },
+            {
+              "type": "placeholder",
+              "content": "{object}"
+            },
+            {
+              "type": "text",
+              "content": "。"
+            }
+          ]
+        }
+      ],
+      "branches": [
+        {
+          "name": "location",
+          "enum_type": "Location",
+          "cases": [
+            {
+              "condition": "forest",
+              "text": "森林深处"
+            },
+            {
+              "condition": "city",
+              "text": "繁华都市"
+            },
+            {
+              "condition": "town",
+              "text": "宁静小镇"
+            }
+          ]
+        },
+        {
+          "name": "object",
+          "enum_type": "Location",
+          "cases": [
+            {
+              "condition": "forest",
+              "text": "树木",
+              "events": [
+                {
+                  "index": 0.0,
+                  "actions": [
+                    {
+                      "type": "set_color",
+                      "args": [
+                        "green"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "condition": "city",
+              "text": "高楼",
+              "events": [
+                {
+                  "index": 0.0,
+                  "actions": [
+                    {
+                      "type": "set_color",
+                      "args": [
+                        "gray"
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "index": 1.0,
+                  "actions": [
+                    {
+                      "type": "set_color",
+                      "args": [
+                        "blue"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "condition": "town",
+              "text": "房屋",
+              "events": [
+                {
+                  "index": 0.0,
+                  "actions": [
+                    {
+                      "type": "set_color",
+                      "args": [
+                        "brown"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ComplexScene",
+      "texts": [
+        {
+          "text": "你看见{object}后，感到惊讶！",
+          "interpolated_parts": [
+            {
+              "type": "text",
+              "content": "你看见"
+            },
+            {
+              "type": "placeholder",
+              "content": "{object}"
+            },
+            {
+              "type": "text",
+              "content": "后，感到惊讶！"
+            }
+          ]
+        }
+      ],
+      "branches": [
+        {
+          "name": "object",
+          "enum_type": "Location",
+          "cases": [
+            {
+              "condition": "forest",
+              "text": "野兽",
+              "events": [
+                {
+                  "index": 0.0,
+                  "actions": [
+                    {
+                      "type": "set_color",
+                      "args": [
+                        "red"
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "index": 1.0,
+                  "actions": [
+                    {
+                      "type": "set_color",
+                      "args": [
+                        "orange"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "condition": "city",
+              "text": "警车",
+              "events": [
+                {
+                  "index": 0.0,
+                  "actions": [
+                    {
+                      "type": "set_color",
+                      "args": [
+                        "blue"
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "index": 1.0,
+                  "actions": [
+                    {
+                      "type": "set_color",
+                      "args": [
+                        "red"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "condition": "town",
+              "text": "老人"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "name": "set_color",
+      "params": [
+        {
+          "name": "color",
+          "type": "String"
+        }
+      ]
+    },
+    {
+      "name": "shake"
+    },
+    {
+      "name": "flash"
+    }
+  ]
+}

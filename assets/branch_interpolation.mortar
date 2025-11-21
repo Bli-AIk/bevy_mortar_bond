@@ -22,7 +22,7 @@ enum Gender {
 
 // ===== Node with Branch Interpolation =====
 
-node Welcome {
+node Start {
     text: $"欢迎来到{place}，{greet}！"
     
     // Boolean-based branch
