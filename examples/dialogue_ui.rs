@@ -11,10 +11,12 @@
 mod utils;
 
 use bevy::prelude::*;
+use bevy_ecs_typewriter::{Typewriter, TypewriterPlugin, TypewriterState};
 use bevy_mortar_bond::{
     MortarEvent, MortarFunctions, MortarNumber, MortarPlugin, MortarRegistry, MortarRuntime,
     MortarString,
 };
+use mortar_compiler::Event as TextEvent;
 use utils::ui::*;
 
 /// Resource to track the current dialogue file and available files.
@@ -54,7 +56,7 @@ impl DialogueFiles {
 
 fn main() {
     App::new()
-        .add_plugins((DefaultPlugins, MortarPlugin))
+        .add_plugins((DefaultPlugins, MortarPlugin, TypewriterPlugin))
         .init_resource::<DialogueFiles>()
         .add_systems(
             Startup,
@@ -68,9 +70,10 @@ fn main() {
                 handle_choice_buttons,
                 handle_reload_button,
                 handle_switch_file_button,
-                update_dialogue_text,
+                update_dialogue_text_with_typewriter,
                 manage_choice_buttons,
                 update_button_states,
+                trigger_typewriter_events,
             ),
         )
         .run();
@@ -191,54 +194,6 @@ fn handle_choice_buttons(
             events.write(MortarEvent::SelectChoice {
                 index: choice_button.index,
             });
-        }
-    }
-}
-
-/// Updates the dialogue text display.
-///
-/// 更新对话文本显示。
-fn update_dialogue_text(
-    runtime: Res<MortarRuntime>,
-    mut dialogue_query: Query<&mut Text, With<DialogueText>>,
-    mut last_key: Local<Option<(String, String, usize)>>,
-) {
-    if !runtime.is_changed() {
-        return;
-    }
-
-    for mut text in &mut dialogue_query {
-        if let Some(state) = &runtime.active_dialogue {
-            // Create a key to track if the text has changed
-            let current_key = (
-                state.mortar_path.clone(),
-                state.current_node.clone(),
-                state.text_index,
-            );
-
-            // Only process if this is a new text
-            let should_process = last_key.as_ref() != Some(&current_key);
-
-            if should_process && let Some(text_data) = state.current_text_data() {
-                // Process interpolated text
-                let processed_text =
-                    bevy_mortar_bond::process_interpolated_text(text_data, &runtime.functions);
-
-                info!(
-                    "Dialogue text display: [{}] {}",
-                    state.current_node, processed_text
-                );
-
-                **text = format!(
-                    "[{} / {}]\n\n{}",
-                    state.mortar_path, state.current_node, processed_text
-                );
-
-                *last_key = Some(current_key);
-            }
-        } else {
-            **text = "等待加载对话...".to_string();
-            *last_key = None;
         }
     }
 }
@@ -427,6 +382,151 @@ fn handle_switch_file_button(
                 path,
                 node: START_NODE.to_string(),
             });
+        }
+    }
+}
+
+/// Component to track dialogue events for typewriter
+///
+/// 追踪打字机对话事件的组件
+#[derive(Component)]
+struct TypewriterDialogue {
+    events: Vec<TextEvent>,
+    fired_events: Vec<usize>,
+}
+
+impl TypewriterDialogue {
+    fn new(events: Vec<TextEvent>) -> Self {
+        Self {
+            events,
+            fired_events: Vec::new(),
+        }
+    }
+}
+
+/// Updates dialogue text with typewriter effect
+///
+/// 使用打字机效果更新对话文本
+fn update_dialogue_text_with_typewriter(
+    mut commands: Commands,
+    runtime: Res<MortarRuntime>,
+    mut dialogue_query: Query<(Entity, &mut Text), With<DialogueText>>,
+    typewriter_query: Query<&Typewriter, With<DialogueText>>,
+    mut last_key: Local<Option<(String, String, usize)>>,
+) {
+    if !runtime.is_changed() {
+        return;
+    }
+
+    for (entity, mut text) in &mut dialogue_query {
+        if let Some(state) = &runtime.active_dialogue {
+            let current_key = (
+                state.mortar_path.clone(),
+                state.current_node.clone(),
+                state.text_index,
+            );
+
+            let should_process = last_key.as_ref() != Some(&current_key);
+
+            if should_process && let Some(text_data) = state.current_text_data() {
+                let processed_text =
+                    bevy_mortar_bond::process_interpolated_text(text_data, &runtime.functions);
+
+                let full_text = format!(
+                    "[{} / {}]\n\n{}",
+                    state.mortar_path, state.current_node, processed_text
+                );
+
+                info!("Starting typewriter: {}", full_text);
+
+                // Remove old typewriter if exists
+                if typewriter_query.get(entity).is_ok() {
+                    commands.entity(entity).remove::<Typewriter>();
+                    commands.entity(entity).remove::<TypewriterDialogue>();
+                }
+
+                // Create new typewriter
+                let mut typewriter = Typewriter::new(&full_text, 0.05);
+                typewriter.play();
+                commands.entity(entity).insert(typewriter);
+
+                // Add dialogue events tracking
+                if let Some(events) = &text_data.events {
+                    commands
+                        .entity(entity)
+                        .insert(TypewriterDialogue::new(events.clone()));
+                }
+
+                *last_key = Some(current_key);
+            }
+
+            // Update text from typewriter
+            if let Ok(typewriter) = typewriter_query.get(entity) {
+                **text = typewriter.current_text.clone();
+            }
+        } else {
+            **text = "等待加载对话...".to_string();
+            *last_key = None;
+        }
+    }
+}
+
+/// Triggers dialogue events at specific typewriter indices
+///
+/// 在特定打字机索引处触发对话事件
+fn trigger_typewriter_events(
+    mut query: Query<(&Typewriter, &mut TypewriterDialogue)>,
+    runtime: Res<MortarRuntime>,
+) {
+    for (typewriter, mut dialogue) in &mut query {
+        if typewriter.state != TypewriterState::Playing {
+            continue;
+        }
+
+        let current_index = typewriter.current_text.chars().count();
+
+        // Collect events to fire to avoid borrow issues
+        let mut events_to_fire = Vec::new();
+
+        for (event_idx, event) in dialogue.events.iter().enumerate() {
+            let event_index = event.index as usize;
+
+            if current_index >= event_index && !dialogue.fired_events.contains(&event_idx) {
+                events_to_fire.push((event_idx, event.clone()));
+            }
+        }
+
+        // Fire collected events
+        for (event_idx, event) in events_to_fire {
+            dialogue.fired_events.push(event_idx);
+
+            info!(
+                "Typewriter event triggered at index {}: {:?}",
+                event.index, event.actions
+            );
+
+            // Execute event actions
+            for action in &event.actions {
+                match action.action_type.as_str() {
+                    "call" => {
+                        if let Some(func_name) = action.args.first() {
+                            let args: Vec<bevy_mortar_bond::MortarValue> = action.args[1..]
+                                .iter()
+                                .map(|arg| bevy_mortar_bond::MortarValue::parse(arg))
+                                .collect();
+
+                            if let Some(result) = runtime.functions.call(func_name, &args) {
+                                info!("Event function '{}' returned: {:?}", func_name, result);
+                            } else {
+                                warn!("Event function '{}' not found", func_name);
+                            }
+                        }
+                    }
+                    _ => {
+                        warn!("Unknown action type: {}", action.action_type);
+                    }
+                }
+            }
         }
     }
 }
