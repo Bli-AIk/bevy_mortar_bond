@@ -52,6 +52,9 @@ event ColorGreen {
 node TestEventRef {
     text: "测试事件引用"
     with ColorYellow  // 单独引用一个 event
+
+    text: "测试单个事件内联"
+    with event { 0, set_color("#000000") }  // 内联事件
     
     text: "测试多个事件引用"
     with events: [
