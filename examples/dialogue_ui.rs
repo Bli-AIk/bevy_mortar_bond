@@ -432,12 +432,7 @@ fn update_dialogue_text_with_typewriter(
                 let processed_text =
                     bevy_mortar_bond::process_interpolated_text(text_data, &runtime.functions);
 
-                let full_text = format!(
-                    "[{} / {}]\n\n{}",
-                    state.mortar_path, state.current_node, processed_text
-                );
-
-                info!("Starting typewriter: {}", full_text);
+                info!("Starting typewriter for: {}", processed_text);
 
                 // Remove old typewriter if exists
                 if typewriter_query.get(entity).is_ok() {
@@ -445,8 +440,8 @@ fn update_dialogue_text_with_typewriter(
                     commands.entity(entity).remove::<TypewriterDialogue>();
                 }
 
-                // Create new typewriter
-                let mut typewriter = Typewriter::new(&full_text, 0.05);
+                // Create new typewriter - only for dialogue text
+                let mut typewriter = Typewriter::new(&processed_text, 0.05);
                 typewriter.play();
                 commands.entity(entity).insert(typewriter);
 
@@ -460,9 +455,10 @@ fn update_dialogue_text_with_typewriter(
                 *last_key = Some(current_key);
             }
 
-            // Update text from typewriter
+            // Update text: static header + typewriter dialogue
             if let Ok(typewriter) = typewriter_query.get(entity) {
-                **text = typewriter.current_text.clone();
+                let header = format!("[{} / {}]\n\n", state.mortar_path, state.current_node);
+                **text = format!("{}{}", header, typewriter.current_text);
             }
         } else {
             **text = "等待加载对话...".to_string();
