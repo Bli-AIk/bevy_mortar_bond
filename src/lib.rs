@@ -14,7 +14,7 @@ mod system;
 
 pub use asset::{MortarAsset, MortarAssetLoader};
 pub use bevy_mortar_bond_macros::{MortarFunctions, mortar_functions};
-pub use binder::{MortarFunctionBinder, MortarFunctionRegistry, MortarValue};
+pub use binder::{MortarFunctionRegistry, MortarValue};
 
 /// The main plugin for the mortar 'bond' (bind) system.
 ///
@@ -261,11 +261,7 @@ pub fn process_interpolated_text(
 
                     // Call the function
                     if let Some(value) = functions.call(func_name, &args) {
-                        match value {
-                            binder::MortarValue::String(s) => result.push_str(&s),
-                            binder::MortarValue::Number(n) => result.push_str(&n.to_string()),
-                            binder::MortarValue::Boolean(b) => result.push_str(&b.to_string()),
-                        }
+                        result.push_str(&value.to_display_string());
                     } else {
                         // Function not found, keep the placeholder
                         result.push_str(&part.content);

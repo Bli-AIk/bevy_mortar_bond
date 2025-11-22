@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{DeriveInput, ItemImpl, parse_macro_input};
+use syn::{DeriveInput, ItemImpl, ReturnType, parse_macro_input};
 
 #[proc_macro_derive(MortarFunctions)]
 pub fn derive_mortar_functions(input: TokenStream) -> TokenStream {
@@ -8,8 +8,8 @@ pub fn derive_mortar_functions(input: TokenStream) -> TokenStream {
     let name = &input.ident;
 
     let impl_block = quote! {
-        impl bevy_mortar_bond::MortarFunctionBinder for #name {
-            fn register_functions(registry: &mut bevy_mortar_bond::MortarFunctionRegistry) {
+        impl #name {
+            pub fn register(registry: &mut bevy_mortar_bond::MortarFunctionRegistry) {
                 Self::bind_functions(registry);
             }
         }
@@ -32,11 +32,23 @@ pub fn mortar_functions(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
             let arg_count = method.sig.inputs.len();
 
+            // Check if return type is unit ()
+            let returns_void = matches!(method.sig.output, ReturnType::Default);
+
             let registration = if arg_count == 0 {
-                quote! {
-                    registry.register(#fn_name_str, |_args| {
-                        Self::#fn_name().into()
-                    });
+                if returns_void {
+                    quote! {
+                        registry.register(#fn_name_str, |_args| {
+                            Self::#fn_name();
+                            bevy_mortar_bond::MortarValue::Void
+                        });
+                    }
+                } else {
+                    quote! {
+                        registry.register(#fn_name_str, |_args| {
+                            Self::#fn_name().into()
+                        });
+                    }
                 }
             } else {
                 let arg_indices: Vec<_> = (0..arg_count).collect();
@@ -44,15 +56,29 @@ pub fn mortar_functions(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     .map(|i| syn::Ident::new(&format!("arg{}", i), proc_macro2::Span::call_site()))
                     .collect();
 
-                quote! {
-                    registry.register(#fn_name_str, |args| {
-                        #(
-                            let #arg_names = args.get(#arg_indices)
-                                .cloned()
-                                .unwrap_or(bevy_mortar_bond::MortarValue::String(String::new()));
-                        )*
-                        Self::#fn_name(#(#arg_names),*).into()
-                    });
+                if returns_void {
+                    quote! {
+                        registry.register(#fn_name_str, |args| {
+                            #(
+                                let #arg_names = args.get(#arg_indices)
+                                    .cloned()
+                                    .unwrap_or(bevy_mortar_bond::MortarValue::Void);
+                            )*
+                            Self::#fn_name(#(#arg_names),*);
+                            bevy_mortar_bond::MortarValue::Void
+                        });
+                    }
+                } else {
+                    quote! {
+                        registry.register(#fn_name_str, |args| {
+                            #(
+                                let #arg_names = args.get(#arg_indices)
+                                    .cloned()
+                                    .unwrap_or(bevy_mortar_bond::MortarValue::Void);
+                            )*
+                            Self::#fn_name(#(#arg_names),*).into()
+                        });
+                    }
                 }
             };
 

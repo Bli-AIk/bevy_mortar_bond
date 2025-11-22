@@ -12,8 +12,7 @@ mod utils;
 
 use bevy::prelude::*;
 use bevy_mortar_bond::{
-    MortarEvent, MortarFunctionBinder, MortarFunctions, MortarPlugin, MortarRegistry,
-    MortarRuntime, MortarValue,
+    MortarEvent, MortarFunctions, MortarPlugin, MortarRegistry, MortarRuntime, MortarValue,
 };
 use utils::ui::*;
 
@@ -90,25 +89,22 @@ struct GameFunctions;
 
 #[bevy_mortar_bond::mortar_functions]
 impl GameFunctions {
-    fn play_sound(file_name: MortarValue) -> String {
+    fn play_sound(file_name: MortarValue) {
         if let Some(name) = file_name.as_string() {
             info!("Playing sound: {}", name);
         }
-        String::new()
     }
 
-    fn set_animation(anim_name: MortarValue) -> String {
+    fn set_animation(anim_name: MortarValue) {
         if let Some(name) = anim_name.as_string() {
             info!("Setting animation: {}", name);
         }
-        String::new()
     }
 
-    fn set_color(color: MortarValue) -> String {
+    fn set_color(color: MortarValue) {
         if let Some(c) = color.as_string() {
             info!("Setting color: {}", c);
         }
-        String::new()
     }
 
     fn get_name() -> String {
@@ -132,7 +128,7 @@ impl GameFunctions {
 }
 
 fn setup_mortar_functions(mut runtime: ResMut<MortarRuntime>) {
-    GameFunctions::register_functions(&mut runtime.functions);
+    GameFunctions::bind_functions(&mut runtime.functions);
 }
 
 /// Loads the initial dialogue file and starts the first node.

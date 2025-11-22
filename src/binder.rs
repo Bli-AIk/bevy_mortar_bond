@@ -4,14 +4,15 @@
 
 use std::collections::HashMap;
 
-/// Arguments that can be passed to Mortar functions.
+/// Arguments and return values for Mortar functions.
 ///
-/// 可以传递给 Mortar 函数的参数。
+/// Mortar 函数的参数和返回值。
 #[derive(Debug, Clone)]
 pub enum MortarValue {
     String(String),
     Number(f64),
     Boolean(bool),
+    Void,
 }
 
 impl MortarValue {
@@ -33,6 +34,15 @@ impl MortarValue {
         match self {
             MortarValue::Boolean(b) => Some(*b),
             _ => None,
+        }
+    }
+
+    pub fn to_display_string(&self) -> String {
+        match self {
+            MortarValue::String(s) => s.clone(),
+            MortarValue::Number(n) => n.to_string(),
+            MortarValue::Boolean(b) => b.to_string(),
+            MortarValue::Void => String::new(),
         }
     }
 
@@ -86,6 +96,24 @@ impl From<bool> for MortarValue {
     }
 }
 
+impl From<i32> for MortarValue {
+    fn from(n: i32) -> Self {
+        MortarValue::Number(n as f64)
+    }
+}
+
+impl From<usize> for MortarValue {
+    fn from(n: usize) -> Self {
+        MortarValue::Number(n as f64)
+    }
+}
+
+impl From<()> for MortarValue {
+    fn from(_: ()) -> Self {
+        MortarValue::Void
+    }
+}
+
 /// A function that can be called from Mortar.
 ///
 /// 可以从 Mortar 调用的函数。
@@ -107,9 +135,7 @@ impl MortarFunctionRegistry {
         Self::default()
     }
 
-    /// Registers a function.
-    ///
-    /// 注册一个函数。
+    /// Registers a function (internal use by macros).
     pub fn register<F>(&mut self, name: impl Into<String>, func: F)
     where
         F: Fn(&[MortarValue]) -> MortarValue + Send + Sync + 'static,
@@ -125,13 +151,6 @@ impl MortarFunctionRegistry {
     }
 }
 
-/// Trait for types that can register their functions into the Mortar runtime.
-///
-/// 可以将函数注册到 Mortar 运行时的类型的 trait。
-pub trait MortarFunctionBinder {
-    fn register_functions(registry: &mut MortarFunctionRegistry);
-}
-
 // TryFrom implementations for common types
 impl TryFrom<MortarValue> for String {
     type Error = ();
@@ -141,6 +160,7 @@ impl TryFrom<MortarValue> for String {
             MortarValue::String(s) => Ok(s),
             MortarValue::Number(n) => Ok(n.to_string()),
             MortarValue::Boolean(b) => Ok(b.to_string()),
+            MortarValue::Void => Ok(String::new()),
         }
     }
 }
