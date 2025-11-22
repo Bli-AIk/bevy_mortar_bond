@@ -141,6 +141,10 @@ pub struct DialogueState {
     ///
     /// 当前选中的选项（如果有）。
     pub selected_choice: Option<usize>,
+    /// Stack of nested choice indices to track nested selections.
+    ///
+    /// 嵌套选择索引的堆栈，用于跟踪嵌套选择。
+    choice_stack: Vec<usize>,
     /// A snapshot of the node data (to avoid repeated queries).
     ///
     /// 节点数据的快照（避免重复查询）。
@@ -157,7 +161,65 @@ impl DialogueState {
             current_node: node_name,
             text_index: 0,
             selected_choice: None,
+            choice_stack: Vec::new(),
             node_data,
+        }
+    }
+
+    /// Gets the current choices, considering the choice stack for nested selections.
+    ///
+    /// 获取当前选择，考虑嵌套选择的堆栈。
+    pub fn get_current_choices(&self) -> Option<&Vec<Choice>> {
+        let mut choices = self.node_data.choice.as_ref()?;
+
+        // Navigate through nested choices using the stack
+        for &index in &self.choice_stack {
+            if let Some(choice) = choices.get(index) {
+                if let Some(nested) = &choice.choice {
+                    choices = nested;
+                } else {
+                    return None; // Invalid path
+                }
+            } else {
+                return None; // Invalid index
+            }
+        }
+
+        Some(choices)
+    }
+
+    /// Pushes a choice index onto the stack (for entering nested choices).
+    ///
+    /// 将选择索引推入堆栈（用于进入嵌套选择）。
+    pub fn push_choice(&mut self, index: usize) {
+        self.choice_stack.push(index);
+        self.selected_choice = None; // Reset selection in new level
+    }
+
+    /// Pops the last choice from the stack (for exiting nested choices).
+    ///
+    /// 从堆栈弹出最后一个选择（用于退出嵌套选择）。
+    pub fn pop_choice(&mut self) -> Option<usize> {
+        self.selected_choice = None;
+        self.choice_stack.pop()
+    }
+
+    /// Clears the choice stack (for returning to top-level choices).
+    ///
+    /// 清空选择堆栈（用于返回顶层选择）。
+    pub fn clear_choice_stack(&mut self) {
+        self.choice_stack.clear();
+        self.selected_choice = None;
+    }
+
+    /// Deprecated: use get_current_choices instead.
+    ///
+    /// 已弃用：使用 get_current_choices 代替。
+    pub fn get_choices(&self) -> Option<&Vec<Choice>> {
+        if self.choice_stack.is_empty() {
+            self.node_data.choice.as_ref()
+        } else {
+            self.get_current_choices()
         }
     }
 
@@ -209,13 +271,6 @@ impl DialogueState {
     /// 检查当前节点是否有选项。
     pub fn has_choices(&self) -> bool {
         self.node_data.choice.is_some()
-    }
-
-    /// Gets the available choices.
-    ///
-    /// 获取可用的选项。
-    pub fn get_choices(&self) -> Option<&Vec<Choice>> {
-        self.node_data.choice.as_ref()
     }
 
     /// Gets the next node name (for automatic jumps).

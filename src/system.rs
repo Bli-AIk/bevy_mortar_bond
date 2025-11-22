@@ -104,12 +104,35 @@ pub fn process_mortar_events_system(
                 dev_info!("Choice confirmed: {} - {}", choice_index, choice.text);
 
                 if let Some(action) = &choice.action {
-                    if action == "return" {
-                        dev_info!("Choice action is return, stopping dialogue");
-                    } else {
-                        dev_info!("Unknown choice action: {}", action);
+                    match action.as_str() {
+                        "return" => {
+                            dev_info!("Choice action is return, stopping dialogue");
+                            runtime.active_dialogue = None;
+                            continue;
+                        }
+                        "break" => {
+                            dev_info!("Choice action is break, continuing to next text");
+                            // Clear the choice stack and selection
+                            state.clear_choice_stack();
+                            // Try to advance to next text
+                            if !state.next_text() {
+                                // No more texts, stop dialogue
+                                runtime.active_dialogue = None;
+                            }
+                            continue;
+                        }
+                        _ => {
+                            dev_info!("Unknown choice action: {}", action);
+                            runtime.active_dialogue = None;
+                            continue;
+                        }
                     }
-                    runtime.active_dialogue = None;
+                }
+
+                // Check if this choice has nested choices
+                if choice.choice.is_some() {
+                    dev_info!("Choice has nested choices, entering nested level");
+                    state.push_choice(choice_index);
                     continue;
                 }
 

@@ -177,6 +177,16 @@ impl GameFunctions {
         file_name
     }
 
+    fn has_map() -> bool {
+        info!("Example: Checking has_map");
+        true
+    }
+
+    fn has_backpack() -> bool {
+        info!("Example: Checking has_backpack");
+        false
+    }
+
     fn set_animation(anim_name: MortarString) {
         info!("Example: Queuing animation: {}", anim_name.as_str());
         // Animation will be applied by the system that processes events
