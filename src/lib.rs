@@ -1,6 +1,21 @@
 //! This crate provides a 'bond' (binding) system for the Mortar dialogue system, integrating it with the Bevy game engine.
 //!
 //! 本包为 Mortar 对话系统提供“绑钉”（绑定）系统，将其与 Bevy 游戏引擎集成。
+//!
+//! # ECS Architecture
+//!
+//! This library follows ECS (Entity Component System) design principles.
+//!
+//! ## Core Components
+//!
+//! - [`MortarEventTracker`]: Tracks text events and manages firing state based on index
+//!
+//! ## Usage Pattern
+//!
+//! 1. Add [`MortarEventTracker`] to entities with text events
+//! 2. Call `trigger_at_index()` with current progress index
+//! 3. Handle returned [`MortarEventAction`]s in your game systems
+//!
 
 use bevy::prelude::*;
 use mortar_compiler::{Choice, Node};
@@ -17,6 +32,11 @@ pub use bevy_mortar_bond_macros::{MortarFunctions, mortar_functions};
 pub use binder::{
     MortarBoolean, MortarFunctionRegistry, MortarNumber, MortarString, MortarValue, MortarVoid,
 };
+
+/// Re-export mortar_compiler types for convenience
+///
+/// 为方便使用，重新导出 mortar_compiler 类型
+pub use mortar_compiler::Event as MortarTextEvent;
 
 /// The main plugin for the mortar 'bond' (bind) system.
 ///
@@ -285,4 +305,111 @@ pub fn process_interpolated_text(
     }
 
     result
+}
+
+/// Component to track mortar text events and their firing state.
+///
+/// 追踪 mortar 文本事件及其触发状态的组件。
+#[derive(Component, Debug, Clone)]
+pub struct MortarEventTracker {
+    events: Vec<mortar_compiler::Event>,
+    fired_events: Vec<usize>,
+}
+
+impl MortarEventTracker {
+    /// Creates a new event tracker with the given events.
+    ///
+    /// 使用给定的事件创建新的事件追踪器。
+    pub fn new(events: Vec<mortar_compiler::Event>) -> Self {
+        Self {
+            events,
+            fired_events: Vec::new(),
+        }
+    }
+
+    /// Checks and fires events at the given index, returns actions that need processing.
+    ///
+    /// 检查并触发给定索引处的事件，返回需要处理的动作。
+    pub fn trigger_at_index(
+        &mut self,
+        current_index: usize,
+        runtime: &MortarRuntime,
+    ) -> Vec<MortarEventAction> {
+        let mut actions_to_process = Vec::new();
+
+        for (event_idx, event) in self.events.iter().enumerate() {
+            let event_index = event.index as usize;
+
+            if current_index >= event_index && !self.fired_events.contains(&event_idx) {
+                self.fired_events.push(event_idx);
+
+                debug!(
+                    "Mortar event triggered at index {}: {:?}",
+                    event.index, event.actions
+                );
+
+                // Call mortar functions
+                for action in &event.actions {
+                    let args: Vec<MortarValue> = action
+                        .args
+                        .iter()
+                        .map(|arg| MortarValue::parse(arg))
+                        .collect();
+
+                    if let Some(result) = runtime.functions.call(&action.action_type, &args) {
+                        debug!(
+                            "Event function '{}' returned: {:?}",
+                            action.action_type, result
+                        );
+                    } else {
+                        warn!("Event function '{}' not found", action.action_type);
+                    }
+
+                    // Collect actions for user to handle
+                    actions_to_process.push(MortarEventAction {
+                        action_type: action.action_type.clone(),
+                        args: action.args.clone(),
+                    });
+                }
+            }
+        }
+
+        actions_to_process
+    }
+
+    /// Resets the tracker, clearing all fired events.
+    ///
+    /// 重置追踪器，清除所有已触发的事件。
+    pub fn reset(&mut self) {
+        self.fired_events.clear();
+    }
+
+    /// Gets the total number of events.
+    ///
+    /// 获取事件总数。
+    pub fn event_count(&self) -> usize {
+        self.events.len()
+    }
+
+    /// Gets the number of fired events.
+    ///
+    /// 获取已触发的事件数量。
+    pub fn fired_count(&self) -> usize {
+        self.fired_events.len()
+    }
+}
+
+/// An action triggered by a mortar event.
+///
+/// Mortar 事件触发的动作。
+#[derive(Debug, Clone)]
+pub struct MortarEventAction {
+    /// The type of action (e.g., "play_sound", "set_animation").
+    ///
+    /// 动作类型（例如 "play_sound"、"set_animation"）。
+    pub action_type: String,
+    /// The arguments for the action.
+    ///
+    /// 动作的参数。
+    pub args: Vec<String>,
 }

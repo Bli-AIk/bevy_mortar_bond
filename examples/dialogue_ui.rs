@@ -13,12 +13,23 @@ mod utils;
 use bevy::prelude::*;
 use bevy_ecs_typewriter::{Typewriter, TypewriterPlugin, TypewriterState};
 use bevy_mortar_bond::{
-    MortarEvent, MortarFunctions, MortarNumber, MortarPlugin, MortarRegistry, MortarRuntime,
-    MortarString,
+    MortarEvent, MortarEventAction, MortarEventTracker, MortarFunctions, MortarNumber,
+    MortarPlugin, MortarRegistry, MortarRuntime, MortarString,
 };
-use mortar_compiler::Event as TextEvent;
 use std::time::Duration;
 use utils::ui::*;
+
+/// Component to mark entities that need animation
+///
+/// 标记需要动画的实体的组件
+#[derive(Component)]
+struct PendingAnimation(String);
+
+/// Component to mark entities that need color change
+///
+/// 标记需要改变颜色的实体的组件
+#[derive(Component)]
+struct PendingColorChange(String);
 
 /// Marker component for the triangle sprite
 ///
@@ -87,6 +98,9 @@ fn main() {
                 manage_choice_buttons,
                 update_button_states,
                 trigger_typewriter_events,
+                // Pure ECS systems handling game effects
+                apply_pending_animations,
+                apply_pending_colors,
                 update_rotate_animation,
             ),
         )
@@ -130,14 +144,6 @@ struct GameFunctions;
 
 #[bevy_mortar_bond::mortar_functions]
 impl GameFunctions {
-    // Note: play_sound, set_animation, set_color are event actions
-    // They are handled directly in trigger_typewriter_events system
-    // No need to define them as mortar functions since they don't return values
-    //
-    // 提示：play_sound、set_animation、set_color 是事件动作
-    // 它们在 trigger_typewriter_events 系统中直接处理
-    // 不需要将它们定义为 mortar 函数，因为它们不返回值
-
     fn get_name() -> String {
         info!("Getting player name");
         "U-S-E-R".to_string()
@@ -155,6 +161,21 @@ impl GameFunctions {
         let l = level.as_usize();
         info!("Creating message: verb={}, obj={}, level={}", v, o, l);
         format!("{}{}{}", v, o, "!".repeat(l))
+    }
+
+    fn play_sound(file_name: MortarString) {
+        info!("Playing sound: {}", file_name.as_str());
+        // Note: Audio playback disabled due to backend configuration
+    }
+
+    fn set_animation(anim_name: MortarString) {
+        info!("Queuing animation: {}", anim_name.as_str());
+        // Animation will be applied by the system that processes events
+    }
+
+    fn set_color(color: MortarString) {
+        info!("Queuing color change: {}", color.as_str());
+        // Color will be applied by the system that processes events
     }
 }
 
@@ -419,24 +440,6 @@ fn handle_switch_file_button(
     }
 }
 
-/// Component to track dialogue events for typewriter
-///
-/// 追踪打字机对话事件的组件
-#[derive(Component)]
-struct TypewriterDialogue {
-    events: Vec<TextEvent>,
-    fired_events: Vec<usize>,
-}
-
-impl TypewriterDialogue {
-    fn new(events: Vec<TextEvent>) -> Self {
-        Self {
-            events,
-            fired_events: Vec::new(),
-        }
-    }
-}
-
 /// Updates dialogue text with typewriter effect
 ///
 /// 使用打字机效果更新对话文本
@@ -470,7 +473,7 @@ fn update_dialogue_text_with_typewriter(
                 // Remove old typewriter if exists
                 if typewriter_query.get(entity).is_ok() {
                     commands.entity(entity).remove::<Typewriter>();
-                    commands.entity(entity).remove::<TypewriterDialogue>();
+                    commands.entity(entity).remove::<MortarEventTracker>();
                 }
 
                 // Create new typewriter - only for dialogue text
@@ -478,11 +481,11 @@ fn update_dialogue_text_with_typewriter(
                 typewriter.play();
                 commands.entity(entity).insert(typewriter);
 
-                // Add dialogue events tracking
+                // Add dialogue events tracking using library component
                 if let Some(events) = &text_data.events {
                     commands
                         .entity(entity)
-                        .insert(TypewriterDialogue::new(events.clone()));
+                        .insert(MortarEventTracker::new(events.clone()));
                 }
 
                 *last_key = Some(current_key);
@@ -504,95 +507,90 @@ fn update_dialogue_text_with_typewriter(
 ///
 /// 在特定打字机索引处触发对话事件
 fn trigger_typewriter_events(
-    mut query: Query<(Entity, &Typewriter, &mut TypewriterDialogue)>,
+    mut query: Query<(Entity, &Typewriter, &mut MortarEventTracker)>,
     runtime: Res<MortarRuntime>,
     mut commands: Commands,
-    _asset_server: Res<AssetServer>,
-    triangle_query: Query<(Entity, &MeshMaterial2d<ColorMaterial>), With<TriangleSprite>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    for (_entity, typewriter, mut dialogue) in &mut query {
+    for (entity, typewriter, mut tracker) in &mut query {
         if typewriter.state != TypewriterState::Playing {
             continue;
         }
 
-        let current_index = typewriter.current_text.chars().count();
+        // Use library's trigger_at_index API - clean and simple
+        let actions = tracker.trigger_at_index(typewriter.current_char_index, &runtime);
 
-        // Collect events to fire to avoid borrow issues
-        let mut events_to_fire = Vec::new();
+        // Handle game-specific actions
+        for action in actions {
+            handle_mortar_action(entity, action, &mut commands);
+        }
+    }
+}
 
-        for (event_idx, event) in dialogue.events.iter().enumerate() {
-            let event_index = event.index as usize;
-
-            if current_index >= event_index && !dialogue.fired_events.contains(&event_idx) {
-                events_to_fire.push((event_idx, event.clone()));
+/// Handles a mortar event action by dispatching to appropriate game systems
+///
+/// 处理 mortar 事件动作，分发到适当的游戏系统
+fn handle_mortar_action(entity: Entity, action: MortarEventAction, commands: &mut Commands) {
+    match action.action_type.as_str() {
+        "set_animation" => {
+            if let Some(anim_name) = action.args.first() {
+                commands
+                    .entity(entity)
+                    .insert(PendingAnimation(anim_name.clone()));
             }
         }
+        "set_color" => {
+            if let Some(color) = action.args.first() {
+                commands
+                    .entity(entity)
+                    .insert(PendingColorChange(color.clone()));
+            }
+        }
+        _ => {}
+    }
+}
 
-        // Fire collected events - handle directly without function calls
-        for (event_idx, event) in events_to_fire {
-            dialogue.fired_events.push(event_idx);
+/// Apply pending animations to triangle sprite
+///
+/// 将待处理的动画应用到三角形精灵
+fn apply_pending_animations(
+    mut commands: Commands,
+    query: Query<(Entity, &PendingAnimation)>,
+    triangle_query: Query<Entity, With<TriangleSprite>>,
+) {
+    for (entity, pending) in &query {
+        if pending.0 == "wave" {
+            for triangle_entity in triangle_query.iter() {
+                commands.entity(triangle_entity).insert(RotateAnimation {
+                    timer: Timer::new(Duration::from_secs(1), TimerMode::Once),
+                    start_rotation: 0.0,
+                });
+            }
+        }
+        // Remove the marker component after processing
+        commands.entity(entity).remove::<PendingAnimation>();
+    }
+}
 
-            info!(
-                "Typewriter event triggered at index {}: {:?}",
-                event.index, event.actions
-            );
-
-            // Handle event actions directly
-            for action in &event.actions {
-                match action.action_type.as_str() {
-                    "play_sound" => {
-                        if let Some(file_name) = action.args.first() {
-                            info!("🔊 Playing sound: {}", file_name);
-                            // Note: Audio playback disabled due to backend configuration
-                        }
-                    }
-                    "set_animation" => {
-                        if let Some(anim_name) = action.args.first() {
-                            info!("🔄 Setting animation: {}", anim_name);
-                            if anim_name == "wave" {
-                                for (entity, _) in triangle_query.iter() {
-                                    commands.entity(entity).insert(RotateAnimation {
-                                        timer: Timer::new(Duration::from_secs(1), TimerMode::Once),
-                                        start_rotation: 0.0,
-                                    });
-                                }
-                            }
-                        }
-                    }
-                    "set_color" => {
-                        if let Some(color) = action.args.first() {
-                            info!("🎨 Setting color: {}", color);
-                            if let Some(parsed_color) = parse_hex_color(color) {
-                                for (_, material_handle) in triangle_query.iter() {
-                                    if let Some(material) = materials.get_mut(&material_handle.0) {
-                                        material.color = parsed_color;
-                                        info!("✅ Triangle color changed to {}", color);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    _ => {
-                        // For other functions (like get_name, create_message), call them through runtime
-                        let args: Vec<bevy_mortar_bond::MortarValue> = action
-                            .args
-                            .iter()
-                            .map(|arg| bevy_mortar_bond::MortarValue::parse(arg))
-                            .collect();
-
-                        if let Some(result) = runtime.functions.call(&action.action_type, &args) {
-                            info!(
-                                "Event function '{}' returned: {:?}",
-                                action.action_type, result
-                            );
-                        } else {
-                            warn!("Event function '{}' not found", action.action_type);
-                        }
-                    }
+/// Apply pending color changes to triangle sprite
+///
+/// 将待处理的颜色变化应用到三角形精灵
+fn apply_pending_colors(
+    mut commands: Commands,
+    query: Query<(Entity, &PendingColorChange)>,
+    triangle_query: Query<&MeshMaterial2d<ColorMaterial>, With<TriangleSprite>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
+    for (entity, pending) in &query {
+        if let Some(parsed_color) = parse_hex_color(&pending.0) {
+            for material_handle in triangle_query.iter() {
+                if let Some(material) = materials.get_mut(&material_handle.0) {
+                    material.color = parsed_color;
+                    info!("Triangle color changed to {}", pending.0);
                 }
             }
         }
+        // Remove the marker component after processing
+        commands.entity(entity).remove::<PendingColorChange>();
     }
 }
 
