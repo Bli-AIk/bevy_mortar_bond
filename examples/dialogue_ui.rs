@@ -12,7 +12,8 @@ mod utils;
 
 use bevy::prelude::*;
 use bevy_mortar_bond::{
-    MortarEvent, MortarFunctions, MortarPlugin, MortarRegistry, MortarRuntime, MortarValue,
+    MortarEvent, MortarFunctions, MortarNumber, MortarPlugin, MortarRegistry, MortarRuntime,
+    MortarString,
 };
 use utils::ui::*;
 
@@ -89,39 +90,33 @@ struct GameFunctions;
 
 #[bevy_mortar_bond::mortar_functions]
 impl GameFunctions {
-    fn play_sound(file_name: MortarValue) {
-        if let Some(name) = file_name.as_string() {
-            info!("Playing sound: {}", name);
-        }
+    fn play_sound(file_name: MortarString) {
+        info!("Playing sound: {}", file_name);
     }
 
-    fn set_animation(anim_name: MortarValue) {
-        if let Some(name) = anim_name.as_string() {
-            info!("Setting animation: {}", name);
-        }
+    fn set_animation(anim_name: MortarString) {
+        info!("Setting animation: {}", anim_name);
     }
 
-    fn set_color(color: MortarValue) {
-        if let Some(c) = color.as_string() {
-            info!("Setting color: {}", c);
-        }
+    fn set_color(color: MortarString) {
+        info!("Setting color: {}", color);
     }
 
     fn get_name() -> String {
         info!("Getting player name");
-        "艾克".to_string()
+        "U-S-E-R".to_string()
     }
 
-    fn get_exclamation(count: MortarValue) -> String {
-        let n = count.as_number().unwrap_or(1.0) as usize;
+    fn get_exclamation(count: MortarNumber) -> String {
+        let n = count.as_usize();
         info!("Getting exclamation with count: {}", n);
         "！".repeat(n)
     }
 
-    fn create_message(verb: MortarValue, obj: MortarValue, level: MortarValue) -> String {
-        let v = verb.as_string().unwrap_or("");
-        let o = obj.as_string().unwrap_or("");
-        let l = level.as_number().unwrap_or(1.0) as usize;
+    fn create_message(verb: MortarString, obj: MortarString, level: MortarNumber) -> String {
+        let v = verb.as_str();
+        let o = obj.as_str();
+        let l = level.as_usize();
         info!("Creating message: verb={}, obj={}, level={}", v, o, l);
         format!("{}{}{}", v, o, "!".repeat(l))
     }
@@ -224,24 +219,22 @@ fn update_dialogue_text(
             // Only process if this is a new text
             let should_process = last_key.as_ref() != Some(&current_key);
 
-            if should_process {
-                if let Some(text_data) = state.current_text_data() {
-                    // Process interpolated text
-                    let processed_text =
-                        bevy_mortar_bond::process_interpolated_text(text_data, &runtime.functions);
+            if should_process && let Some(text_data) = state.current_text_data() {
+                // Process interpolated text
+                let processed_text =
+                    bevy_mortar_bond::process_interpolated_text(text_data, &runtime.functions);
 
-                    info!(
-                        "Dialogue text display: [{}] {}",
-                        state.current_node, processed_text
-                    );
+                info!(
+                    "Dialogue text display: [{}] {}",
+                    state.current_node, processed_text
+                );
 
-                    **text = format!(
-                        "[{} / {}]\n\n{}",
-                        state.mortar_path, state.current_node, processed_text
-                    );
+                **text = format!(
+                    "[{} / {}]\n\n{}",
+                    state.mortar_path, state.current_node, processed_text
+                );
 
-                    *last_key = Some(current_key);
-                }
+                *last_key = Some(current_key);
             }
         } else {
             **text = "等待加载对话...".to_string();
