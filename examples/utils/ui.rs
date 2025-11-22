@@ -260,21 +260,15 @@ pub fn button_interaction_system(
         }
     }
 
-    // Choice button interaction
-    for (interaction, mut bg_color, mut border_color) in choice_button_query.iter_mut() {
+    // Choice button interaction - skip if already set by manage_choice_buttons
+    // (don't override selected/disabled states)
+    for (interaction, _bg_color, _border_color) in choice_button_query.iter_mut() {
+        // Only respond to hover/press on normal (non-selected) buttons
+        // The actual color changes are handled by manage_choice_buttons
         match *interaction {
-            Interaction::Pressed => {
-                *bg_color = BackgroundColor(Color::srgb(0.25, 0.35, 0.5));
-                *border_color = BorderColor::all(Color::srgb(0.5, 0.6, 0.8));
-            }
-            Interaction::Hovered => {
-                *bg_color = BackgroundColor(Color::srgb(0.35, 0.45, 0.6));
-                *border_color = BorderColor::all(Color::srgb(0.6, 0.7, 0.9));
-            }
-            Interaction::None => {
-                *bg_color = BackgroundColor(Color::srgb(0.3, 0.4, 0.55));
-                *border_color = BorderColor::all(Color::srgb(0.5, 0.6, 0.75));
-            }
+            Interaction::Pressed => {}
+            Interaction::Hovered => {}
+            Interaction::None => {}
         }
     }
 

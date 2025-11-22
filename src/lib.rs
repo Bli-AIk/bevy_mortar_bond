@@ -225,7 +225,7 @@ impl DialogueState {
         if self.choices_broken {
             return None;
         }
-        
+
         if self.choice_stack.is_empty() {
             self.node_data.choice.as_ref()
         } else {

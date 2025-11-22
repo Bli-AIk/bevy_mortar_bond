@@ -49,8 +49,8 @@ node ChoicePoint {
 
         // 选择字段也可以嵌套一个选择字段。你想嵌套多少层都行！
         "吃点什么" -> [
-            "Apple" -> EatApple;
-            "Bread" -> EatBread;
+            "苹果" -> EatApple;
+            "面包" -> EatBread;
         ];
 
         // 使用 return 关键字 退出当前节点。

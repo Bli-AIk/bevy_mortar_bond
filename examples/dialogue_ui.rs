@@ -102,6 +102,7 @@ fn main() {
                 handle_switch_file_button,
                 update_dialogue_text_with_typewriter,
                 manage_choice_buttons,
+                update_choice_button_styles,
                 update_button_states,
                 trigger_typewriter_events,
                 apply_pending_animations,
@@ -348,10 +349,10 @@ fn manage_choice_buttons(
                     Color::srgb(0.4, 0.4, 0.4),
                 )
             } else if is_selected {
-                // Selected style
+                // Selected style - bright and obvious
                 (
-                    Color::srgb(0.3, 0.4, 0.6),
-                    Color::srgb(0.5, 0.7, 0.9),
+                    Color::srgb(0.4, 0.6, 0.2),
+                    Color::srgb(0.6, 0.9, 0.3),
                     Color::srgb(1.0, 1.0, 1.0),
                 )
             } else {
@@ -391,6 +392,36 @@ fn manage_choice_buttons(
                         ));
                     });
             });
+        }
+    }
+}
+
+/// Updates choice button styles based on selection state.
+///
+/// 根据选择状态更新选项按钮样式。
+fn update_choice_button_styles(
+    runtime: Res<MortarRuntime>,
+    mut button_query: Query<(&ChoiceButton, &mut BackgroundColor, &mut BorderColor)>,
+) {
+    if !runtime.is_changed() {
+        return;
+    }
+
+    let Some(state) = &runtime.active_dialogue else {
+        return;
+    };
+
+    for (choice_button, mut bg_color, mut border_color) in button_query.iter_mut() {
+        let is_selected = state.selected_choice == Some(choice_button.index);
+
+        if is_selected {
+            // Selected style - bright green
+            *bg_color = BackgroundColor(Color::srgb(0.4, 0.6, 0.2));
+            *border_color = BorderColor::all(Color::srgb(0.6, 0.9, 0.3));
+        } else {
+            // Normal style
+            *bg_color = BackgroundColor(Color::srgb(0.2, 0.25, 0.35));
+            *border_color = BorderColor::all(Color::srgb(0.4, 0.5, 0.65));
         }
     }
 }

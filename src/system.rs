@@ -43,7 +43,8 @@ pub fn process_mortar_events_system(
 
                 dev_info!("Reached end of node: {}", state.current_node);
 
-                if state.has_choices() {
+                // Check if has choices and choices are not broken
+                if state.has_choices() && !state.choices_broken {
                     dev_info!("Node has choices, waiting for user selection");
                     continue;
                 }
@@ -116,11 +117,8 @@ pub fn process_mortar_events_system(
                             state.clear_choice_stack();
                             // Mark choices as broken so they won't be shown anymore
                             state.choices_broken = true;
-                            // Try to advance to next text
-                            if !state.next_text() {
-                                // No more texts, stop dialogue
-                                runtime.active_dialogue = None;
-                            }
+                            // Advance to next text
+                            state.next_text();
                             continue;
                         }
                         _ => {

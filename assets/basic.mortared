@@ -1,7 +1,7 @@
 {
   "metadata": {
     "version": "0.4.0",
-    "generated_at": "2025-11-22T07:15:53.148616127Z"
+    "generated_at": "2025-11-22T08:13:17.463484956Z"
   },
   "nodes": [
     {
@@ -132,11 +132,11 @@
           "text": "吃点什么",
           "choice": [
             {
-              "text": "Apple",
+              "text": "苹果",
               "next": "EatApple"
             },
             {
-              "text": "Bread",
+              "text": "面包",
               "next": "EatBread"
             }
           ]
