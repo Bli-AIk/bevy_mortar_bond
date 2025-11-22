@@ -31,6 +31,12 @@ struct PendingAnimation(String);
 #[derive(Component)]
 struct PendingColorChange(String);
 
+/// Component to mark that audio needs to be played
+///
+/// 标记需要播放音频的组件
+#[derive(Component)]
+struct PendingAudioPlay(String);
+
 /// Marker component for the triangle sprite
 ///
 /// 三角形精灵标记组件
@@ -100,6 +106,7 @@ fn main() {
                 trigger_typewriter_events,
                 apply_pending_animations,
                 apply_pending_colors,
+                play_pending_audio,
                 update_rotate_animation,
             ),
         )
@@ -162,9 +169,9 @@ impl GameFunctions {
         format!("{}{}{}", v, o, "!".repeat(l))
     }
 
-    fn play_sound(file_name: MortarString) {
+    fn play_sound(file_name: MortarString) -> MortarString {
         info!("Playing sound: {}", file_name.as_str());
-        // Note: Audio playback disabled due to backend configuration
+        file_name
     }
 
     fn set_animation(anim_name: MortarString) {
@@ -544,6 +551,11 @@ fn handle_mortar_action(entity: Entity, action: MortarEventAction, commands: &mu
                     .insert(PendingColorChange(color.clone()));
             }
         }
+        "play_sound" => {
+            if let Some(file_name) = action.args.first() {
+                commands.spawn(PendingAudioPlay(file_name.clone()));
+            }
+        }
         _ => {}
     }
 }
@@ -597,10 +609,28 @@ fn apply_pending_colors(
     }
 }
 
-/// Process queued game commands from mortar functions
+/// Play pending audio files
+///
+/// 播放待处理的音频文件
+fn play_pending_audio(
+    mut commands: Commands,
+    query: Query<(Entity, &PendingAudioPlay)>,
+    asset_server: Res<AssetServer>,
+) {
+    for (entity, pending) in &query {
+        info!("Loading and playing audio: {}", pending.0);
+        let audio_source = asset_server.load::<AudioSource>(pending.0.clone());
+        commands.spawn(AudioPlayer::new(audio_source));
+        
+        // Remove the marker component after processing
+        //
+        // 移除处理后的标记组件
+        commands.entity(entity).despawn();
+    }
+}
+
 /// Component for rotation animation
 ///
-/// 处理来自 mortar 函数的排队游戏命令
 /// 旋转动画的组件
 #[derive(Component)]
 struct RotateAnimation {

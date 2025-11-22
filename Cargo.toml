@@ -9,7 +9,7 @@ description = "Bevy integration plug-in for mortar language"
 
 [dependencies]
 
-bevy = "0.17.2"
+bevy = { version = "0.17.2", features = ["wav"] }
 
 mortar_compiler = { path = "../../../mortar/crates/mortar_compiler" }
 
