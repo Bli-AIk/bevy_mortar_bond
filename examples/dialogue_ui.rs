@@ -580,9 +580,9 @@ fn update_dialogue_text_with_typewriter(
                 if let Some(condition) = &text_data.condition {
                     if !variable_state.evaluate_condition(condition) {
                         info!("Example: Condition not satisfied, skipping text");
-                        // TODO: Implement automatic text skipping when condition fails
-                        // For now, we'll just display a placeholder
-                        // In a real implementation, we should advance to the next text automatically
+                        // Skip this text - don't display anything, just update last_key
+                        *last_key = Some(current_key);
+                        continue;
                     }
                 }
 
