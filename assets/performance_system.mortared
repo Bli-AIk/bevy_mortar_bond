@@ -1,7 +1,7 @@
 {
   "metadata": {
     "version": "0.4.0",
-    "generated_at": "2025-11-22T14:28:10.680257661Z"
+    "generated_at": "2025-11-22T14:41:15.312064427Z"
   },
   "nodes": [
     {
@@ -12,6 +12,16 @@
         },
         {
           "text": "Alice appears in the forest."
+        }
+      ],
+      "runs": [
+        {
+          "event_name": "SetColor",
+          "position": 1
+        },
+        {
+          "event_name": "TPRight",
+          "position": 2
         }
       ],
       "next": "WithEventsExample"
@@ -79,6 +89,16 @@
           "value": 0.5
         }
       ],
+      "runs": [
+        {
+          "event_name": "TPRight",
+          "index_override": {
+            "type": "variable",
+            "value": "custom_time"
+          },
+          "position": 2
+        }
+      ],
       "next": "ReferenceExample"
     },
     {
@@ -93,6 +113,16 @@
           "name": "dynamic_index",
           "type": "Number",
           "value": 1.0
+        }
+      ],
+      "runs": [
+        {
+          "event_name": "TPLeft",
+          "index_override": {
+            "type": "reference",
+            "value": "dynamic_index"
+          },
+          "position": 2
         }
       ],
       "next": "MixedExample"
@@ -130,6 +160,20 @@
           "value": 0.3
         }
       ],
+      "runs": [
+        {
+          "event_name": "SetColor",
+          "position": 0
+        },
+        {
+          "event_name": "PlaySound",
+          "index_override": {
+            "type": "variable",
+            "value": "reveal_time"
+          },
+          "position": 5
+        }
+      ],
       "next": "TimelineExample",
       "choice": [
         {
@@ -151,6 +195,12 @@
       "texts": [
         {
           "text": "Watch the opening cutscene..."
+        }
+      ],
+      "runs": [
+        {
+          "event_name": "OpeningCutscene",
+          "position": 1
         }
       ]
     },
