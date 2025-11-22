@@ -33,9 +33,9 @@ pub use binder::{
     MortarBoolean, MortarFunctionRegistry, MortarNumber, MortarString, MortarValue, MortarVoid,
 };
 
-/// Re-export mortar_compiler types for convenience
+/// Re-export mortar_compiler types for convenience.
 ///
-/// 为方便使用，重新导出 mortar_compiler 类型
+/// 为方便使用，重新导出 mortar_compiler 类型。
 pub use mortar_compiler::Event as MortarTextEvent;
 
 /// The main plugin for the mortar 'bond' (bind) system.
@@ -367,7 +367,7 @@ impl MortarEventTracker {
 
                     // Collect actions for user to handle
                     actions_to_process.push(MortarEventAction {
-                        action_type: action.action_type.clone(),
+                        action_name: action.action_type.clone(),
                         args: action.args.clone(),
                     });
                 }
@@ -404,10 +404,10 @@ impl MortarEventTracker {
 /// Mortar 事件触发的动作。
 #[derive(Debug, Clone)]
 pub struct MortarEventAction {
-    /// The type of action (e.g., "play_sound", "set_animation").
+    /// The name of action (e.g., "play_sound", "set_animation").
     ///
-    /// 动作类型（例如 "play_sound"、"set_animation"）。
-    pub action_type: String,
+    /// 动作名称（例如 "play_sound"、"set_animation"）。
+    pub action_name: String,
     /// The arguments for the action.
     ///
     /// 动作的参数。

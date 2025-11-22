@@ -530,7 +530,7 @@ fn trigger_typewriter_events(
 ///
 /// 处理 mortar 事件动作，分发到适当的游戏系统
 fn handle_mortar_action(entity: Entity, action: MortarEventAction, commands: &mut Commands) {
-    match action.action_type.as_str() {
+    match action.action_name.as_str() {
         "set_animation" => {
             if let Some(anim_name) = action.args.first() {
                 commands
