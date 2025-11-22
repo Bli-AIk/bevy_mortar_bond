@@ -1,7 +1,7 @@
 {
   "metadata": {
     "version": "0.4.0",
-    "generated_at": "2025-11-22T00:23:48.465116601Z"
+    "generated_at": "2025-11-22T01:04:14.278126719Z"
   },
   "nodes": [
     {
@@ -109,6 +109,25 @@
               ]
             }
           ]
+        },
+        {
+          "text": "让我们{create_message}",
+          "interpolated_parts": [
+            {
+              "type": "text",
+              "content": "让我们"
+            },
+            {
+              "type": "expression",
+              "content": "{create_message}",
+              "function_name": "create_message",
+              "args": [
+                "\"开始\"",
+                "\"冒险\"",
+                "3"
+              ]
+            }
+          ]
         }
       ]
     }
@@ -150,6 +169,24 @@
       "params": [
         {
           "name": "count",
+          "type": "Number"
+        }
+      ],
+      "return": "String"
+    },
+    {
+      "name": "create_message",
+      "params": [
+        {
+          "name": "verb",
+          "type": "String"
+        },
+        {
+          "name": "obj",
+          "type": "String"
+        },
+        {
+          "name": "level",
           "type": "Number"
         }
       ],

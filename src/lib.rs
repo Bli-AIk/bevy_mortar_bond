@@ -13,7 +13,8 @@ mod binder;
 mod system;
 
 pub use asset::{MortarAsset, MortarAssetLoader};
-pub use binder::{MortarFunctionRegistry, MortarValue};
+pub use bevy_mortar_bond_macros::{MortarFunctions, mortar_functions};
+pub use binder::{MortarFunctionBinder, MortarFunctionRegistry, MortarValue};
 
 /// The main plugin for the mortar 'bond' (bind) system.
 ///

@@ -107,58 +107,13 @@ impl MortarFunctionRegistry {
         Self::default()
     }
 
-    /// Registers a function with no arguments.
+    /// Registers a function.
     ///
-    /// 注册一个无参数函数。
-    pub fn register_fn0<F, R>(&mut self, name: impl Into<String>, func: F)
+    /// 注册一个函数。
+    pub fn register<F>(&mut self, name: impl Into<String>, func: F)
     where
-        F: Fn() -> R + Send + Sync + 'static,
-        R: Into<MortarValue>,
+        F: Fn(&[MortarValue]) -> MortarValue + Send + Sync + 'static,
     {
-        let func = move |_args: &[MortarValue]| func().into();
-        self.functions.insert(name.into(), Box::new(func));
-    }
-
-    /// Registers a function with one argument.
-    ///
-    /// 注册一个单参数函数。
-    pub fn register_fn1<F, A, R>(&mut self, name: impl Into<String>, func: F)
-    where
-        F: Fn(A) -> R + Send + Sync + 'static,
-        A: TryFrom<MortarValue>,
-        R: Into<MortarValue>,
-    {
-        let func = move |args: &[MortarValue]| {
-            if args.is_empty() {
-                return MortarValue::String("Error: Missing argument".to_string());
-            }
-            match args[0].clone().try_into() {
-                Ok(arg) => func(arg).into(),
-                Err(_) => MortarValue::String("Error: Invalid argument type".to_string()),
-            }
-        };
-        self.functions.insert(name.into(), Box::new(func));
-    }
-
-    /// Registers a function with two arguments.
-    ///
-    /// 注册一个双参数函数。
-    pub fn register_fn2<F, A1, A2, R>(&mut self, name: impl Into<String>, func: F)
-    where
-        F: Fn(A1, A2) -> R + Send + Sync + 'static,
-        A1: TryFrom<MortarValue>,
-        A2: TryFrom<MortarValue>,
-        R: Into<MortarValue>,
-    {
-        let func = move |args: &[MortarValue]| {
-            if args.len() < 2 {
-                return MortarValue::String("Error: Missing arguments".to_string());
-            }
-            match (args[0].clone().try_into(), args[1].clone().try_into()) {
-                (Ok(arg1), Ok(arg2)) => func(arg1, arg2).into(),
-                _ => MortarValue::String("Error: Invalid argument types".to_string()),
-            }
-        };
         self.functions.insert(name.into(), Box::new(func));
     }
 
@@ -168,6 +123,13 @@ impl MortarFunctionRegistry {
     pub fn call(&self, name: &str, args: &[MortarValue]) -> Option<MortarValue> {
         self.functions.get(name).map(|f| f(args))
     }
+}
+
+/// Trait for types that can register their functions into the Mortar runtime.
+///
+/// 可以将函数注册到 Mortar 运行时的类型的 trait。
+pub trait MortarFunctionBinder {
+    fn register_functions(registry: &mut MortarFunctionRegistry);
 }
 
 // TryFrom implementations for common types

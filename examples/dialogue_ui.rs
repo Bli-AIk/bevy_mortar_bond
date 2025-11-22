@@ -11,7 +11,10 @@
 mod utils;
 
 use bevy::prelude::*;
-use bevy_mortar_bond::{MortarEvent, MortarPlugin, MortarRegistry, MortarRuntime};
+use bevy_mortar_bond::{
+    MortarEvent, MortarFunctionBinder, MortarFunctions, MortarPlugin, MortarRegistry,
+    MortarRuntime, MortarValue,
+};
 use utils::ui::*;
 
 /// Resource to track the current dialogue file and available files.
@@ -82,49 +85,54 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     setup_dialogue_ui(&mut commands, font);
 }
 
-/// Sets up Mortar function bindings.
-///
-/// 设置 Mortar 函数绑定。
-fn setup_mortar_functions(mut runtime: ResMut<MortarRuntime>) {
-    // Register functions declared in the mortar file
+#[derive(MortarFunctions)]
+struct GameFunctions;
 
-    // fn play_sound(file_name: String);
-    runtime
-        .functions
-        .register_fn1("play_sound", |file_name: String| {
-            info!("🔊 Playing sound: {}", file_name);
-            String::new() // void function
-        });
+#[bevy_mortar_bond::mortar_functions]
+impl GameFunctions {
+    fn play_sound(file_name: MortarValue) -> String {
+        if let Some(name) = file_name.as_string() {
+            info!("Playing sound: {}", name);
+        }
+        String::new()
+    }
 
-    // fn set_animation(anim_name: String);
-    runtime
-        .functions
-        .register_fn1("set_animation", |anim_name: String| {
-            info!("🎬 Setting animation: {}", anim_name);
-            String::new() // void function
-        });
+    fn set_animation(anim_name: MortarValue) -> String {
+        if let Some(name) = anim_name.as_string() {
+            info!("Setting animation: {}", name);
+        }
+        String::new()
+    }
 
-    // fn set_color(value: String);
-    runtime
-        .functions
-        .register_fn1("set_color", |color: String| {
-            info!("🎨 Setting color: {}", color);
-            String::new() // void function
-        });
+    fn set_color(color: MortarValue) -> String {
+        if let Some(c) = color.as_string() {
+            info!("Setting color: {}", c);
+        }
+        String::new()
+    }
 
-    // fn get_name() -> String;
-    runtime.functions.register_fn0("get_name", || {
-        info!("📝 Getting player name");
+    fn get_name() -> String {
+        info!("Getting player name");
         "艾克".to_string()
-    });
+    }
 
-    // fn get_exclamation(count: Number) -> String;
-    runtime
-        .functions
-        .register_fn1("get_exclamation", |count: f64| {
-            info!("❗ Getting exclamation with count: {}", count);
-            "！".repeat(count as usize)
-        });
+    fn get_exclamation(count: MortarValue) -> String {
+        let n = count.as_number().unwrap_or(1.0) as usize;
+        info!("Getting exclamation with count: {}", n);
+        "！".repeat(n)
+    }
+
+    fn create_message(verb: MortarValue, obj: MortarValue, level: MortarValue) -> String {
+        let v = verb.as_string().unwrap_or("");
+        let o = obj.as_string().unwrap_or("");
+        let l = level.as_number().unwrap_or(1.0) as usize;
+        info!("Creating message: verb={}, obj={}, level={}", v, o, l);
+        format!("{}{}{}", v, o, "!".repeat(l))
+    }
+}
+
+fn setup_mortar_functions(mut runtime: ResMut<MortarRuntime>) {
+    GameFunctions::register_functions(&mut runtime.functions);
 }
 
 /// Loads the initial dialogue file and starts the first node.
@@ -227,7 +235,7 @@ fn update_dialogue_text(
                         bevy_mortar_bond::process_interpolated_text(text_data, &runtime.functions);
 
                     info!(
-                        "📖 对话文本显示: [{}] {}",
+                        "Dialogue text display: [{}] {}",
                         state.current_node, processed_text
                     );
 
