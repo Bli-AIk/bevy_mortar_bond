@@ -1,11 +1,11 @@
 {
   "metadata": {
     "version": "0.4.0",
-    "generated_at": "2025-11-22T08:04:34.231571555Z"
+    "generated_at": "2025-11-22T14:22:51.227572181Z"
   },
   "nodes": [
     {
-      "name": "BasicRunExample",
+      "name": "Start",
       "texts": [
         {
           "text": "The scene begins..."
@@ -13,7 +13,8 @@
         {
           "text": "Alice appears in the forest."
         }
-      ]
+      ],
+      "next": "WithEventsExample"
     },
     {
       "name": "WithEventsExample",
@@ -25,9 +26,9 @@
               "index": 0.0,
               "actions": [
                 {
-                  "type": "set_background",
+                  "type": "set_color",
                   "args": [
-                    "bg_forest.png"
+                    "#228B22"
                   ]
                 }
               ]
@@ -41,10 +42,9 @@
               "index": 0.0,
               "actions": [
                 {
-                  "type": "show_character",
+                  "type": "set_animation",
                   "args": [
-                    "alice.png",
-                    "center"
+                    "right"
                   ]
                 }
               ]
@@ -53,17 +53,17 @@
               "index": 0.0,
               "actions": [
                 {
-                  "type": "play_music",
+                  "type": "play_sound",
                   "args": [
-                    "bgm_adventure.mp3",
-                    "0.7"
+                    "random-sound-1-80941.wav"
                   ]
                 }
               ]
             }
           ]
         }
-      ]
+      ],
+      "next": "CustomIndexExample"
     },
     {
       "name": "CustomIndexExample",
@@ -71,7 +71,15 @@
         {
           "text": "This text has a custom event timing."
         }
-      ]
+      ],
+      "variables": [
+        {
+          "name": "custom_time",
+          "type": "Number",
+          "value": 0.5
+        }
+      ],
+      "next": "ReferenceExample"
     },
     {
       "name": "ReferenceExample",
@@ -79,7 +87,15 @@
         {
           "text": "Dynamic event timing."
         }
-      ]
+      ],
+      "variables": [
+        {
+          "name": "dynamic_index",
+          "type": "Number",
+          "value": 1.0
+        }
+      ],
+      "next": "MixedExample"
     },
     {
       "name": "MixedExample",
@@ -91,10 +107,9 @@
               "index": 0.0,
               "actions": [
                 {
-                  "type": "show_character",
+                  "type": "set_animation",
                   "args": [
-                    "alice.png",
-                    "center"
+                    "right"
                   ]
                 }
               ]
@@ -103,8 +118,19 @@
         },
         {
           "text": "It's Alice!"
+        },
+        {
+          "text": "well"
         }
       ],
+      "variables": [
+        {
+          "name": "reveal_time",
+          "type": "Number",
+          "value": 0.3
+        }
+      ],
+      "next": "TimelineExample",
       "choice": [
         {
           "text": "Approach Alice",
@@ -113,6 +139,10 @@
         {
           "text": "Hide",
           "next": "HideRoute"
+        },
+        {
+          "text": "Waiting...",
+          "action": "break"
         }
       ]
     },
@@ -143,54 +173,25 @@
   ],
   "functions": [
     {
-      "name": "set_background",
+      "name": "set_animation",
       "params": [
         {
-          "name": "file_name",
+          "name": "anim_name",
           "type": "String"
         }
       ]
     },
     {
-      "name": "show_character",
+      "name": "set_color",
       "params": [
         {
-          "name": "sprite",
-          "type": "String"
-        },
-        {
-          "name": "position",
+          "name": "color",
           "type": "String"
         }
       ]
     },
     {
-      "name": "play_music",
-      "params": [
-        {
-          "name": "file_name",
-          "type": "String"
-        },
-        {
-          "name": "volume",
-          "type": "Number"
-        }
-      ]
-    },
-    {
-      "name": "fade_to_black"
-    },
-    {
-      "name": "DialogueStart",
-      "params": [
-        {
-          "name": "node_name",
-          "type": "String"
-        }
-      ]
-    },
-    {
-      "name": "PlayMusic",
+      "name": "play_sound",
       "params": [
         {
           "name": "file_name",
@@ -201,52 +202,52 @@
   ],
   "events": [
     {
-      "name": "SetForestBackground",
+      "name": "SetColor",
       "index": 0.0,
       "action": {
-        "type": "set_background",
+        "type": "set_color",
         "args": [
-          "\"bg_forest.png\""
+          "\"#228B22\""
         ]
       }
     },
     {
-      "name": "ShowAlice",
+      "name": "TPRight",
       "action": {
-        "type": "show_character",
+        "type": "set_animation",
         "args": [
-          "\"alice.png\"",
-          "\"center\""
+          "\"right\""
         ]
       },
       "duration": 2.0
     },
     {
-      "name": "ShowBob",
+      "name": "TPLeft",
       "action": {
-        "type": "show_character",
+        "type": "set_animation",
         "args": [
-          "\"bob.png\"",
-          "\"right\""
+          "\"left\""
         ]
       },
       "duration": 1.5
     },
     {
-      "name": "PlayBGM",
+      "name": "PlaySound",
       "action": {
-        "type": "play_music",
+        "type": "play_sound",
         "args": [
-          "\"bgm_adventure.mp3\"",
-          "0.7"
+          "\"random-sound-1-80941.wav\""
         ]
       },
       "duration": 0.0
     },
     {
-      "name": "FadeOut",
+      "name": "SetBlack",
       "action": {
-        "type": "fade_to_black"
+        "type": "set_color",
+        "args": [
+          "\"#000000\""
+        ]
       },
       "duration": 1.0
     }
@@ -257,7 +258,7 @@
       "statements": [
         {
           "type": "run",
-          "event_name": "ShowAlice"
+          "event_name": "TPRight"
         },
         {
           "type": "wait",
@@ -265,7 +266,7 @@
         },
         {
           "type": "run",
-          "event_name": "ShowBob"
+          "event_name": "TPLeft"
         },
         {
           "type": "wait",
@@ -273,7 +274,7 @@
         },
         {
           "type": "run",
-          "event_name": "PlayBGM"
+          "event_name": "PlaySound"
         },
         {
           "type": "wait",
@@ -281,10 +282,7 @@
         },
         {
           "type": "run",
-          "event_name": "DialogueStart",
-          "args": [
-            "\"Welcome\""
-          ]
+          "event_name": "SetColor"
         }
       ]
     },
@@ -293,7 +291,7 @@
       "statements": [
         {
           "type": "run",
-          "event_name": "FadeOut"
+          "event_name": "SetBlack"
         },
         {
           "type": "wait",
@@ -301,10 +299,7 @@
         },
         {
           "type": "run",
-          "event_name": "PlayMusic",
-          "args": [
-            "\"ending_theme.mp3\""
-          ]
+          "event_name": "PlaySound"
         },
         {
           "type": "wait",
