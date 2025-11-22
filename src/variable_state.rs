@@ -125,12 +125,17 @@ impl MortarVariableState {
         let right = condition.right.as_ref().unwrap();
         let operator = condition.operator.as_ref().unwrap();
 
-        let left_value = self.evaluate_condition(left);
-        let right_value = self.evaluate_condition(right);
-
         match operator.as_str() {
-            "&&" => left_value && right_value,
-            "||" => left_value || right_value,
+            "&&" | "||" => {
+                // For logical operators, recursively evaluate both sides as boolean
+                let left_value = self.evaluate_condition(left);
+                let right_value = self.evaluate_condition(right);
+                match operator.as_str() {
+                    "&&" => left_value && right_value,
+                    "||" => left_value || right_value,
+                    _ => unreachable!(),
+                }
+            }
             ">" => self.compare_values(left, right, |a, b| a > b),
             "<" => self.compare_values(left, right, |a, b| a < b),
             ">=" => self.compare_values(left, right, |a, b| a >= b),
@@ -207,6 +212,11 @@ impl MortarVariableState {
         match condition.cond_type.as_str() {
             "identifier" => {
                 let identifier = condition.value.as_ref()?;
+                // First try to parse as a number literal (workaround for serializer issue)
+                if let Ok(num) = identifier.parse::<f64>() {
+                    return Some(num);
+                }
+                // Otherwise treat as a variable name
                 match self.get(identifier) {
                     Some(MortarVariableValue::Number(n)) => Some(*n),
                     _ => None,
