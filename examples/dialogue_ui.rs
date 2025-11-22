@@ -503,24 +503,18 @@ fn trigger_typewriter_events(
 
             // Execute event actions
             for action in &event.actions {
-                match action.action_type.as_str() {
-                    "call" => {
-                        if let Some(func_name) = action.args.first() {
-                            let args: Vec<bevy_mortar_bond::MortarValue> = action.args[1..]
-                                .iter()
-                                .map(|arg| bevy_mortar_bond::MortarValue::parse(arg))
-                                .collect();
+                // action_type is the function name directly
+                let func_name = &action.action_type;
+                let args: Vec<bevy_mortar_bond::MortarValue> = action
+                    .args
+                    .iter()
+                    .map(|arg| bevy_mortar_bond::MortarValue::parse(arg))
+                    .collect();
 
-                            if let Some(result) = runtime.functions.call(func_name, &args) {
-                                info!("Event function '{}' returned: {:?}", func_name, result);
-                            } else {
-                                warn!("Event function '{}' not found", func_name);
-                            }
-                        }
-                    }
-                    _ => {
-                        warn!("Unknown action type: {}", action.action_type);
-                    }
+                if let Some(result) = runtime.functions.call(func_name, &args) {
+                    info!("Event function '{}' returned: {:?}", func_name, result);
+                } else {
+                    warn!("Event function '{}' not found", func_name);
                 }
             }
         }
