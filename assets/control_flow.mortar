@@ -3,9 +3,10 @@
 // ===== Variables =====
 
 let player_score: Number = 150
+// 默认为false
 let is_winner: Bool
 let level: Number = 5
-let has_bonus: Bool
+let has_bonus: Bool = true
 let great: String = "继续努力"
 
 // ===== Nodes with Control Flow =====
@@ -16,7 +17,7 @@ node ScoreEvaluation {
     } else {
         text: $"{great}，争取突破100分。"
     }
-}
+} -> ScoreEvaluation
 
 node BooleanCondition {
     if is_winner {
@@ -24,7 +25,7 @@ node BooleanCondition {
     } else {
         text: "下次会更好的。"
     }
-}
+} -> MultipleComparisons
 
 node MultipleComparisons {
     if player_score >= 150 {
@@ -42,7 +43,7 @@ node MultipleComparisons {
     if player_score != 0 {
         text: "至少有分数了。"
     }
-}
+} -> LogicalOperators
 
 node LogicalOperators {
     if player_score > 100 && is_winner {
@@ -54,7 +55,7 @@ node LogicalOperators {
     if level > 10 || has_bonus {
         text: "你可以获得特殊奖励。"
     }
-}
+} -> NotOperator
 
 node NotOperator {
     if !is_winner {
@@ -64,7 +65,7 @@ node NotOperator {
     if !(player_score < 50) {
         text: "分数还不错。"
     }
-}
+} -> NestedConditions
 
 node NestedConditions {
     if player_score > 100 {
@@ -80,7 +81,7 @@ node NestedConditions {
             text: "分数和结果都需要改进。"
         }
     }
-}
+} -> ComplexLogic
 
 node ComplexLogic {
     if (player_score > 100 && level > 5) || has_bonus {
