@@ -565,11 +565,11 @@ fn update_dialogue_text_with_typewriter(
                     .get(&state.mortar_path)
                     .and_then(|handle| assets.get(handle))
                     .map(|asset| &asset.data);
-                
+
                 let function_decls = asset_data
                     .map(|data| data.functions.as_slice())
                     .unwrap_or(&[]);
-                
+
                 let variables = asset_data
                     .map(|data| data.variables.as_slice())
                     .unwrap_or(&[]);

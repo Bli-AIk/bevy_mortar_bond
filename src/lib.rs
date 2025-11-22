@@ -420,7 +420,7 @@ pub fn process_interpolated_text(
             "placeholder" => {
                 // Extract variable name from placeholder (e.g., "{status}" -> "status")
                 let var_name = part.content.trim_matches(|c| c == '{' || c == '}');
-                
+
                 // Look up the variable
                 if let Some(var) = variables.iter().find(|v| v.name == var_name) {
                     // Handle Branch type variables
@@ -429,9 +429,13 @@ pub fn process_interpolated_text(
                             if let Some(branch_obj) = value.as_object() {
                                 // For now, just use the first case's text as a placeholder
                                 // In a real implementation, you'd need to evaluate the condition
-                                if let Some(cases) = branch_obj.get("cases").and_then(|c| c.as_array()) {
+                                if let Some(cases) =
+                                    branch_obj.get("cases").and_then(|c| c.as_array())
+                                {
                                     if let Some(first_case) = cases.first() {
-                                        if let Some(text) = first_case.get("text").and_then(|t| t.as_str()) {
+                                        if let Some(text) =
+                                            first_case.get("text").and_then(|t| t.as_str())
+                                        {
                                             warn!(
                                                 "Branch variable '{}' resolved to first case: {}. Implement condition evaluation for proper resolution.",
                                                 var_name, text
