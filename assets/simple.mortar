@@ -38,32 +38,31 @@ node Start {
 } -> TestEventRef
 
 // 测试单独声明 event（用于后续 with 引用）
-event ColorFlash {
-    index: 0
+event ColorYellow {
+    index: 1
     action: set_color("#FFFF00")
 }
 
-event SoundPing {
-    index: 2
-    action: play_sound("ping.wav")
+event ColorGreen {
+    index: 5
+    action: set_color("#00FF00")
 }
 
 // 测试单独 with event 的节点
 node TestEventRef {
     text: "测试事件引用"
-    with ColorFlash  // 单独引用一个 event
+    with ColorYellow  // 单独引用一个 event
     
     text: "测试多个事件引用"
     with events: [
-        ColorFlash
-        SoundPing
+        ColorYellow
+        ColorGreen
     ]
     
     text: "混合内联事件和事件引用"
     with events: [
-        0, set_animation("bounce")  // 内联事件
-        ColorFlash  // 事件引用
-        5, play_sound("test.wav")  // 内联事件
+        0, set_color("#0000FF")  // 内联事件
+        ColorGreen  // 事件引用
     ]
 }
 
