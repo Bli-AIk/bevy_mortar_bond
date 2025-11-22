@@ -1,7 +1,7 @@
 {
   "metadata": {
     "version": "0.4.0",
-    "generated_at": "2025-11-22T08:04:33.473846140Z"
+    "generated_at": "2025-11-22T08:17:48.688826160Z"
   },
   "variables": [
     {
@@ -41,7 +41,7 @@
   ],
   "nodes": [
     {
-      "name": "Welcome",
+      "name": "Start",
       "texts": [
         {
           "text": "欢迎来到{place}，{greet}！",
@@ -96,7 +96,8 @@
             }
           ]
         }
-      ]
+      ],
+      "next": "LocationDesc"
     },
     {
       "name": "LocationDesc",
@@ -214,7 +215,8 @@
             }
           ]
         }
-      ]
+      ],
+      "next": "ComplexScene"
     },
     {
       "name": "ComplexScene",

@@ -22,7 +22,7 @@ enum Gender {
 
 // ===== Node with Branch Interpolation =====
 
-node Welcome {
+node Start {
     text: $"欢迎来到{place}，{greet}！"
     
     // Boolean-based branch
@@ -36,7 +36,7 @@ node Welcome {
         is_male, "先生"
         is_female, "女士"
     ]
-}
+} -> LocationDesc
 
 node LocationDesc {
     text: $"你现在在{location}，周围有{object}。"
@@ -61,7 +61,7 @@ node LocationDesc {
             0, set_color("brown")
         ]
     ]
-}
+} -> ComplexScene
 
 // Example combining text events and branch events
 node ComplexScene {
