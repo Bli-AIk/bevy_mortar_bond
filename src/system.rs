@@ -114,6 +114,8 @@ pub fn process_mortar_events_system(
                             dev_info!("Choice action is break, continuing to next text");
                             // Clear the choice stack and selection
                             state.clear_choice_stack();
+                            // Mark choices as broken so they won't be shown anymore
+                            state.choices_broken = true;
                             // Try to advance to next text
                             if !state.next_text() {
                                 // No more texts, stop dialogue

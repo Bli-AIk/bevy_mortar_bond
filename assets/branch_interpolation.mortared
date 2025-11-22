@@ -1,7 +1,7 @@
 {
   "metadata": {
     "version": "0.4.0",
-    "generated_at": "2025-11-21T13:46:52.839717625Z"
+    "generated_at": "2025-11-22T08:04:33.473846140Z"
   },
   "variables": [
     {
@@ -41,7 +41,7 @@
   ],
   "nodes": [
     {
-      "name": "Start",
+      "name": "Welcome",
       "texts": [
         {
           "text": "欢迎来到{place}，{greet}！",
@@ -233,6 +233,32 @@
             {
               "type": "text",
               "content": "后，感到惊讶！"
+            }
+          ],
+          "events": [
+            {
+              "index": 1.0,
+              "actions": [
+                {
+                  "type": "shake"
+                }
+              ]
+            },
+            {
+              "index": 2.0,
+              "actions": [
+                {
+                  "type": "shake"
+                }
+              ]
+            },
+            {
+              "index": 3.0,
+              "actions": [
+                {
+                  "type": "flash"
+                }
+              ]
             }
           ]
         }

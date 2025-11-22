@@ -282,6 +282,7 @@ fn manage_choice_buttons(
     asset_server: Res<AssetServer>,
     registry: Res<MortarRegistry>,
     assets: Res<Assets<MortarAsset>>,
+    mut last_state: Local<Option<(String, String, Vec<usize>, bool)>>, // (path, node, choice_stack, choices_broken)
 ) {
     if !runtime.is_changed() {
         return;
@@ -290,6 +291,23 @@ fn manage_choice_buttons(
     let Ok(container) = container_query.single() else {
         return;
     };
+
+    // Check if choice context has changed
+    let current_state = runtime.active_dialogue.as_ref().map(|state| {
+        (
+            state.mortar_path.clone(),
+            state.current_node.clone(),
+            state.choice_stack.clone(),
+            state.choices_broken,
+        )
+    });
+
+    // Only recreate buttons if choice context actually changed
+    if *last_state == current_state && !button_query.is_empty() {
+        return;
+    }
+
+    *last_state = current_state;
 
     // Clear existing buttons
     for entity in button_query.iter() {

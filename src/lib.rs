@@ -144,7 +144,11 @@ pub struct DialogueState {
     /// Stack of nested choice indices to track nested selections.
     ///
     /// 嵌套选择索引的堆栈，用于跟踪嵌套选择。
-    choice_stack: Vec<usize>,
+    pub choice_stack: Vec<usize>,
+    /// Flag to indicate that choices have been broken and should not be shown.
+    ///
+    /// 标志表示选项已被 break，不应再显示。
+    pub choices_broken: bool,
     /// A snapshot of the node data (to avoid repeated queries).
     ///
     /// 节点数据的快照（避免重复查询）。
@@ -162,6 +166,7 @@ impl DialogueState {
             text_index: 0,
             selected_choice: None,
             choice_stack: Vec::new(),
+            choices_broken: false,
             node_data,
         }
     }
@@ -216,6 +221,11 @@ impl DialogueState {
     ///
     /// 已弃用：使用 get_current_choices 代替。
     pub fn get_choices(&self) -> Option<&Vec<Choice>> {
+        // If choices have been broken (by break action), don't show them
+        if self.choices_broken {
+            return None;
+        }
+        
         if self.choice_stack.is_empty() {
             self.node_data.choice.as_ref()
         } else {

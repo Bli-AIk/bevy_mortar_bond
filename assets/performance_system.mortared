@@ -1,7 +1,7 @@
 {
   "metadata": {
     "version": "0.4.0",
-    "generated_at": "2025-11-21T13:46:53.924949508Z"
+    "generated_at": "2025-11-22T08:04:34.231571555Z"
   },
   "nodes": [
     {
@@ -19,10 +19,49 @@
       "name": "WithEventsExample",
       "texts": [
         {
-          "text": "Welcome to the adventure!"
+          "text": "Welcome to the adventure!",
+          "events": [
+            {
+              "index": 0.0,
+              "actions": [
+                {
+                  "type": "set_background",
+                  "args": [
+                    "bg_forest.png"
+                  ]
+                }
+              ]
+            }
+          ]
         },
         {
-          "text": "The forest comes alive with sound and color."
+          "text": "The forest comes alive with sound and color.",
+          "events": [
+            {
+              "index": 0.0,
+              "actions": [
+                {
+                  "type": "show_character",
+                  "args": [
+                    "alice.png",
+                    "center"
+                  ]
+                }
+              ]
+            },
+            {
+              "index": 0.0,
+              "actions": [
+                {
+                  "type": "play_music",
+                  "args": [
+                    "bgm_adventure.mp3",
+                    "0.7"
+                  ]
+                }
+              ]
+            }
+          ]
         }
       ]
     },
@@ -46,7 +85,21 @@
       "name": "MixedExample",
       "texts": [
         {
-          "text": "A figure emerges from the shadows..."
+          "text": "A figure emerges from the shadows...",
+          "events": [
+            {
+              "index": 0.0,
+              "actions": [
+                {
+                  "type": "show_character",
+                  "args": [
+                    "alice.png",
+                    "center"
+                  ]
+                }
+              ]
+            }
+          ]
         },
         {
           "text": "It's Alice!"
