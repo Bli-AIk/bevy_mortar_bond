@@ -9,9 +9,11 @@ use std::collections::HashMap;
 #[macro_use]
 mod debug;
 mod asset;
+mod binder;
 mod system;
 
 pub use asset::{MortarAsset, MortarAssetLoader};
+pub use binder::{MortarFunctionRegistry, MortarValue};
 
 /// The main plugin for the mortar 'bond' (bind) system.
 ///
@@ -64,7 +66,7 @@ impl MortarRegistry {
 /// The runtime state for the Mortar system.
 ///
 /// Mortar 运行时状态。
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub struct MortarRuntime {
     /// The currently active dialogue state.
     ///
@@ -78,6 +80,21 @@ pub struct MortarRuntime {
     ///
     /// 等待跳转到另一个节点 (path, node)。
     pub pending_jump: Option<(String, String)>,
+    /// The function registry for calling Mortar functions.
+    ///
+    /// 调用 Mortar 函数的函数注册表。
+    pub functions: binder::MortarFunctionRegistry,
+}
+
+impl Default for MortarRuntime {
+    fn default() -> Self {
+        Self {
+            active_dialogue: None,
+            pending_start: None,
+            pending_jump: None,
+            functions: binder::MortarFunctionRegistry::new(),
+        }
+    }
 }
 
 /// The state of a dialogue.
@@ -121,14 +138,21 @@ impl DialogueState {
         }
     }
 
-    /// Gets the currently displayed text.
+    /// Gets the currently displayed text (raw text without interpolation).
     ///
-    /// 获取当前显示的文本。
+    /// 获取当前显示的文本（不含插值的原始文本）。
     pub fn current_text(&self) -> Option<&str> {
         self.node_data
             .texts
             .get(self.text_index)
             .map(|s| s.text.as_str())
+    }
+
+    /// Gets the current text data with interpolation information.
+    ///
+    /// 获取包含插值信息的当前文本数据。
+    pub fn current_text_data(&self) -> Option<&mortar_compiler::Text> {
+        self.node_data.texts.get(self.text_index)
     }
 
     /// Checks if there is more text to display.
@@ -204,4 +228,62 @@ pub enum MortarEvent {
     ///
     /// 停止当前对话。
     StopDialogue,
+}
+
+/// Processes interpolated text by calling bound functions.
+///
+/// 通过调用绑定函数来处理插值文本。
+pub fn process_interpolated_text(
+    text_data: &mortar_compiler::Text,
+    functions: &binder::MortarFunctionRegistry,
+) -> String {
+    // If there are no interpolated parts, return the original text
+    let Some(parts) = &text_data.interpolated_parts else {
+        return text_data.text.clone();
+    };
+
+    let mut result = String::new();
+    for part in parts {
+        match part.part_type.as_str() {
+            "text" => {
+                result.push_str(&part.content);
+            }
+            "expression" => {
+                // Extract function name and call it
+                if let Some(func_name) = &part.function_name {
+                    // Parse arguments
+                    let args: Vec<binder::MortarValue> = part
+                        .args
+                        .iter()
+                        .map(|arg| binder::MortarValue::parse(arg))
+                        .collect();
+
+                    // Call the function
+                    if let Some(value) = functions.call(func_name, &args) {
+                        match value {
+                            binder::MortarValue::String(s) => result.push_str(&s),
+                            binder::MortarValue::Number(n) => result.push_str(&n.to_string()),
+                            binder::MortarValue::Boolean(b) => result.push_str(&b.to_string()),
+                        }
+                    } else {
+                        // Function not found, keep the placeholder
+                        result.push_str(&part.content);
+                    }
+                } else {
+                    // No function name, keep the placeholder
+                    result.push_str(&part.content);
+                }
+            }
+            "placeholder" => {
+                // For placeholders, just keep the content as-is
+                result.push_str(&part.content);
+            }
+            _ => {
+                // Unknown type, keep the content
+                result.push_str(&part.content);
+            }
+        }
+    }
+
+    result
 }

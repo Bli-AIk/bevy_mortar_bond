@@ -53,7 +53,10 @@ fn main() {
     App::new()
         .add_plugins((DefaultPlugins, MortarPlugin))
         .init_resource::<DialogueFiles>()
-        .add_systems(Startup, (setup, load_initial_dialogue).chain())
+        .add_systems(
+            Startup,
+            (setup, setup_mortar_functions, load_initial_dialogue).chain(),
+        )
         .add_systems(
             Update,
             (
@@ -77,6 +80,51 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn(Camera2d);
     let font = asset_server.load("Unifont.otf");
     setup_dialogue_ui(&mut commands, font);
+}
+
+/// Sets up Mortar function bindings.
+///
+/// 设置 Mortar 函数绑定。
+fn setup_mortar_functions(mut runtime: ResMut<MortarRuntime>) {
+    // Register functions declared in the mortar file
+
+    // fn play_sound(file_name: String);
+    runtime
+        .functions
+        .register_fn1("play_sound", |file_name: String| {
+            info!("🔊 Playing sound: {}", file_name);
+            String::new() // void function
+        });
+
+    // fn set_animation(anim_name: String);
+    runtime
+        .functions
+        .register_fn1("set_animation", |anim_name: String| {
+            info!("🎬 Setting animation: {}", anim_name);
+            String::new() // void function
+        });
+
+    // fn set_color(value: String);
+    runtime
+        .functions
+        .register_fn1("set_color", |color: String| {
+            info!("🎨 Setting color: {}", color);
+            String::new() // void function
+        });
+
+    // fn get_name() -> String;
+    runtime.functions.register_fn0("get_name", || {
+        info!("📝 Getting player name");
+        "艾克".to_string()
+    });
+
+    // fn get_exclamation(count: Number) -> String;
+    runtime
+        .functions
+        .register_fn1("get_exclamation", |count: f64| {
+            info!("❗ Getting exclamation with count: {}", count);
+            "！".repeat(count as usize)
+        });
 }
 
 /// Loads the initial dialogue file and starts the first node.
@@ -154,7 +202,7 @@ fn handle_choice_buttons(
 fn update_dialogue_text(
     runtime: Res<MortarRuntime>,
     mut dialogue_query: Query<&mut Text, With<DialogueText>>,
-    mut last_text: Local<Option<String>>,
+    mut last_key: Local<Option<(String, String, usize)>>,
 ) {
     if !runtime.is_changed() {
         return;
@@ -162,21 +210,38 @@ fn update_dialogue_text(
 
     for mut text in &mut dialogue_query {
         if let Some(state) = &runtime.active_dialogue {
-            if let Some(current_text) = state.current_text() {
-                // Only log if text actually changed
-                if last_text.as_ref() != Some(&current_text.to_string()) {
-                    info!("📖 对话文本显示: [{}] {}", state.current_node, current_text);
-                    *last_text = Some(current_text.to_string());
-                }
+            // Create a key to track if the text has changed
+            let current_key = (
+                state.mortar_path.clone(),
+                state.current_node.clone(),
+                state.text_index,
+            );
 
-                **text = format!(
-                    "[{} / {}]\n\n{}",
-                    state.mortar_path, state.current_node, current_text
-                );
+            // Only process if this is a new text
+            let should_process = last_key.as_ref() != Some(&current_key);
+
+            if should_process {
+                if let Some(text_data) = state.current_text_data() {
+                    // Process interpolated text
+                    let processed_text =
+                        bevy_mortar_bond::process_interpolated_text(text_data, &runtime.functions);
+
+                    info!(
+                        "📖 对话文本显示: [{}] {}",
+                        state.current_node, processed_text
+                    );
+
+                    **text = format!(
+                        "[{} / {}]\n\n{}",
+                        state.mortar_path, state.current_node, processed_text
+                    );
+
+                    *last_key = Some(current_key);
+                }
             }
         } else {
             **text = "等待加载对话...".to_string();
-            *last_text = None;
+            *last_key = None;
         }
     }
 }
