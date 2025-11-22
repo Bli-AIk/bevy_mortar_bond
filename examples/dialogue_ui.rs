@@ -151,13 +151,13 @@ struct GameFunctions;
 #[bevy_mortar_bond::mortar_functions]
 impl GameFunctions {
     fn get_name() -> String {
-        info!("Getting player name");
+        info!("Example: Getting player name");
         "U-S-E-R".to_string()
     }
 
     fn get_exclamation(count: MortarNumber) -> String {
         let n = count.as_usize();
-        info!("Getting exclamation with count: {}", n);
+        info!("Example: Getting exclamation with count: {}", n);
         "！".repeat(n)
     }
 
@@ -165,22 +165,25 @@ impl GameFunctions {
         let v = verb.as_str();
         let o = obj.as_str();
         let l = level.as_usize();
-        info!("Creating message: verb={}, obj={}, level={}", v, o, l);
+        info!(
+            "Example: Creating message: verb={}, obj={}, level={}",
+            v, o, l
+        );
         format!("{}{}{}", v, o, "!".repeat(l))
     }
 
     fn play_sound(file_name: MortarString) -> MortarString {
-        info!("Playing sound: {}", file_name.as_str());
+        info!("Example: Playing sound: {}", file_name.as_str());
         file_name
     }
 
     fn set_animation(anim_name: MortarString) {
-        info!("Queuing animation: {}", anim_name.as_str());
+        info!("Example: Queuing animation: {}", anim_name.as_str());
         // Animation will be applied by the system that processes events
     }
 
     fn set_color(color: MortarString) {
-        info!("Queuing color change: {}", color.as_str());
+        info!("Example: Queuing color change: {}", color.as_str());
         // Color will be applied by the system that processes events
     }
 }
@@ -282,9 +285,9 @@ fn manage_choice_buttons(
     }
 
     // Create new buttons if we have choices
+    // Show choices immediately when available (typically after first text)
     if let Some(state) = &runtime.active_dialogue
         && let Some(choices) = state.get_choices()
-        && !state.has_next_text()
     {
         let font = asset_server.load("Unifont.otf");
 
@@ -474,7 +477,7 @@ fn update_dialogue_text_with_typewriter(
                 let processed_text =
                     bevy_mortar_bond::process_interpolated_text(text_data, &runtime.functions);
 
-                info!("Starting typewriter for: {}", processed_text);
+                info!("Example: Starting typewriter for: {}", processed_text);
 
                 // Remove old typewriter if exists
                 if typewriter_query.get(entity).is_ok() {
@@ -598,7 +601,7 @@ fn apply_pending_colors(
             for material_handle in triangle_query.iter() {
                 if let Some(material) = materials.get_mut(&material_handle.0) {
                     material.color = parsed_color;
-                    info!("Triangle color changed to {}", pending.0);
+                    info!("Example: Triangle color changed to {}", pending.0);
                 }
             }
         }
@@ -618,10 +621,10 @@ fn play_pending_audio(
     asset_server: Res<AssetServer>,
 ) {
     for (entity, pending) in &query {
-        info!("Loading and playing audio: {}", pending.0);
+        info!("Example: Loading and playing audio: {}", pending.0);
         let audio_source = asset_server.load::<AudioSource>(pending.0.clone());
         commands.spawn(AudioPlayer::new(audio_source));
-        
+
         // Remove the marker component after processing
         //
         // 移除处理后的标记组件

@@ -285,8 +285,13 @@ pub fn process_interpolated_text(
                     if let Some(value) = functions.call(func_name, &args) {
                         result.push_str(&value.to_display_string());
                     } else {
-                        // Function not found, keep the placeholder
-                        result.push_str(&part.content);
+                        // Function not found - warn and use default value
+                        warn!(
+                            "Function '{}' not bound, using default return value (empty string)",
+                            func_name
+                        );
+                        // For now, use empty string as default
+                        // TODO: Use proper default based on function's declared return type
                     }
                 } else {
                     // No function name, keep the placeholder
