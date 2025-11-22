@@ -1,7 +1,7 @@
 {
   "metadata": {
     "version": "0.4.0",
-    "generated_at": "2025-11-22T08:49:37.557210255Z"
+    "generated_at": "2025-11-22T09:28:57.620713264Z"
   },
   "variables": [
     {
@@ -30,7 +30,7 @@
     },
     {
       "name": "place",
-      "type": "branch",
+      "type": "Branch",
       "value": {
         "cases": [
           {
@@ -49,7 +49,7 @@
     },
     {
       "name": "greet",
-      "type": "branch",
+      "type": "Branch",
       "value": {
         "cases": [
           {
@@ -68,7 +68,7 @@
     },
     {
       "name": "location",
-      "type": "branch",
+      "type": "Branch",
       "value": {
         "cases": [
           {
@@ -92,7 +92,7 @@
     },
     {
       "name": "object",
-      "type": "branch",
+      "type": "Branch",
       "value": {
         "cases": [
           {
@@ -163,7 +163,7 @@
     },
     {
       "name": "scene_object",
-      "type": "branch",
+      "type": "Branch",
       "value": {
         "cases": [
           {

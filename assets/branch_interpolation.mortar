@@ -79,9 +79,10 @@ let scene_object: branch<current_location> [
     ]
     town, "老人"
 ]
-
 // Example combining text events and branch events
 node ComplexScene {
+
+
     // Main text with events (indices refer to non-interpolated parts only)
     text: $"你看见{scene_object}后，感到惊讶！"
     with events: [

@@ -560,17 +560,25 @@ fn update_dialogue_text_with_typewriter(
             let should_process = last_key.as_ref() != Some(&current_key);
 
             if should_process && let Some(text_data) = state.current_text_data() {
-                // Get function declarations from asset
-                let function_decls = registry
+                // Get function declarations and variables from asset
+                let asset_data = registry
                     .get(&state.mortar_path)
                     .and_then(|handle| assets.get(handle))
-                    .map(|asset| asset.data.functions.as_slice())
+                    .map(|asset| &asset.data);
+                
+                let function_decls = asset_data
+                    .map(|data| data.functions.as_slice())
+                    .unwrap_or(&[]);
+                
+                let variables = asset_data
+                    .map(|data| data.variables.as_slice())
                     .unwrap_or(&[]);
 
                 let processed_text = bevy_mortar_bond::process_interpolated_text(
                     text_data,
                     &runtime.functions,
                     function_decls,
+                    variables,
                 );
 
                 info!("Example: Starting typewriter for: {}", processed_text);
