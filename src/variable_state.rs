@@ -41,12 +41,28 @@ impl MortarVariableValue {
     }
 }
 
+/// Branch definition for branch interpolation.
+///
+/// 用于分支插值的分支定义。
+#[derive(Debug, Clone)]
+struct BranchDef {
+    enum_type: Option<String>,
+    cases: Vec<BranchCase>,
+}
+
+#[derive(Debug, Clone)]
+struct BranchCase {
+    condition: String,
+    text: String,
+}
+
 /// Component that manages variable state for a Mortar dialogue runtime.
 ///
 /// 管理 Mortar 对话运行时变量状态的组件。
 #[derive(Component, Debug, Clone)]
 pub struct MortarVariableState {
     variables: HashMap<String, MortarVariableValue>,
+    branches: HashMap<String, BranchDef>,
 }
 
 impl Default for MortarVariableState {
@@ -62,6 +78,7 @@ impl MortarVariableState {
     pub fn new() -> Self {
         Self {
             variables: HashMap::new(),
+            branches: HashMap::new(),
         }
     }
 
@@ -71,6 +88,42 @@ impl MortarVariableState {
     pub fn from_variables(variables: &[Variable]) -> Self {
         let mut state = Self::new();
         for var in variables {
+            // Handle Branch type specially
+            if var.var_type == "Branch" {
+                if let Some(value) = &var.value {
+                    if let Some(obj) = value.as_object() {
+                        let enum_type = obj
+                            .get("enum_type")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string());
+
+                        let mut cases = Vec::new();
+                        if let Some(cases_array) = obj.get("cases").and_then(|v| v.as_array()) {
+                            for case in cases_array {
+                                if let Some(case_obj) = case.as_object() {
+                                    let condition = case_obj
+                                        .get("condition")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
+                                    let text = case_obj
+                                        .get("text")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
+                                    cases.push(BranchCase { condition, text });
+                                }
+                            }
+                        }
+
+                        state
+                            .branches
+                            .insert(var.name.clone(), BranchDef { enum_type, cases });
+                    }
+                }
+                continue;
+            }
+
             // Try to parse the value
             if let Some(value) = &var.value {
                 if let Some(parsed_value) = MortarVariableValue::from_json(value) {
@@ -102,6 +155,45 @@ impl MortarVariableState {
     /// 获取变量值。
     pub fn get(&self, name: &str) -> Option<&MortarVariableValue> {
         self.variables.get(name)
+    }
+
+    /// Get a branch variable's text by evaluating its conditions.
+    ///
+    /// 通过评估条件获取分支变量的文本。
+    pub fn get_branch_text(&self, name: &str) -> Option<String> {
+        let branch = self.branches.get(name)?;
+
+        // If enum-based branch, check the enum variable value
+        if let Some(enum_var_name) = &branch.enum_type {
+            // Get the enum variable value (it's stored as "EnumName.member")
+            if let Some(enum_value) = self.get(enum_var_name) {
+                let enum_member = enum_value.to_display_string();
+                // Extract the member name after the dot
+                let member_name = if let Some(dot_pos) = enum_member.rfind('.') {
+                    &enum_member[dot_pos + 1..]
+                } else {
+                    &enum_member
+                };
+
+                // Find the case that matches the enum member
+                for case in &branch.cases {
+                    if case.condition == member_name {
+                        return Some(case.text.clone());
+                    }
+                }
+            }
+        } else {
+            // Boolean-based branch: check each condition
+            for case in &branch.cases {
+                if let Some(condition_value) = self.get(&case.condition) {
+                    if let MortarVariableValue::Boolean(true) = condition_value {
+                        return Some(case.text.clone());
+                    }
+                }
+            }
+        }
+
+        None
     }
 
     /// Evaluate a condition.

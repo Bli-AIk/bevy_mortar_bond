@@ -453,9 +453,12 @@ pub fn process_interpolated_text(
                 // Extract variable name from placeholder (e.g., "{status}" -> "status")
                 let var_name = part.content.trim_matches(|c| c == '{' || c == '}');
 
-                // Look up the variable in state
+                // First try to get as a regular variable
                 if let Some(value) = variable_state.get(var_name) {
                     result.push_str(&value.to_display_string());
+                } else if let Some(branch_text) = variable_state.get_branch_text(var_name) {
+                    // Try to get as a branch variable
+                    result.push_str(&branch_text);
                 } else {
                     // Variable not found, keep placeholder
                     warn!("Variable '{}' not found, keeping placeholder", var_name);
