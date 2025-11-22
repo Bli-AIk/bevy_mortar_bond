@@ -1,36 +1,129 @@
 //! Function binding system for Mortar.
 //!
 //! Mortar 函数绑定系统。
+//!
+//! # Type System
+//!
+//! Mortar uses strongly-typed wrappers for function arguments:
+//! - [`MortarString`] - for string values
+//! - [`MortarNumber`] - for numeric values (f64)
+//! - [`MortarBoolean`] - for boolean values
+//! - [`MortarVoid`] - for void/unit values
+//!
+//! # Example
+//!
+//! ```no_run
+//! use bevy_mortar_bond::{MortarString, MortarNumber, MortarBoolean};
+//!
+//! // Clear, type-safe function signature
+//! fn create_message(verb: MortarString, obj: MortarString, level: MortarNumber) -> String {
+//!     format!("{}{}{}", verb.as_str(), obj.as_str(), "!".repeat(level.as_usize()))
+//! }
+//! ```
 
 use std::collections::HashMap;
+
+/// String type for Mortar functions.
+///
+/// Mortar 函数的字符串类型。
+#[derive(Debug, Clone, PartialEq)]
+pub struct MortarString(pub String);
+
+impl std::fmt::Display for MortarString {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// Number type for Mortar functions.
+///
+/// Mortar 函数的数字类型。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MortarNumber(pub f64);
+
+impl std::fmt::Display for MortarNumber {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// Boolean type for Mortar functions.
+///
+/// Mortar 函数的布尔类型。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MortarBoolean(pub bool);
+
+impl std::fmt::Display for MortarBoolean {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// Void type for Mortar functions.
+///
+/// Mortar 函数的空类型。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MortarVoid;
+
+impl std::fmt::Display for MortarVoid {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "")
+    }
+}
 
 /// Arguments and return values for Mortar functions.
 ///
 /// Mortar 函数的参数和返回值。
 #[derive(Debug, Clone)]
 pub enum MortarValue {
-    String(String),
-    Number(f64),
-    Boolean(bool),
+    String(MortarString),
+    Number(MortarNumber),
+    Boolean(MortarBoolean),
     Void,
 }
 
+impl MortarString {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl MortarNumber {
+    pub fn as_f64(&self) -> f64 {
+        self.0
+    }
+
+    pub fn as_i32(&self) -> i32 {
+        self.0 as i32
+    }
+
+    pub fn as_usize(&self) -> usize {
+        self.0 as usize
+    }
+}
+
+impl MortarBoolean {
+    pub fn as_bool(&self) -> bool {
+        self.0
+    }
+}
+
 impl MortarValue {
-    pub fn as_string(&self) -> Option<&str> {
+    pub fn as_string(&self) -> Option<&MortarString> {
         match self {
             MortarValue::String(s) => Some(s),
             _ => None,
         }
     }
 
-    pub fn as_number(&self) -> Option<f64> {
+    pub fn as_number(&self) -> Option<MortarNumber> {
         match self {
             MortarValue::Number(n) => Some(*n),
             _ => None,
         }
     }
 
-    pub fn as_bool(&self) -> Option<bool> {
+    pub fn as_bool(&self) -> Option<MortarBoolean> {
         match self {
             MortarValue::Boolean(b) => Some(*b),
             _ => None,
@@ -39,9 +132,9 @@ impl MortarValue {
 
     pub fn to_display_string(&self) -> String {
         match self {
-            MortarValue::String(s) => s.clone(),
-            MortarValue::Number(n) => n.to_string(),
-            MortarValue::Boolean(b) => b.to_string(),
+            MortarValue::String(s) => s.0.clone(),
+            MortarValue::Number(n) => n.0.to_string(),
+            MortarValue::Boolean(b) => b.0.to_string(),
             MortarValue::Void => String::new(),
         }
     }
@@ -52,12 +145,12 @@ impl MortarValue {
     pub fn parse(s: &str) -> Self {
         // Try to parse as number first
         if let Ok(n) = s.parse::<f64>() {
-            return MortarValue::Number(n);
+            return MortarValue::Number(MortarNumber(n));
         }
         // Try to parse as boolean
         match s {
-            "true" => return MortarValue::Boolean(true),
-            "false" => return MortarValue::Boolean(false),
+            "true" => return MortarValue::Boolean(MortarBoolean(true)),
+            "false" => return MortarValue::Boolean(MortarBoolean(false)),
             _ => {}
         }
         // Default to string (remove quotes if present)
@@ -65,46 +158,108 @@ impl MortarValue {
         if (trimmed.starts_with('"') && trimmed.ends_with('"'))
             || (trimmed.starts_with('\'') && trimmed.ends_with('\''))
         {
-            MortarValue::String(trimmed[1..trimmed.len() - 1].to_string())
+            MortarValue::String(MortarString(trimmed[1..trimmed.len() - 1].to_string()))
         } else {
-            MortarValue::String(s.to_string())
+            MortarValue::String(MortarString(s.to_string()))
         }
+    }
+}
+
+// From implementations for specific types
+impl From<String> for MortarString {
+    fn from(s: String) -> Self {
+        MortarString(s)
+    }
+}
+
+impl From<&str> for MortarString {
+    fn from(s: &str) -> Self {
+        MortarString(s.to_string())
+    }
+}
+
+impl From<f64> for MortarNumber {
+    fn from(n: f64) -> Self {
+        MortarNumber(n)
+    }
+}
+
+impl From<i32> for MortarNumber {
+    fn from(n: i32) -> Self {
+        MortarNumber(n as f64)
+    }
+}
+
+impl From<usize> for MortarNumber {
+    fn from(n: usize) -> Self {
+        MortarNumber(n as f64)
+    }
+}
+
+impl From<bool> for MortarBoolean {
+    fn from(b: bool) -> Self {
+        MortarBoolean(b)
+    }
+}
+
+// From implementations for MortarValue
+impl From<MortarString> for MortarValue {
+    fn from(s: MortarString) -> Self {
+        MortarValue::String(s)
     }
 }
 
 impl From<String> for MortarValue {
     fn from(s: String) -> Self {
-        MortarValue::String(s)
+        MortarValue::String(MortarString(s))
     }
 }
 
 impl From<&str> for MortarValue {
     fn from(s: &str) -> Self {
-        MortarValue::String(s.to_string())
+        MortarValue::String(MortarString(s.to_string()))
+    }
+}
+
+impl From<MortarNumber> for MortarValue {
+    fn from(n: MortarNumber) -> Self {
+        MortarValue::Number(n)
     }
 }
 
 impl From<f64> for MortarValue {
     fn from(n: f64) -> Self {
-        MortarValue::Number(n)
-    }
-}
-
-impl From<bool> for MortarValue {
-    fn from(b: bool) -> Self {
-        MortarValue::Boolean(b)
+        MortarValue::Number(MortarNumber(n))
     }
 }
 
 impl From<i32> for MortarValue {
     fn from(n: i32) -> Self {
-        MortarValue::Number(n as f64)
+        MortarValue::Number(MortarNumber(n as f64))
     }
 }
 
 impl From<usize> for MortarValue {
     fn from(n: usize) -> Self {
-        MortarValue::Number(n as f64)
+        MortarValue::Number(MortarNumber(n as f64))
+    }
+}
+
+impl From<MortarBoolean> for MortarValue {
+    fn from(b: MortarBoolean) -> Self {
+        MortarValue::Boolean(b)
+    }
+}
+
+impl From<bool> for MortarValue {
+    fn from(b: bool) -> Self {
+        MortarValue::Boolean(MortarBoolean(b))
+    }
+}
+
+impl From<MortarVoid> for MortarValue {
+    fn from(_: MortarVoid) -> Self {
+        MortarValue::Void
     }
 }
 
@@ -151,15 +306,52 @@ impl MortarFunctionRegistry {
     }
 }
 
+// TryFrom implementations for specific types
+impl TryFrom<MortarValue> for MortarString {
+    type Error = ();
+
+    fn try_from(value: MortarValue) -> Result<Self, Self::Error> {
+        match value {
+            MortarValue::String(s) => Ok(s),
+            MortarValue::Number(n) => Ok(MortarString(n.0.to_string())),
+            MortarValue::Boolean(b) => Ok(MortarString(b.0.to_string())),
+            MortarValue::Void => Ok(MortarString(String::new())),
+        }
+    }
+}
+
+impl TryFrom<MortarValue> for MortarNumber {
+    type Error = ();
+
+    fn try_from(value: MortarValue) -> Result<Self, Self::Error> {
+        match value {
+            MortarValue::Number(n) => Ok(n),
+            MortarValue::String(s) => s.0.parse().map(MortarNumber).map_err(|_| ()),
+            _ => Err(()),
+        }
+    }
+}
+
+impl TryFrom<MortarValue> for MortarBoolean {
+    type Error = ();
+
+    fn try_from(value: MortarValue) -> Result<Self, Self::Error> {
+        match value {
+            MortarValue::Boolean(b) => Ok(b),
+            _ => Err(()),
+        }
+    }
+}
+
 // TryFrom implementations for common types
 impl TryFrom<MortarValue> for String {
     type Error = ();
 
     fn try_from(value: MortarValue) -> Result<Self, Self::Error> {
         match value {
-            MortarValue::String(s) => Ok(s),
-            MortarValue::Number(n) => Ok(n.to_string()),
-            MortarValue::Boolean(b) => Ok(b.to_string()),
+            MortarValue::String(s) => Ok(s.0),
+            MortarValue::Number(n) => Ok(n.0.to_string()),
+            MortarValue::Boolean(b) => Ok(b.0.to_string()),
             MortarValue::Void => Ok(String::new()),
         }
     }
@@ -170,8 +362,8 @@ impl TryFrom<MortarValue> for f64 {
 
     fn try_from(value: MortarValue) -> Result<Self, Self::Error> {
         match value {
-            MortarValue::Number(n) => Ok(n),
-            MortarValue::String(s) => s.parse().map_err(|_| ()),
+            MortarValue::Number(n) => Ok(n.0),
+            MortarValue::String(s) => s.0.parse().map_err(|_| ()),
             _ => Err(()),
         }
     }
@@ -182,8 +374,8 @@ impl TryFrom<MortarValue> for i32 {
 
     fn try_from(value: MortarValue) -> Result<Self, Self::Error> {
         match value {
-            MortarValue::Number(n) => Ok(n as i32),
-            MortarValue::String(s) => s.parse().map_err(|_| ()),
+            MortarValue::Number(n) => Ok(n.0 as i32),
+            MortarValue::String(s) => s.0.parse().map_err(|_| ()),
             _ => Err(()),
         }
     }
@@ -194,8 +386,8 @@ impl TryFrom<MortarValue> for usize {
 
     fn try_from(value: MortarValue) -> Result<Self, Self::Error> {
         match value {
-            MortarValue::Number(n) => Ok(n as usize),
-            MortarValue::String(s) => s.parse().map_err(|_| ()),
+            MortarValue::Number(n) => Ok(n.0 as usize),
+            MortarValue::String(s) => s.0.parse().map_err(|_| ()),
             _ => Err(()),
         }
     }
@@ -206,7 +398,7 @@ impl TryFrom<MortarValue> for bool {
 
     fn try_from(value: MortarValue) -> Result<Self, Self::Error> {
         match value {
-            MortarValue::Boolean(b) => Ok(b),
+            MortarValue::Boolean(b) => Ok(b.0),
             _ => Err(()),
         }
     }
