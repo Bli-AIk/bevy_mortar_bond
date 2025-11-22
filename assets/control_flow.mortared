@@ -1,7 +1,7 @@
 {
   "metadata": {
     "version": "0.4.0",
-    "generated_at": "2025-11-22T09:56:51.759702019Z"
+    "generated_at": "2025-11-22T10:09:13.214746252Z"
   },
   "variables": [
     {
@@ -293,6 +293,40 @@
     {
       "name": "ComplexLogic",
       "texts": [
+        {
+          "text": "当前分数： {player_score}, 当前等级： {level}",
+          "interpolated_parts": [
+            {
+              "type": "text",
+              "content": "当前分数： "
+            },
+            {
+              "type": "placeholder",
+              "content": "{player_score}"
+            },
+            {
+              "type": "text",
+              "content": ", 当前等级： "
+            },
+            {
+              "type": "placeholder",
+              "content": "{level}"
+            }
+          ]
+        },
+        {
+          "text": "has_bonus状态： {has_bonus}",
+          "interpolated_parts": [
+            {
+              "type": "text",
+              "content": "has_bonus状态： "
+            },
+            {
+              "type": "placeholder",
+              "content": "{has_bonus}"
+            }
+          ]
+        },
         {
           "text": "满足特殊条件，获得额外奖励！",
           "condition": {

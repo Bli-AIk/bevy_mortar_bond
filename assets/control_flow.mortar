@@ -84,6 +84,9 @@ node NestedConditions {
 } -> ComplexLogic
 
 node ComplexLogic {
+    text: $"当前分数： {player_score}, 当前等级： {level}"
+    text: $"has_bonus状态： {has_bonus}"
+
     if (player_score > 100 && level > 5) || has_bonus {
         text: "满足特殊条件，获得额外奖励！"
     } else {

@@ -544,6 +544,7 @@ fn update_dialogue_text_with_typewriter(
     mut last_key: Local<Option<(String, String, usize)>>,
     registry: Res<MortarRegistry>,
     assets: Res<Assets<MortarAsset>>,
+    mut events: MessageWriter<MortarEvent>,
 ) {
     if !runtime.is_changed() {
         return;
@@ -579,9 +580,10 @@ fn update_dialogue_text_with_typewriter(
                 // Check if condition is satisfied
                 if let Some(condition) = &text_data.condition {
                     if !variable_state.evaluate_condition(condition) {
-                        info!("Example: Condition not satisfied, skipping text");
-                        // Skip this text - don't display anything, just update last_key
+                        info!("Example: Condition not satisfied, auto-advancing to next text");
+                        // Skip this text and automatically advance to the next one
                         *last_key = Some(current_key);
+                        events.write(MortarEvent::NextText);
                         continue;
                     }
                 }
