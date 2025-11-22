@@ -1,7 +1,7 @@
 {
   "metadata": {
     "version": "0.4.0",
-    "generated_at": "2025-11-22T10:09:13.214746252Z"
+    "generated_at": "2025-11-22T10:11:59.336749250Z"
   },
   "variables": [
     {
@@ -287,7 +287,116 @@
     },
     {
       "name": "NestedConditions",
-      "texts": [],
+      "texts": [
+        {
+          "text": "完美组合：高分+获胜！",
+          "condition": {
+            "type": "binary",
+            "operator": "&&",
+            "left": {
+              "type": "binary",
+              "operator": ">",
+              "left": {
+                "type": "identifier",
+                "value": "player_score"
+              },
+              "right": {
+                "type": "identifier",
+                "value": "100"
+              }
+            },
+            "right": {
+              "type": "identifier",
+              "value": "is_winner"
+            }
+          }
+        },
+        {
+          "text": "高分但未获胜，继续加油！",
+          "condition": {
+            "type": "binary",
+            "operator": "&&",
+            "left": {
+              "type": "binary",
+              "operator": ">",
+              "left": {
+                "type": "identifier",
+                "value": "player_score"
+              },
+              "right": {
+                "type": "identifier",
+                "value": "100"
+              }
+            },
+            "right": {
+              "type": "unary",
+              "operator": "!",
+              "operand": {
+                "type": "identifier",
+                "value": "is_winner"
+              }
+            }
+          }
+        },
+        {
+          "text": "虽然分数不高，但赢了！",
+          "condition": {
+            "type": "binary",
+            "operator": "&&",
+            "left": {
+              "type": "unary",
+              "operator": "!",
+              "operand": {
+                "type": "binary",
+                "operator": ">",
+                "left": {
+                  "type": "identifier",
+                  "value": "player_score"
+                },
+                "right": {
+                  "type": "identifier",
+                  "value": "100"
+                }
+              }
+            },
+            "right": {
+              "type": "identifier",
+              "value": "is_winner"
+            }
+          }
+        },
+        {
+          "text": "分数和结果都需要改进。",
+          "condition": {
+            "type": "binary",
+            "operator": "&&",
+            "left": {
+              "type": "unary",
+              "operator": "!",
+              "operand": {
+                "type": "binary",
+                "operator": ">",
+                "left": {
+                  "type": "identifier",
+                  "value": "player_score"
+                },
+                "right": {
+                  "type": "identifier",
+                  "value": "100"
+                }
+              }
+            },
+            "right": {
+              "type": "unary",
+              "operator": "!",
+              "operand": {
+                "type": "identifier",
+                "value": "is_winner"
+              }
+            }
+          }
+        }
+      ],
       "next": "ComplexLogic"
     },
     {
