@@ -98,7 +98,6 @@ fn main() {
                 manage_choice_buttons,
                 update_button_states,
                 trigger_typewriter_events,
-                // Pure ECS systems handling game effects
                 apply_pending_animations,
                 apply_pending_colors,
                 update_rotate_animation,
@@ -567,6 +566,8 @@ fn apply_pending_animations(
             }
         }
         // Remove the marker component after processing
+        //
+        // 移除处理后的标记组件
         commands.entity(entity).remove::<PendingAnimation>();
     }
 }
@@ -590,13 +591,17 @@ fn apply_pending_colors(
             }
         }
         // Remove the marker component after processing
+        //
+        // 移除处理后的标记组件
         commands.entity(entity).remove::<PendingColorChange>();
     }
 }
 
 /// Process queued game commands from mortar functions
-///
 /// Component for rotation animation
+///
+/// 处理来自 mortar 函数的排队游戏命令
+/// 旋转动画的组件
 #[derive(Component)]
 struct RotateAnimation {
     timer: Timer,
@@ -604,6 +609,8 @@ struct RotateAnimation {
 }
 
 /// System to update rotation animations
+///
+/// 更新旋转动画的系统
 fn update_rotate_animation(
     mut commands: Commands,
     time: Res<Time>,
@@ -625,6 +632,8 @@ fn update_rotate_animation(
 }
 
 /// Parse hex color string like "#FF6B6B"
+///
+/// 转换十六进制颜色字符串，如 "#FF6B6B"
 fn parse_hex_color(hex: &str) -> Option<Color> {
     let hex = hex.trim_start_matches('#');
     if hex.len() != 6 {
