@@ -1,7 +1,7 @@
 {
   "metadata": {
     "version": "0.4.0",
-    "generated_at": "2025-11-21T13:43:06.316931206Z"
+    "generated_at": "2025-11-22T09:56:51.759702019Z"
   },
   "variables": [
     {
@@ -20,12 +20,18 @@
     },
     {
       "name": "has_bonus",
-      "type": "Boolean"
+      "type": "Boolean",
+      "value": true
+    },
+    {
+      "name": "great",
+      "type": "String",
+      "value": "继续努力"
     }
   ],
   "nodes": [
     {
-      "name": "ScoreEvaluation",
+      "name": "Start",
       "texts": [
         {
           "text": "优秀！你的分数超过了100分！",
@@ -43,7 +49,17 @@
           }
         },
         {
-          "text": "继续努力，争取突破100分。",
+          "text": "{great}，争取突破100分。",
+          "interpolated_parts": [
+            {
+              "type": "placeholder",
+              "content": "{great}"
+            },
+            {
+              "type": "text",
+              "content": "，争取突破100分。"
+            }
+          ],
           "condition": {
             "type": "unary",
             "operator": "!",
@@ -61,7 +77,8 @@
             }
           }
         }
-      ]
+      ],
+      "next": "BooleanCondition"
     },
     {
       "name": "BooleanCondition",
@@ -84,7 +101,8 @@
             }
           }
         }
-      ]
+      ],
+      "next": "MultipleComparisons"
     },
     {
       "name": "MultipleComparisons",
@@ -149,7 +167,8 @@
             }
           }
         }
-      ]
+      ],
+      "next": "LogicalOperators"
     },
     {
       "name": "LogicalOperators",
@@ -227,7 +246,8 @@
             }
           }
         }
-      ]
+      ],
+      "next": "NotOperator"
     },
     {
       "name": "NotOperator",
@@ -262,11 +282,13 @@
             }
           }
         }
-      ]
+      ],
+      "next": "NestedConditions"
     },
     {
       "name": "NestedConditions",
-      "texts": []
+      "texts": [],
+      "next": "ComplexLogic"
     },
     {
       "name": "ComplexLogic",

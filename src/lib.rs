@@ -26,12 +26,14 @@ mod debug;
 mod asset;
 mod binder;
 mod system;
+mod variable_state;
 
 pub use asset::{MortarAsset, MortarAssetLoader};
 pub use bevy_mortar_bond_macros::{MortarFunctions, mortar_functions};
 pub use binder::{
     MortarBoolean, MortarFunctionRegistry, MortarNumber, MortarString, MortarValue, MortarVoid,
 };
+pub use variable_state::{MortarVariableState, MortarVariableValue};
 
 /// Re-export mortar_compiler types for convenience.
 ///
@@ -250,6 +252,36 @@ impl DialogueState {
         self.node_data.texts.get(self.text_index)
     }
 
+    /// Gets the current text data, evaluating conditions if necessary.
+    ///
+    /// 获取当前文本数据，如有必要会评估条件。
+    pub fn current_text_data_evaluated(
+        &self,
+        variable_state: &crate::variable_state::MortarVariableState,
+    ) -> Option<&mortar_compiler::Text> {
+        // Find the appropriate text based on conditions
+        let text_data = self.node_data.texts.get(self.text_index)?;
+
+        // If there's no condition, return the text as-is
+        if text_data.condition.is_none() {
+            return Some(text_data);
+        }
+
+        // If there's a condition, check it
+        if let Some(condition) = &text_data.condition {
+            if variable_state.evaluate_condition(condition) {
+                return Some(text_data);
+            } else {
+                // Condition failed, try to find else branch
+                // The else branch should be the next text with no condition or matching structure
+                // For now, we'll return None to skip this text
+                return None;
+            }
+        }
+
+        Some(text_data)
+    }
+
     /// Checks if there is more text to display.
     ///
     /// 检查是否还有更多文本。
@@ -371,7 +403,7 @@ pub fn process_interpolated_text(
     text_data: &mortar_compiler::Text,
     functions: &binder::MortarFunctionRegistry,
     function_decls: &[mortar_compiler::Function],
-    variables: &[mortar_compiler::Variable],
+    variable_state: &crate::variable_state::MortarVariableState,
 ) -> String {
     // If there are no interpolated parts, return the original text
     let Some(parts) = &text_data.interpolated_parts else {
@@ -421,49 +453,9 @@ pub fn process_interpolated_text(
                 // Extract variable name from placeholder (e.g., "{status}" -> "status")
                 let var_name = part.content.trim_matches(|c| c == '{' || c == '}');
 
-                // Look up the variable
-                if let Some(var) = variables.iter().find(|v| v.name == var_name) {
-                    // Handle Branch type variables
-                    if var.var_type == "Branch" {
-                        if let Some(value) = &var.value {
-                            if let Some(branch_obj) = value.as_object() {
-                                // For now, just use the first case's text as a placeholder
-                                // In a real implementation, you'd need to evaluate the condition
-                                if let Some(cases) =
-                                    branch_obj.get("cases").and_then(|c| c.as_array())
-                                {
-                                    if let Some(first_case) = cases.first() {
-                                        if let Some(text) =
-                                            first_case.get("text").and_then(|t| t.as_str())
-                                        {
-                                            warn!(
-                                                "Branch variable '{}' resolved to first case: {}. Implement condition evaluation for proper resolution.",
-                                                var_name, text
-                                            );
-                                            result.push_str(text);
-                                        } else {
-                                            result.push_str(&part.content);
-                                        }
-                                    } else {
-                                        result.push_str(&part.content);
-                                    }
-                                } else {
-                                    result.push_str(&part.content);
-                                }
-                            } else {
-                                result.push_str(&part.content);
-                            }
-                        } else {
-                            result.push_str(&part.content);
-                        }
-                    } else {
-                        // For non-Branch variables, try to display the value
-                        if let Some(value) = &var.value {
-                            result.push_str(&value.to_string());
-                        } else {
-                            result.push_str(&part.content);
-                        }
-                    }
+                // Look up the variable in state
+                if let Some(value) = variable_state.get(var_name) {
+                    result.push_str(&value.to_display_string());
                 } else {
                     // Variable not found, keep placeholder
                     warn!("Variable '{}' not found, keeping placeholder", var_name);

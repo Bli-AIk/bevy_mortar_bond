@@ -14,7 +14,7 @@ use bevy::prelude::*;
 use bevy_ecs_typewriter::{Typewriter, TypewriterPlugin, TypewriterState};
 use bevy_mortar_bond::{
     MortarAsset, MortarEvent, MortarEventAction, MortarEventTracker, MortarFunctions, MortarNumber,
-    MortarPlugin, MortarRegistry, MortarRuntime, MortarString,
+    MortarPlugin, MortarRegistry, MortarRuntime, MortarString, MortarVariableState,
 };
 use std::time::Duration;
 use utils::ui::*;
@@ -560,7 +560,7 @@ fn update_dialogue_text_with_typewriter(
             let should_process = last_key.as_ref() != Some(&current_key);
 
             if should_process && let Some(text_data) = state.current_text_data() {
-                // Get function declarations and variables from asset
+                // Get asset data
                 let asset_data = registry
                     .get(&state.mortar_path)
                     .and_then(|handle| assets.get(handle))
@@ -570,15 +570,27 @@ fn update_dialogue_text_with_typewriter(
                     .map(|data| data.functions.as_slice())
                     .unwrap_or(&[]);
 
+                // Initialize variable state from asset
                 let variables = asset_data
                     .map(|data| data.variables.as_slice())
                     .unwrap_or(&[]);
+                let variable_state = MortarVariableState::from_variables(variables);
+
+                // Check if condition is satisfied
+                if let Some(condition) = &text_data.condition {
+                    if !variable_state.evaluate_condition(condition) {
+                        info!("Example: Condition not satisfied, skipping text");
+                        // TODO: Implement automatic text skipping when condition fails
+                        // For now, we'll just display a placeholder
+                        // In a real implementation, we should advance to the next text automatically
+                    }
+                }
 
                 let processed_text = bevy_mortar_bond::process_interpolated_text(
                     text_data,
                     &runtime.functions,
                     function_decls,
-                    variables,
+                    &variable_state,
                 );
 
                 info!("Example: Starting typewriter for: {}", processed_text);

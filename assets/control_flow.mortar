@@ -11,13 +11,13 @@ let great: String = "继续努力"
 
 // ===== Nodes with Control Flow =====
 
-node ScoreEvaluation {
+node Start {
     if player_score > 100 {
         text: "优秀！你的分数超过了100分！"
     } else {
         text: $"{great}，争取突破100分。"
     }
-} -> ScoreEvaluation
+} -> BooleanCondition
 
 node BooleanCondition {
     if is_winner {
