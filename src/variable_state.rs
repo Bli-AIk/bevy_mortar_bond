@@ -157,6 +157,26 @@ impl MortarVariableState {
         self.variables.get(name)
     }
 
+    /// Execute an assignment statement.
+    ///
+    /// 执行赋值语句。
+    pub fn execute_assignment(&mut self, var_name: &str, value_str: &str) {
+        // Parse the value string
+        if value_str.contains('.') {
+            // Enum member: "EnumName.member"
+            self.set(var_name, MortarVariableValue::String(value_str.to_string()));
+        } else if value_str == "true" {
+            self.set(var_name, MortarVariableValue::Boolean(true));
+        } else if value_str == "false" {
+            self.set(var_name, MortarVariableValue::Boolean(false));
+        } else if let Ok(num) = value_str.parse::<f64>() {
+            self.set(var_name, MortarVariableValue::Number(num));
+        } else {
+            // String or identifier
+            self.set(var_name, MortarVariableValue::String(value_str.to_string()));
+        }
+    }
+
     /// Get a branch variable's text by evaluating its conditions.
     ///
     /// 通过评估条件获取分支变量的文本。
@@ -232,8 +252,8 @@ impl MortarVariableState {
             "<" => self.compare_values(left, right, |a, b| a < b),
             ">=" => self.compare_values(left, right, |a, b| a >= b),
             "<=" => self.compare_values(left, right, |a, b| a <= b),
-            "==" => self.compare_values(left, right, |a, b| (a - b).abs() < f64::EPSILON),
-            "!=" => self.compare_values(left, right, |a, b| (a - b).abs() >= f64::EPSILON),
+            "==" => self.compare_values_eq(left, right, true),
+            "!=" => self.compare_values_eq(left, right, false),
             _ => {
                 warn!("Unknown binary operator: {}", operator);
                 false
@@ -297,6 +317,48 @@ impl MortarVariableState {
                 warn!("Cannot compare non-numeric values");
                 false
             }
+        }
+    }
+
+    fn compare_values_eq(
+        &self,
+        left: &IfCondition,
+        right: &IfCondition,
+        expect_equal: bool,
+    ) -> bool {
+        // Try numeric comparison first
+        let left_num = self.get_numeric_value(left);
+        let right_num = self.get_numeric_value(right);
+
+        if let (Some(l), Some(r)) = (left_num, right_num) {
+            let is_equal = (l - r).abs() < f64::EPSILON;
+            return if expect_equal { is_equal } else { !is_equal };
+        }
+
+        // Try string comparison (for enum members)
+        let left_str = self.get_string_value(left);
+        let right_str = self.get_string_value(right);
+
+        if let (Some(l), Some(r)) = (left_str, right_str) {
+            let is_equal = l == r;
+            return if expect_equal { is_equal } else { !is_equal };
+        }
+
+        false
+    }
+
+    fn get_string_value(&self, condition: &IfCondition) -> Option<String> {
+        match condition.cond_type.as_str() {
+            "identifier" => {
+                let identifier = condition.value.as_ref()?;
+                match self.get(identifier) {
+                    Some(val) => Some(val.to_display_string()),
+                    None => None,
+                }
+            }
+            "enum_member" => condition.value.clone(),
+            "literal" => condition.value.clone(),
+            _ => None,
         }
     }
 

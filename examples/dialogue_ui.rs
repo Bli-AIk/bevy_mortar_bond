@@ -78,10 +78,19 @@ impl DialogueFiles {
     }
 }
 
+/// Resource to hold the runtime variable state
+///
+/// 持有运行时变量状态的资源
+#[derive(Resource, Default)]
+struct RuntimeVariableState {
+    state: Option<MortarVariableState>,
+}
+
 fn main() {
     App::new()
         .add_plugins((DefaultPlugins, MortarPlugin, TypewriterPlugin))
         .init_resource::<DialogueFiles>()
+        .init_resource::<RuntimeVariableState>()
         .add_systems(
             Startup,
             (
@@ -100,6 +109,7 @@ fn main() {
                 handle_choice_buttons,
                 handle_reload_button,
                 handle_switch_file_button,
+                manage_variable_state,
                 update_dialogue_text_with_typewriter,
                 manage_choice_buttons,
                 update_choice_button_styles,
@@ -533,6 +543,30 @@ fn handle_switch_file_button(
     }
 }
 
+/// Manages variable state lifecycle
+///
+/// 管理变量状态生命周期
+fn manage_variable_state(
+    runtime: Res<MortarRuntime>,
+    mut var_state_res: ResMut<RuntimeVariableState>,
+    mut last_dialogue_key: Local<Option<(String, String)>>,
+) {
+    if let Some(state) = &runtime.active_dialogue {
+        let current_key = (state.mortar_path.clone(), state.current_node.clone());
+
+        // Reset variable state when dialogue changes
+        if last_dialogue_key.as_ref() != Some(&current_key) {
+            info!("Example: Resetting variable state for new dialogue");
+            var_state_res.state = None;
+            *last_dialogue_key = Some(current_key);
+        }
+    } else if last_dialogue_key.is_some() {
+        // Dialogue ended, clear state
+        var_state_res.state = None;
+        *last_dialogue_key = None;
+    }
+}
+
 /// Updates dialogue text with typewriter effect
 ///
 /// 使用打字机效果更新对话文本
@@ -542,9 +576,11 @@ fn update_dialogue_text_with_typewriter(
     mut dialogue_query: Query<(Entity, &mut Text), With<DialogueText>>,
     typewriter_query: Query<&Typewriter, With<DialogueText>>,
     mut last_key: Local<Option<(String, String, usize)>>,
+    mut skip_next_conditional: Local<bool>,
     registry: Res<MortarRegistry>,
     assets: Res<Assets<MortarAsset>>,
     mut events: MessageWriter<MortarEvent>,
+    mut var_state_res: ResMut<RuntimeVariableState>,
 ) {
     if !runtime.is_changed() {
         return;
@@ -571,29 +607,69 @@ fn update_dialogue_text_with_typewriter(
                     .map(|data| data.functions.as_slice())
                     .unwrap_or(&[]);
 
-                // Initialize variable state from asset
-                let variables = asset_data
-                    .map(|data| data.variables.as_slice())
-                    .unwrap_or(&[]);
-                let variable_state = MortarVariableState::from_variables(variables);
+                // Get or initialize variable state
+                if var_state_res.state.is_none() {
+                    let variables = asset_data
+                        .map(|data| data.variables.as_slice())
+                        .unwrap_or(&[]);
+                    var_state_res.state = Some(MortarVariableState::from_variables(variables));
+                }
 
-                // Check if condition is satisfied
+                let variable_state = var_state_res.state.as_mut().unwrap();
+
+                // Check if we should skip this conditional text (it's the else branch of a previous if)
+                if *skip_next_conditional && text_data.condition.is_some() {
+                    info!("Example: Skipping else branch, auto-advancing");
+                    *skip_next_conditional = false;
+                    *last_key = Some(current_key);
+                    events.write(MortarEvent::NextText);
+                    continue;
+                }
+
+                // Check if condition is satisfied FIRST
                 if let Some(condition) = &text_data.condition
                     && !variable_state.evaluate_condition(condition)
                 {
                     info!("Example: Condition not satisfied, auto-advancing to next text");
+                    *skip_next_conditional = false;
                     // Skip this text and automatically advance to the next one
                     *last_key = Some(current_key);
                     events.write(MortarEvent::NextText);
                     continue;
                 }
 
+                // Execute pre_statements only if condition is satisfied (or no condition)
+                let has_statements = !text_data.pre_statements.is_empty();
+                for stmt in &text_data.pre_statements {
+                    if stmt.stmt_type == "assignment" {
+                        if let (Some(var_name), Some(value)) = (&stmt.var_name, &stmt.value) {
+                            info!("Example: Executing assignment: {} = {}", var_name, value);
+                            variable_state.execute_assignment(var_name, value);
+                        }
+                    }
+                }
+
                 let processed_text = bevy_mortar_bond::process_interpolated_text(
                     text_data,
                     &runtime.functions,
                     function_decls,
-                    &variable_state,
+                    variable_state,
                 );
+
+                // Skip empty texts (they were just for executing statements)
+                if processed_text.is_empty() {
+                    info!("Example: Empty text after statements, auto-advancing");
+                    // If this was a conditional statement execution, skip the next conditional (else branch)
+                    if has_statements && text_data.condition.is_some() {
+                        *skip_next_conditional = true;
+                    }
+                    *last_key = Some(current_key);
+                    events.write(MortarEvent::NextText);
+                    continue;
+                }
+
+                // Clear skip flag for non-conditional or non-empty texts
+                *skip_next_conditional = false;
 
                 info!("Example: Starting typewriter for: {}", processed_text);
 
