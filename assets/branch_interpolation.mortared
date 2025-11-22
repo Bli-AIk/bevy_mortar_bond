@@ -1,7 +1,7 @@
 {
   "metadata": {
     "version": "0.4.0",
-    "generated_at": "2025-11-22T08:43:08.228908776Z"
+    "generated_at": "2025-11-22T08:49:37.557210255Z"
   },
   "variables": [
     {
@@ -160,6 +160,76 @@
         ],
         "enum_type": "current_location"
       }
+    },
+    {
+      "name": "scene_object",
+      "type": "branch",
+      "value": {
+        "cases": [
+          {
+            "condition": "forest",
+            "events": [
+              {
+                "actions": [
+                  {
+                    "args": [
+                      "#FF0000"
+                    ],
+                    "type": "set_color"
+                  }
+                ],
+                "index": 0.0
+              },
+              {
+                "actions": [
+                  {
+                    "args": [
+                      "#FF7F00"
+                    ],
+                    "type": "set_color"
+                  }
+                ],
+                "index": 1.0
+              }
+            ],
+            "text": "野兽"
+          },
+          {
+            "condition": "city",
+            "events": [
+              {
+                "actions": [
+                  {
+                    "args": [
+                      "#0000FF"
+                    ],
+                    "type": "set_color"
+                  }
+                ],
+                "index": 0.0
+              },
+              {
+                "actions": [
+                  {
+                    "args": [
+                      "#FF00FF"
+                    ],
+                    "type": "set_color"
+                  }
+                ],
+                "index": 1.0
+              }
+            ],
+            "text": "警车"
+          },
+          {
+            "condition": "town",
+            "events": null,
+            "text": "老人"
+          }
+        ],
+        "enum_type": "current_location"
+      }
     }
   ],
   "enums": [
@@ -264,102 +334,39 @@
           ],
           "events": [
             {
-              "index": 1.0,
+              "index": 0.0,
               "actions": [
                 {
-                  "type": "shake"
+                  "type": "set_color",
+                  "args": [
+                    "#00FF00"
+                  ]
                 }
               ]
             },
             {
-              "index": 2.0,
+              "index": 5.0,
               "actions": [
                 {
-                  "type": "shake"
+                  "type": "set_color",
+                  "args": [
+                    "#FF33FF"
+                  ]
                 }
               ]
             },
             {
-              "index": 3.0,
+              "index": 9.0,
               "actions": [
                 {
-                  "type": "flash"
+                  "type": "set_color",
+                  "args": [
+                    "33FF22"
+                  ]
                 }
               ]
             }
           ]
-        }
-      ],
-      "variables": [
-        {
-          "name": "scene_object",
-          "type": "branch",
-          "value": {
-            "cases": [
-              {
-                "condition": "forest",
-                "events": [
-                  {
-                    "actions": [
-                      {
-                        "args": [
-                          "red"
-                        ],
-                        "type": "set_color"
-                      }
-                    ],
-                    "index": 0.0
-                  },
-                  {
-                    "actions": [
-                      {
-                        "args": [
-                          "orange"
-                        ],
-                        "type": "set_color"
-                      }
-                    ],
-                    "index": 1.0
-                  }
-                ],
-                "text": "野兽"
-              },
-              {
-                "condition": "city",
-                "events": [
-                  {
-                    "actions": [
-                      {
-                        "args": [
-                          "blue"
-                        ],
-                        "type": "set_color"
-                      }
-                    ],
-                    "index": 0.0
-                  },
-                  {
-                    "actions": [
-                      {
-                        "args": [
-                          "red"
-                        ],
-                        "type": "set_color"
-                      }
-                    ],
-                    "index": 1.0
-                  }
-                ],
-                "text": "警车"
-              },
-              {
-                "condition": "town",
-                "events": null,
-                "text": "老人"
-              }
-            ],
-            "enum_type": "current_location"
-          }
         }
       ]
     }
@@ -373,12 +380,6 @@
           "type": "String"
         }
       ]
-    },
-    {
-      "name": "shake"
-    },
-    {
-      "name": "flash"
     }
   ]
 }
