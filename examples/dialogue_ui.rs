@@ -27,6 +27,7 @@ impl Default for DialogueFiles {
     fn default() -> Self {
         Self {
             files: vec![
+                "simple.mortar".to_string(),
                 "demo.mortar".to_string(),
                 "basic.mortar".to_string(),
                 "branch_interpolation.mortar".to_string(),
