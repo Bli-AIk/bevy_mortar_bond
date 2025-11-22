@@ -1,14 +1,14 @@
 {
   "metadata": {
     "version": "0.4.0",
-    "generated_at": "2025-11-22T00:45:25.771897979Z"
+    "generated_at": "2025-11-22T07:15:53.148616127Z"
   },
   "nodes": [
     {
       "name": "Start",
       "texts": [
         {
-          "text": "你好呀，欢迎阅读这个 BASIC 互动故事。",
+          "text": "你好呀，欢迎阅读这个互动故事。",
           "events": [
             {
               "index": 0.0,
@@ -16,7 +16,7 @@
                 {
                   "type": "play_sound",
                   "args": [
-                    "greeting.wav"
+                    "vibrating-thud-39536.wav"
                   ]
                 }
               ]
@@ -33,7 +33,7 @@
                 {
                   "type": "play_sound",
                   "args": [
-                    "wave_sound.wav"
+                    "random-sound-1-80941.wav"
                   ]
                 }
               ]
@@ -44,7 +44,7 @@
                 {
                   "type": "set_color",
                   "args": [
-                    "#FF6B6B"
+                    "#AAAAAA"
                   ]
                 }
               ]
@@ -67,10 +67,7 @@
               "type": "text",
               "content": "，对不？"
             }
-          ]
-        },
-        {
-          "text": "太好啦，我们走！",
+          ],
           "events": [
             {
               "index": 4.2,
@@ -95,6 +92,9 @@
               ]
             }
           ]
+        },
+        {
+          "text": "太好啦，我们走！"
         }
       ],
       "next": "ChoicePoint"

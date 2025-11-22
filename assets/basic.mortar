@@ -10,9 +10,9 @@ node Start {
         // 使用 索引 + 事件 函数 的方式来编写事件。支持链式写法。
         // 这里的索引表示事件触发的字符位置（从 0 开始计数）。
         // 它会绑定到你的游戏具体实现——打字机播放的位置？音频时间轴？还是别的什么，都可以，看你怎么实现。
-        0, play_sound("greeting.wav")
-        6, set_animation("wave").play_sound("wave_sound.wav")
-        17, set_color("#FF6B6B")
+        0, play_sound("vibrating-thud-39536.wav")
+        6, set_animation("wave").play_sound("random-sound-1-80941.wav")
+        17, set_color("#AAAAAA")
     ]
     // 当我们再次使用 text 字段时，表示这是同一个节点的另一个文本块。
     // 你可以写若干个 text 块，它们会被顺序播放。
