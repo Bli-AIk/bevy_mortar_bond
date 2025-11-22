@@ -1,7 +1,7 @@
 {
   "metadata": {
     "version": "0.4.0",
-    "generated_at": "2025-11-22T00:08:57.309257836Z"
+    "generated_at": "2025-11-22T00:23:48.465116601Z"
   },
   "nodes": [
     {
@@ -70,7 +70,21 @@
           ]
         },
         {
-          "text": "太好啦，我们走！",
+          "text": "太好啦，我们走{get_exclamation}",
+          "interpolated_parts": [
+            {
+              "type": "text",
+              "content": "太好啦，我们走"
+            },
+            {
+              "type": "expression",
+              "content": "{get_exclamation}",
+              "function_name": "get_exclamation",
+              "args": [
+                "5"
+              ]
+            }
+          ],
           "events": [
             {
               "index": 4.2,
@@ -129,6 +143,16 @@
     },
     {
       "name": "get_name",
+      "return": "String"
+    },
+    {
+      "name": "get_exclamation",
+      "params": [
+        {
+          "name": "count",
+          "type": "Number"
+        }
+      ],
       "return": "String"
     }
   ]

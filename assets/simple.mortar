@@ -27,7 +27,7 @@ node Start {
     ]
 
     // 这个 text 块没有 events…… 这是完全合法的！
-    text: "太好啦，我们走！"
+    text: $"太好啦，我们走{get_exclamation(5)}"
 
 }
 
@@ -40,3 +40,5 @@ fn set_animation(anim_name: String);
 fn set_color(value: String);
 
 fn get_name() -> String;
+
+fn get_exclamation(count: Number) -> String;
