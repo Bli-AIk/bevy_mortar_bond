@@ -763,15 +763,28 @@ fn handle_mortar_action(entity: Entity, action: MortarEventAction, commands: &mu
 fn apply_pending_animations(
     mut commands: Commands,
     query: Query<(Entity, &PendingAnimation)>,
-    triangle_query: Query<Entity, With<TriangleSprite>>,
+    triangle_query: Query<(Entity, &Transform), With<TriangleSprite>>,
 ) {
     for (entity, pending) in &query {
-        if pending.0 == "wave" {
-            for triangle_entity in triangle_query.iter() {
-                commands.entity(triangle_entity).insert(RotateAnimation {
-                    timer: Timer::new(Duration::from_secs(1), TimerMode::Once),
-                    start_rotation: 0.0,
-                });
+        for (triangle_entity, transform) in triangle_query.iter() {
+            match pending.0.as_str() {
+                "wave" => {
+                    commands.entity(triangle_entity).insert(RotateAnimation {
+                        timer: Timer::new(Duration::from_secs(1), TimerMode::Once),
+                        start_rotation: 0.0,
+                    });
+                }
+                "left" => {
+                    let mut new_transform = *transform;
+                    new_transform.translation.x = -50.0;
+                    commands.entity(triangle_entity).insert(new_transform);
+                }
+                "right" => {
+                    let mut new_transform = *transform;
+                    new_transform.translation.x = 50.0;
+                    commands.entity(triangle_entity).insert(new_transform);
+                }
+                _ => {}
             }
         }
         // Remove the marker component after processing
@@ -780,7 +793,6 @@ fn apply_pending_animations(
         commands.entity(entity).remove::<PendingAnimation>();
     }
 }
-
 /// Apply pending color changes to triangle sprite
 ///
 /// 将待处理的颜色变化应用到三角形精灵
