@@ -1,7 +1,7 @@
 {
   "metadata": {
     "version": "0.4.0",
-    "generated_at": "2025-11-22T01:04:14.278126719Z"
+    "generated_at": "2025-11-22T04:49:55.334281447Z"
   },
   "nodes": [
     {
@@ -16,7 +16,7 @@
                 {
                   "type": "play_sound",
                   "args": [
-                    "greeting.wav"
+                    "random-sound-1-80941.wav"
                   ]
                 }
               ]
@@ -33,7 +33,7 @@
                 {
                   "type": "play_sound",
                   "args": [
-                    "wave_sound.wav"
+                    "random-sound-1-80941.wav"
                   ]
                 }
               ]
@@ -44,9 +44,26 @@
                 {
                   "type": "set_color",
                   "args": [
-                    "#FF6B6B"
+                    "#AAAAAA"
                   ]
                 }
+              ]
+            }
+          ]
+        },
+        {
+          "text": "我的天，三角形变色了{get_exclamation}",
+          "interpolated_parts": [
+            {
+              "type": "text",
+              "content": "我的天，三角形变色了"
+            },
+            {
+              "type": "expression",
+              "content": "{get_exclamation}",
+              "function_name": "get_exclamation",
+              "args": [
+                "10"
               ]
             }
           ]
@@ -66,23 +83,6 @@
             {
               "type": "text",
               "content": "，对不？"
-            }
-          ]
-        },
-        {
-          "text": "太好啦，我们走{get_exclamation}",
-          "interpolated_parts": [
-            {
-              "type": "text",
-              "content": "太好啦，我们走"
-            },
-            {
-              "type": "expression",
-              "content": "{get_exclamation}",
-              "function_name": "get_exclamation",
-              "args": [
-                "5"
-              ]
             }
           ],
           "events": [
@@ -106,6 +106,23 @@
                     "#FF6B6B"
                   ]
                 }
+              ]
+            }
+          ]
+        },
+        {
+          "text": "太好啦，我们走{get_exclamation}",
+          "interpolated_parts": [
+            {
+              "type": "text",
+              "content": "太好啦，我们走"
+            },
+            {
+              "type": "expression",
+              "content": "{get_exclamation}",
+              "function_name": "get_exclamation",
+              "args": [
+                "5"
               ]
             }
           ]

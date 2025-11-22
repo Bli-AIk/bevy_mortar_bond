@@ -17,7 +17,14 @@ use bevy_mortar_bond::{
     MortarString,
 };
 use mortar_compiler::Event as TextEvent;
+use std::time::Duration;
 use utils::ui::*;
+
+/// Marker component for the triangle sprite
+///
+/// 三角形精灵标记组件
+#[derive(Component)]
+struct TriangleSprite;
 
 /// Resource to track the current dialogue file and available files.
 ///
@@ -58,9 +65,18 @@ fn main() {
     App::new()
         .add_plugins((DefaultPlugins, MortarPlugin, TypewriterPlugin))
         .init_resource::<DialogueFiles>()
+        .add_message::<PlaySoundCommand>()
+        .add_message::<SetAnimationCommand>()
+        .add_message::<SetColorCommand>()
         .add_systems(
             Startup,
-            (setup, setup_mortar_functions, load_initial_dialogue).chain(),
+            (
+                setup,
+                setup_triangle_sprite,
+                setup_mortar_functions,
+                load_initial_dialogue,
+            )
+                .chain(),
         )
         .add_systems(
             Update,
@@ -74,6 +90,10 @@ fn main() {
                 manage_choice_buttons,
                 update_button_states,
                 trigger_typewriter_events,
+                handle_play_sound,
+                handle_set_animation,
+                handle_set_color,
+                update_rotate_animation,
             ),
         )
         .run();
@@ -86,6 +106,50 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn(Camera2d);
     let font = asset_server.load("Unifont.otf");
     setup_dialogue_ui(&mut commands, font);
+}
+
+/// Sets up the triangle sprite at the top of the screen.
+///
+/// 在屏幕顶部设置三角形精灵。
+fn setup_triangle_sprite(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<ColorMaterial>>) {
+    // Create a triangle mesh
+    let triangle = Mesh::from(Triangle2d::new(
+        Vec2::new(0.0, 30.0),
+        Vec2::new(-25.0, -15.0),
+        Vec2::new(25.0, -15.0),
+    ));
+
+    commands.spawn((
+        Mesh2d(meshes.add(triangle)),
+        MeshMaterial2d(materials.add(Color::srgb(0.3, 0.8, 0.9))),
+        Transform::from_xyz(0.0, 300.0, 0.0),
+        TriangleSprite,
+    ));
+}
+
+/// Message for playing sound
+///
+/// 播放音频的消息
+#[derive(Message)]
+struct PlaySoundCommand {
+    file_name: String,
+}
+
+/// Message for setting animation
+///
+/// 设置动画的消息
+#[derive(Message)]
+struct SetAnimationCommand {
+    anim_name: String,
+}
+
+/// Message for setting text color
+///
+/// 设置文本颜色的消息
+#[derive(Message)]
+struct SetColorCommand {
+    color: String,
+    index: usize,
 }
 
 #[derive(MortarFunctions)]
@@ -471,10 +535,13 @@ fn update_dialogue_text_with_typewriter(
 ///
 /// 在特定打字机索引处触发对话事件
 fn trigger_typewriter_events(
-    mut query: Query<(&Typewriter, &mut TypewriterDialogue)>,
+    mut query: Query<(Entity, &Typewriter, &mut TypewriterDialogue)>,
     runtime: Res<MortarRuntime>,
+    mut play_sound_writer: MessageWriter<PlaySoundCommand>,
+    mut set_anim_writer: MessageWriter<SetAnimationCommand>,
+    mut set_color_writer: MessageWriter<SetColorCommand>,
 ) {
-    for (typewriter, mut dialogue) in &mut query {
+    for (_entity, typewriter, mut dialogue) in &mut query {
         if typewriter.state != TypewriterState::Playing {
             continue;
         }
@@ -501,22 +568,155 @@ fn trigger_typewriter_events(
                 event.index, event.actions
             );
 
-            // Execute event actions
+            // Execute event actions by sending messages
             for action in &event.actions {
-                // action_type is the function name directly
-                let func_name = &action.action_type;
-                let args: Vec<bevy_mortar_bond::MortarValue> = action
-                    .args
-                    .iter()
-                    .map(|arg| bevy_mortar_bond::MortarValue::parse(arg))
-                    .collect();
+                match action.action_type.as_str() {
+                    "play_sound" => {
+                        if let Some(file_name) = action.args.first() {
+                            play_sound_writer.write(PlaySoundCommand {
+                                file_name: file_name.clone(),
+                            });
+                        }
+                    }
+                    "set_animation" => {
+                        if let Some(anim_name) = action.args.first() {
+                            set_anim_writer.write(SetAnimationCommand {
+                                anim_name: anim_name.clone(),
+                            });
+                        }
+                    }
+                    "set_color" => {
+                        if let Some(color) = action.args.first() {
+                            set_color_writer.write(SetColorCommand {
+                                color: color.clone(),
+                                index: event.index as usize,
+                            });
+                        }
+                    }
+                    _ => {
+                        // For other functions, call them directly
+                        let args: Vec<bevy_mortar_bond::MortarValue> = action
+                            .args
+                            .iter()
+                            .map(|arg| bevy_mortar_bond::MortarValue::parse(arg))
+                            .collect();
 
-                if let Some(result) = runtime.functions.call(func_name, &args) {
-                    info!("Event function '{}' returned: {:?}", func_name, result);
-                } else {
-                    warn!("Event function '{}' not found", func_name);
+                        if let Some(result) = runtime.functions.call(&action.action_type, &args) {
+                            info!("Event function '{}' returned: {:?}", action.action_type, result);
+                        } else {
+                            warn!("Event function '{}' not found", action.action_type);
+                        }
+                    }
                 }
             }
         }
     }
 }
+
+/// System to handle play_sound commands
+fn handle_play_sound(
+    mut _commands: Commands,
+    mut events: MessageReader<PlaySoundCommand>,
+    _asset_server: Res<AssetServer>,
+) {
+    for event in events.read() {
+        info!("🔊 Playing sound: {} (audio playback requires additional setup)", event.file_name);
+        
+        // Note: Audio playback in Bevy 0.17 requires proper audio backend configuration
+        // The WAV file exists and format is correct (PCM 16-bit mono 44.1kHz)
+        // For now, sound events are logged but not played to avoid crashes
+        
+        // Uncomment when audio backend is properly configured:
+        // let audio_handle = asset_server.load(&event.file_name);
+        // commands.spawn((
+        //     AudioPlayer::new(audio_handle),
+        //     PlaybackSettings {
+        //         mode: bevy::audio::PlaybackMode::Despawn,
+        //         ..default()
+        //     },
+        // ));
+    }
+}
+
+/// System to handle set_animation commands
+fn handle_set_animation(
+    mut events: MessageReader<SetAnimationCommand>,
+    triangle_query: Query<Entity, With<TriangleSprite>>,
+    mut commands: Commands,
+) {
+    for event in events.read() {
+        info!("🔄 Setting animation: {}", event.anim_name);
+        
+        if event.anim_name == "wave" {
+            for entity in triangle_query.iter() {
+                commands.entity(entity).insert(RotateAnimation {
+                    timer: Timer::new(Duration::from_secs(1), TimerMode::Once),
+                    start_rotation: 0.0,
+                });
+            }
+        }
+    }
+}
+
+/// Component for rotation animation
+#[derive(Component)]
+struct RotateAnimation {
+    timer: Timer,
+    start_rotation: f32,
+}
+
+/// System to update rotation animations
+fn update_rotate_animation(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut query: Query<(Entity, &mut Transform, &mut RotateAnimation)>,
+) {
+    for (entity, mut transform, mut anim) in &mut query {
+        anim.timer.tick(time.delta());
+        
+        let progress = anim.timer.fraction();
+        let angle = anim.start_rotation + progress * std::f32::consts::TAU;
+        
+        transform.rotation = Quat::from_rotation_z(angle);
+        
+        if anim.timer.finished() {
+            commands.entity(entity).remove::<RotateAnimation>();
+            transform.rotation = Quat::from_rotation_z(0.0);
+        }
+    }
+}
+
+/// System to handle set_color commands - changes triangle color
+fn handle_set_color(
+    mut events: MessageReader<SetColorCommand>,
+    triangle_query: Query<&MeshMaterial2d<ColorMaterial>, With<TriangleSprite>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
+    for event in events.read() {
+        info!("🎨 Setting triangle color: {} at index {}", event.color, event.index);
+        
+        if let Some(color) = parse_hex_color(&event.color) {
+            for material_handle in &triangle_query {
+                if let Some(material) = materials.get_mut(&material_handle.0) {
+                    material.color = color;
+                    info!("✅ Triangle color changed to {}", event.color);
+                }
+            }
+        }
+    }
+}
+
+/// Parse hex color string like "#FF6B6B"
+fn parse_hex_color(hex: &str) -> Option<Color> {
+    let hex = hex.trim_start_matches('#');
+    if hex.len() != 6 {
+        return None;
+    }
+    
+    let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+    let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+    let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+    
+    Some(Color::srgb(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0))
+}
+
