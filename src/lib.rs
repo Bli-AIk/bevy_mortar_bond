@@ -253,12 +253,59 @@ pub enum MortarEvent {
     StopDialogue,
 }
 
+/// Gets default return value based on type.
+///
+/// 根据类型获取默认返回值。
+fn get_default_return_value(return_type: &str) -> String {
+    match return_type {
+        "Boolean" | "Bool" => "false".to_string(),
+        "Number" => "0".to_string(),
+        "String" => String::new(),
+        _ => String::new(), // void or unknown
+    }
+}
+
+/// Evaluates a condition by calling the bound function.
+///
+/// 通过调用绑定函数来评估条件。
+pub fn evaluate_condition(
+    condition: &mortar_compiler::Condition,
+    functions: &binder::MortarFunctionRegistry,
+    function_decls: &[mortar_compiler::Function],
+) -> bool {
+    // Parse arguments
+    let args: Vec<binder::MortarValue> = condition
+        .args
+        .iter()
+        .map(|arg| binder::MortarValue::parse(arg))
+        .collect();
+
+    // Call the function
+    if let Some(value) = functions.call(&condition.condition_type, &args) {
+        // Try to convert to boolean
+        match value {
+            binder::MortarValue::Boolean(b) => b.0,
+            binder::MortarValue::Number(n) => n.0 != 0.0,
+            binder::MortarValue::String(s) => !s.0.is_empty(),
+            binder::MortarValue::Void => false,
+        }
+    } else {
+        // Function not found - default to false
+        warn!(
+            "Condition function '{}' not bound, defaulting to false",
+            condition.condition_type
+        );
+        false
+    }
+}
+
 /// Processes interpolated text by calling bound functions.
 ///
 /// 通过调用绑定函数来处理插值文本。
 pub fn process_interpolated_text(
     text_data: &mortar_compiler::Text,
     functions: &binder::MortarFunctionRegistry,
+    function_decls: &[mortar_compiler::Function],
 ) -> String {
     // If there are no interpolated parts, return the original text
     let Some(parts) = &text_data.interpolated_parts else {
@@ -285,13 +332,19 @@ pub fn process_interpolated_text(
                     if let Some(value) = functions.call(func_name, &args) {
                         result.push_str(&value.to_display_string());
                     } else {
-                        // Function not found - warn and use default value
+                        // Function not found - get default value based on return type
+                        let return_type = function_decls
+                            .iter()
+                            .find(|f| f.name == *func_name)
+                            .and_then(|f| f.return_type.as_deref())
+                            .unwrap_or("void");
+
+                        let default_value = get_default_return_value(return_type);
                         warn!(
-                            "Function '{}' not bound, using default return value (empty string)",
-                            func_name
+                            "Function '{}' not bound, using default return value: {}",
+                            func_name, default_value
                         );
-                        // For now, use empty string as default
-                        // TODO: Use proper default based on function's declared return type
+                        result.push_str(&default_value);
                     }
                 } else {
                     // No function name, keep the placeholder

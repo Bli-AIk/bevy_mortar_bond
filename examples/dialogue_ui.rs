@@ -13,7 +13,7 @@ mod utils;
 use bevy::prelude::*;
 use bevy_ecs_typewriter::{Typewriter, TypewriterPlugin, TypewriterState};
 use bevy_mortar_bond::{
-    MortarEvent, MortarEventAction, MortarEventTracker, MortarFunctions, MortarNumber,
+    MortarAsset, MortarEvent, MortarEventAction, MortarEventTracker, MortarFunctions, MortarNumber,
     MortarPlugin, MortarRegistry, MortarRuntime, MortarString,
 };
 use std::time::Duration;
@@ -270,6 +270,8 @@ fn manage_choice_buttons(
     container_query: Query<Entity, With<ChoiceContainer>>,
     button_query: Query<Entity, With<ChoiceButton>>,
     asset_server: Res<AssetServer>,
+    registry: Res<MortarRegistry>,
+    assets: Res<Assets<MortarAsset>>,
 ) {
     if !runtime.is_changed() {
         return;
@@ -291,10 +293,33 @@ fn manage_choice_buttons(
     {
         let font = asset_server.load("Unifont.otf");
 
+        // Get function declarations for condition evaluation
+        let function_decls = registry
+            .get(&state.mortar_path)
+            .and_then(|handle| assets.get(handle))
+            .map(|asset| asset.data.functions.as_slice())
+            .unwrap_or(&[]);
+
         for (index, choice) in choices.iter().enumerate() {
             let is_selected = state.selected_choice == Some(index);
 
-            let (bg_color, border_color, text_color) = if is_selected {
+            // Evaluate condition if present
+            let is_enabled = choice
+                .condition
+                .as_ref()
+                .map(|cond| {
+                    bevy_mortar_bond::evaluate_condition(cond, &runtime.functions, function_decls)
+                })
+                .unwrap_or(true); // No condition means always enabled
+
+            let (bg_color, border_color, text_color) = if !is_enabled {
+                // Disabled style (grayed out)
+                (
+                    Color::srgb(0.15, 0.15, 0.15),
+                    Color::srgb(0.25, 0.25, 0.25),
+                    Color::srgb(0.4, 0.4, 0.4),
+                )
+            } else if is_selected {
                 // Selected style
                 (
                     Color::srgb(0.3, 0.4, 0.6),
@@ -458,6 +483,8 @@ fn update_dialogue_text_with_typewriter(
     mut dialogue_query: Query<(Entity, &mut Text), With<DialogueText>>,
     typewriter_query: Query<&Typewriter, With<DialogueText>>,
     mut last_key: Local<Option<(String, String, usize)>>,
+    registry: Res<MortarRegistry>,
+    assets: Res<Assets<MortarAsset>>,
 ) {
     if !runtime.is_changed() {
         return;
@@ -474,8 +501,18 @@ fn update_dialogue_text_with_typewriter(
             let should_process = last_key.as_ref() != Some(&current_key);
 
             if should_process && let Some(text_data) = state.current_text_data() {
-                let processed_text =
-                    bevy_mortar_bond::process_interpolated_text(text_data, &runtime.functions);
+                // Get function declarations from asset
+                let function_decls = registry
+                    .get(&state.mortar_path)
+                    .and_then(|handle| assets.get(handle))
+                    .map(|asset| asset.data.functions.as_slice())
+                    .unwrap_or(&[]);
+
+                let processed_text = bevy_mortar_bond::process_interpolated_text(
+                    text_data,
+                    &runtime.functions,
+                    function_decls,
+                );
 
                 info!("Example: Starting typewriter for: {}", processed_text);
 
