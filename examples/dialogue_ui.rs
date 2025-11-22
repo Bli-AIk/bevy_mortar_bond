@@ -56,11 +56,11 @@ impl Default for DialogueFiles {
     fn default() -> Self {
         Self {
             files: vec![
-                "control_flow.mortar".to_string(),
                 "branch_interpolation.mortar".to_string(),
-                "simple.mortar".to_string(),
                 "demo.mortar".to_string(),
+                "simple.mortar".to_string(),
                 "basic.mortar".to_string(),
+                "control_flow.mortar".to_string(),
                 "performance_system.mortar".to_string(),
             ],
             current_index: 0,
@@ -578,14 +578,14 @@ fn update_dialogue_text_with_typewriter(
                 let variable_state = MortarVariableState::from_variables(variables);
 
                 // Check if condition is satisfied
-                if let Some(condition) = &text_data.condition {
-                    if !variable_state.evaluate_condition(condition) {
-                        info!("Example: Condition not satisfied, auto-advancing to next text");
-                        // Skip this text and automatically advance to the next one
-                        *last_key = Some(current_key);
-                        events.write(MortarEvent::NextText);
-                        continue;
-                    }
+                if let Some(condition) = &text_data.condition
+                    && !variable_state.evaluate_condition(condition)
+                {
+                    info!("Example: Condition not satisfied, auto-advancing to next text");
+                    // Skip this text and automatically advance to the next one
+                    *last_key = Some(current_key);
+                    events.write(MortarEvent::NextText);
+                    continue;
                 }
 
                 let processed_text = bevy_mortar_bond::process_interpolated_text(
