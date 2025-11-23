@@ -291,12 +291,19 @@ impl DialogueState {
                     }
                     "choice" => {
                         // Extract choices
-                        if let Some(options_value) = content_value.get("options")
-                            && let Ok(parsed_choices) =
-                                serde_json::from_value::<Vec<Choice>>(options_value.clone())
-                        {
-                            choices = Some(parsed_choices);
-                            choice_content_index = Some(content_idx);
+                        if let Some(options_value) = content_value.get("options") {
+                            match serde_json::from_value::<Vec<Choice>>(options_value.clone()) {
+                                Ok(parsed_choices) => {
+                                    choices = Some(parsed_choices);
+                                    choice_content_index = Some(content_idx);
+                                }
+                                Err(err) => {
+                                    warn!(
+                                        "Failed to parse choice options at content index {}: {}",
+                                        content_idx, err
+                                    );
+                                }
+                            }
                         }
                     }
                     "run_event" | "run_timeline" => {
