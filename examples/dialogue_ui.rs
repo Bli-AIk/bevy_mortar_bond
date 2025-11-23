@@ -408,10 +408,7 @@ fn process_run_statements_after_text(
         if !pending {
             runs_executing.executing = false;
         }
-    } else if let Some((event_name, maybe_duration, ignore_duration)) =
-        run_sequence_with_durations.first()
-    {
-        let first_kind = run_items.first().map(|item| item.kind.clone());
+    } else if let Some((event_name, _, _)) = run_sequence_with_durations.first() {
         // Single run - may still trigger a timeline, so check return value
         let timeline_running = execute_run_by_name(
             event_name,
@@ -421,26 +418,8 @@ fn process_run_statements_after_text(
             dialogue_entity,
         );
 
-        match first_kind {
-            Some(DialogueRunKind::Timeline) => {
-                if !timeline_running {
-                    runs_executing.executing = false;
-                }
-            }
-            Some(DialogueRunKind::Event) | None => {
-                if !timeline_running && !ignore_duration && maybe_duration.unwrap_or(0.0) > 0.0 {
-                    let duration_secs = maybe_duration.unwrap_or(0.0);
-                    commands.spawn(PendingRunExecution {
-                        timer: Timer::from_seconds(duration_secs as f32, TimerMode::Once),
-                        remaining_runs: Vec::new(),
-                        event_defs: event_defs.clone(),
-                        timeline_defs: timeline_defs.clone(),
-                        dialogue_entity,
-                    });
-                } else if !timeline_running {
-                    runs_executing.executing = false;
-                }
-            }
+        if !timeline_running {
+            runs_executing.executing = false;
         }
     }
 
