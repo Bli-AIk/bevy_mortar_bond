@@ -69,12 +69,12 @@ impl Default for DialogueFiles {
     fn default() -> Self {
         Self {
             files: vec![
-                "performance_system.mortar".to_string(),
                 "demo.mortar".to_string(),
                 "simple.mortar".to_string(),
                 "basic.mortar".to_string(),
                 "control_flow.mortar".to_string(),
                 "branch_interpolation.mortar".to_string(),
+                "performance_system.mortar".to_string(),
             ],
             current_index: 0,
         }
