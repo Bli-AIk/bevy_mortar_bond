@@ -758,24 +758,29 @@ fn process_run_statements_after_text(
 
     // If there are multiple consecutive runs, treat them like a timeline sequence with durations
     if run_sequence_with_durations.len() > 1 {
-        start_timeline_execution(
+        let pending = start_timeline_execution(
             run_sequence_with_durations,
             event_defs.to_vec(),
             timeline_defs.to_vec(),
             dialogue_entity,
             &mut commands,
         );
+        if !pending {
+            runs_executing.executing = false;
+        }
     } else if let Some((event_name, _, _)) = run_sequence_with_durations.first() {
-        // Single run, execute immediately (no duration wait)
-        execute_run_by_name(
+        // Single run - may still trigger a timeline, so check return value
+        let timeline_running = execute_run_by_name(
             event_name,
             event_defs,
             timeline_defs,
             &mut commands,
             dialogue_entity,
         );
-        // No pending execution for single run without duration
-        runs_executing.executing = false;
+        if !timeline_running {
+            // No pending execution for simple events
+            runs_executing.executing = false;
+        }
     }
 
     // Mark content items as executed and clear pending position
@@ -1346,7 +1351,7 @@ fn process_pending_run_executions(
                     let timeline_defs = pending.timeline_defs.clone();
                     let dialogue_entity = pending.dialogue_entity;
                     commands.entity(entity).despawn();
-                    start_timeline_execution(
+                    let _ = start_timeline_execution(
                         remaining,
                         event_defs,
                         timeline_defs,
@@ -1405,21 +1410,23 @@ fn parse_hex_color(hex: &str) -> Option<Color> {
     ))
 }
 
-/// Execute a run statement by name - either an event or a timeline
+/// Execute a run statement by name - either an event or a timeline.
+/// Returns true if the execution will continue asynchronously (timeline with duration).
 ///
-/// 通过名称执行run语句 - 事件或时间轴
+/// 通过名称执行 run 语句 - 事件或时间轴。
+/// 若执行会异步继续（带持续时间的时间轴），返回 true。
 fn execute_run_by_name(
     event_name: &str,
     event_defs: &[mortar_compiler::EventDef],
     timeline_defs: &[mortar_compiler::TimelineDef],
     commands: &mut Commands,
     entity: Entity,
-) {
+) -> bool {
     // First try to find as an event
     if let Some(event_def) = event_defs.iter().find(|e| e.name == event_name) {
         info!("Example: Executing event: {}", event_name);
         execute_event_action(&event_def.action, commands, entity);
-        return;
+        return false;
     }
 
     // Then try to find as a timeline
@@ -1457,18 +1464,20 @@ fn execute_run_by_name(
 
         // Start executing the timeline sequence
         if !timeline_sequence.is_empty() {
-            start_timeline_execution(
+            let _ = start_timeline_execution(
                 timeline_sequence,
                 event_defs.to_vec(),
                 timeline_defs.to_vec(),
                 entity,
                 commands,
             );
+            return true;
         }
-        return;
+        return false;
     }
 
     warn!("Example: Run statement target not found: {}", event_name);
+    false
 }
 
 /// Start executing a timeline sequence with durations
@@ -1480,7 +1489,9 @@ fn start_timeline_execution(
     timeline_defs: Vec<mortar_compiler::TimelineDef>,
     dialogue_entity: Entity,
     commands: &mut Commands,
-) {
+) -> bool {
+    let mut spawned_async = false;
+
     // Execute the first event immediately
     if let Some((first_event, first_duration, ignore_duration)) = sequence.first() {
         if first_event != "__WAIT__" {
@@ -1514,9 +1525,10 @@ fn start_timeline_execution(
                     timeline_defs,
                     dialogue_entity,
                 });
+                spawned_async = true;
             } else {
                 // No duration, continue immediately
-                start_timeline_execution(
+                spawned_async |= start_timeline_execution(
                     remaining,
                     event_defs,
                     timeline_defs,
@@ -1526,6 +1538,8 @@ fn start_timeline_execution(
             }
         }
     }
+
+    spawned_async
 }
 
 /// Execute an event action
