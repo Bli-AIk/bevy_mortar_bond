@@ -650,18 +650,24 @@ fn process_run_statements_after_text(
         return;
     };
 
-    // In the new architecture, runs appear as content items between or after texts
-    // We need to find the content position after the current text and collect any consecutive runs
-
-    // Get the current text's content position
-    let Some(current_text_content_idx) = state.current_text_content_index() else {
-        return; // No valid text position
+    let Some(start_search_idx) = state.pending_run_position else {
+        // 没有待执行的 run，直接返回
+        return;
     };
 
-    // Find consecutive run items after the current text position
+    if start_search_idx >= state.node_data().content.len() {
+        state.pending_run_position = None;
+        return;
+    }
+
+    // In the new architecture, runs appear as content items between or after texts.
+    // We need to find the content position after the last viewed text and collect any consecutive runs.
+    //
+    // 在新架构中，runs作为文本之间或之后的内容项出现。
+    // 我们需要找到上一条文本之后的内容位置并收集任何连续的 runs。
+
     let mut run_sequence = Vec::new();
     let mut content_indices_to_mark = Vec::new();
-    let start_search_idx = current_text_content_idx + 1;
 
     for (idx, content_value) in state
         .node_data()

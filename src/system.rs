@@ -38,10 +38,10 @@ pub fn process_mortar_events_system(
                     continue;
                 };
 
-                // Mark "after text" position for run execution
-                // The position after current text is: text_index * 2 + 1
-                let after_text_position = state.text_index * 2 + 1;
-                state.pending_run_position = Some(after_text_position);
+                // Mark the content slot right after the current text for run execution
+                state.pending_run_position = state
+                    .current_text_content_index()
+                    .map(|content_idx| content_idx + 1);
 
                 if state.next_text() {
                     continue;
