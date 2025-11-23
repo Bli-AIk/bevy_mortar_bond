@@ -13,8 +13,9 @@ mod utils;
 use bevy::prelude::*;
 use bevy_ecs_typewriter::{Typewriter, TypewriterPlugin, TypewriterState};
 use bevy_mortar_bond::{
-    MortarAsset, MortarEvent, MortarEventAction, MortarEventTracker, MortarFunctions, MortarNumber,
-    MortarPlugin, MortarRegistry, MortarRuntime, MortarString, MortarVariableState,
+    DialogueRunKind, MortarAsset, MortarEvent, MortarEventAction, MortarEventTracker,
+    MortarFunctions, MortarNumber, MortarPlugin, MortarRegistry, MortarRuntime, MortarString,
+    MortarVariableState,
 };
 use std::time::Duration;
 use utils::ui::*;
@@ -109,36 +110,46 @@ struct RunsExecuting {
 }
 
 fn main() {
+    // STEP 1: add Mortar + Typewriter + demo UI plugin so the app gets
+    // runtime support, text typing, and ready-made panels.
+    // 第一步：添加 Mortar、打字机以及演示 UI 插件，获得运行时、打字效果和现成 UI。
     App::new()
-        .add_plugins((DefaultPlugins, MortarPlugin, TypewriterPlugin))
+        .add_plugins((
+            DefaultPlugins,
+            MortarPlugin,
+            TypewriterPlugin,
+            DialogueUiPlugin,
+        ))
+        // STEP 2: prepare helper resources (file cycling, variable cache, run state).
+        // 第二步：初始化辅助资源（文件轮换、变量缓存、run 状态）。
         .init_resource::<DialogueFiles>()
         .init_resource::<RuntimeVariableState>()
         .init_resource::<RunsExecuting>()
+        // STEP 3: wire startup chain – spawn camera, hook demo visuals, register Mortar functions,
+        // and load the first .mortar file.
+        // 第三步：配置启动链——创建相机、示例图形、注册 Mortar 函数并加载首个脚本。
         .add_systems(
             Startup,
             (
-                setup,
+                setup_camera,
                 setup_triangle_sprite,
                 setup_mortar_functions,
                 load_initial_dialogue,
             )
                 .chain(),
         )
+        // STEP 4: during Update we handle binding-related mechanics:
+        //   - variable reset, run execution, dialogue text/typewriter updates,
+        //   - bridging Mortar actions back into Bevy gameplay code.
+        // 第四步：在 Update 阶段处理绑定逻辑：
+        //   - 变量重置、run 执行、文本/打字机更新，
+        //   - 将 Mortar 动作回传给 Bevy 游戏层。
         .add_systems(
             Update,
             (
-                button_interaction_system,
-                handle_continue_button,
-                handle_choice_buttons,
-                handle_reload_button,
-                handle_switch_file_button,
                 manage_variable_state,
                 process_run_statements_after_text,
-                clear_runs_executing_flag,
                 update_dialogue_text_with_typewriter,
-                manage_choice_buttons,
-                update_choice_button_styles,
-                update_button_states,
                 trigger_typewriter_events,
                 apply_pending_animations,
                 apply_pending_colors,
@@ -147,16 +158,15 @@ fn main() {
                 process_pending_run_executions,
             ),
         )
+        .add_systems(PostUpdate, clear_runs_executing_flag)
         .run();
 }
 
-/// Sets up the camera and UI.
+/// Sets up the 2D camera for the UI world.
 ///
-/// 设置相机和 UI。
-fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+/// 仅创建 2D 相机，UI 由插件负责。
+fn setup_camera(mut commands: Commands) {
     commands.spawn(Camera2d);
-    let font = asset_server.load("Unifont.otf");
-    setup_dialogue_ui(&mut commands, font);
 }
 
 /// Sets up the triangle sprite at the top of the screen.
@@ -264,347 +274,6 @@ fn load_initial_dialogue(
 /// Handles clicks on the "Continue" button.
 ///
 /// 处理"继续"按钮的点击事件。
-fn handle_continue_button(
-    interaction_query: Query<&Interaction, (Changed<Interaction>, With<ContinueButton>)>,
-    mut events: MessageWriter<MortarEvent>,
-    runtime: Res<MortarRuntime>,
-    runs_executing: Res<RunsExecuting>,
-) {
-    // Don't handle clicks if runs are executing
-    if runs_executing.executing {
-        return;
-    }
-
-    for interaction in &interaction_query {
-        if *interaction == Interaction::Pressed
-            && let Some(state) = &runtime.active_dialogue
-        {
-            // If a choice is selected, confirm it
-            if state.selected_choice.is_some() {
-                info!("Example: Confirming choice selection");
-                events.write(MortarEvent::ConfirmChoice);
-            } else {
-                // Otherwise, advance text
-                events.write(MortarEvent::NextText);
-                if !state.has_next_text() {
-                    info!(
-                        "Example: Reached end of text in node '{}'",
-                        state.current_node
-                    );
-                }
-            }
-        }
-    }
-}
-
-/// Handles clicks on choice buttons.
-///
-/// 处理选项按钮的点击事件。
-fn handle_choice_buttons(
-    choice_query: Query<(&Interaction, &ChoiceButton), Changed<Interaction>>,
-    mut events: MessageWriter<MortarEvent>,
-) {
-    for (interaction, choice_button) in &choice_query {
-        if *interaction == Interaction::Pressed {
-            info!("Example: Choice button {} pressed", choice_button.index);
-            events.write(MortarEvent::SelectChoice {
-                index: choice_button.index,
-            });
-        }
-    }
-}
-
-/// Dynamically creates and updates choice buttons based on dialogue state.
-///
-/// 根据对话状态动态创建和更新选项按钮。
-fn manage_choice_buttons(
-    mut commands: Commands,
-    runtime: Res<MortarRuntime>,
-    container_query: Query<Entity, With<ChoiceContainer>>,
-    button_query: Query<Entity, With<ChoiceButton>>,
-    asset_server: Res<AssetServer>,
-    registry: Res<MortarRegistry>,
-    assets: Res<Assets<MortarAsset>>,
-    mut last_state: Local<Option<(String, String, Vec<usize>, bool)>>, // (path, node, choice_stack, choices_broken)
-) {
-    if !runtime.is_changed() {
-        return;
-    }
-
-    let Ok(container) = container_query.single() else {
-        return;
-    };
-
-    // Check if choice context has changed
-    let current_state = runtime.active_dialogue.as_ref().map(|state| {
-        (
-            state.mortar_path.clone(),
-            state.current_node.clone(),
-            state.choice_stack.clone(),
-            state.choices_broken,
-        )
-    });
-
-    // Only recreate buttons if choice context actually changed
-    if *last_state == current_state && !button_query.is_empty() {
-        return;
-    }
-
-    *last_state = current_state;
-
-    // Clear existing buttons
-    for entity in button_query.iter() {
-        commands.entity(entity).despawn();
-    }
-
-    // Create new buttons if we have choices
-    // Show choices after the text at choice_position has been displayed
-    if let Some(state) = &runtime.active_dialogue
-        && let Some(choices) = state.get_choices()
-    {
-        // Check if we should show choices
-        // In the new architecture, choices appear at a specific position in the content array
-        // We show them when we've reached or passed that position
-        let should_show_choices = !state.has_next_text_before_choice();
-
-        if !should_show_choices {
-            return;
-        }
-        let font = asset_server.load("Unifont.otf");
-
-        // Get function declarations for condition evaluation
-        let function_decls = registry
-            .get(&state.mortar_path)
-            .and_then(|handle| assets.get(handle))
-            .map(|asset| asset.data.functions.as_slice())
-            .unwrap_or(&[]);
-
-        for (index, choice) in choices.iter().enumerate() {
-            let is_selected = state.selected_choice == Some(index);
-
-            // Evaluate condition if present
-            let is_enabled = choice
-                .condition
-                .as_ref()
-                .map(|cond| {
-                    bevy_mortar_bond::evaluate_condition(cond, &runtime.functions, function_decls)
-                })
-                .unwrap_or(true); // No condition means always enabled
-
-            let (bg_color, border_color, text_color) = if !is_enabled {
-                // Disabled style (grayed out)
-                (
-                    Color::srgb(0.15, 0.15, 0.15),
-                    Color::srgb(0.25, 0.25, 0.25),
-                    Color::srgb(0.4, 0.4, 0.4),
-                )
-            } else if is_selected {
-                // Selected style - bright and obvious
-                (
-                    Color::srgb(0.4, 0.6, 0.2),
-                    Color::srgb(0.6, 0.9, 0.3),
-                    Color::srgb(1.0, 1.0, 1.0),
-                )
-            } else {
-                // Normal style
-                (
-                    Color::srgb(0.2, 0.25, 0.35),
-                    Color::srgb(0.4, 0.5, 0.65),
-                    Color::srgb(0.85, 0.85, 0.85),
-                )
-            };
-
-            commands.entity(container).with_children(|parent| {
-                parent
-                    .spawn((
-                        Button,
-                        Node {
-                            width: Val::Percent(100.0),
-                            height: Val::Px(60.0),
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            border: UiRect::all(Val::Px(3.0)),
-                            ..default()
-                        },
-                        BackgroundColor(bg_color),
-                        BorderColor::all(border_color),
-                        ChoiceButton { index },
-                    ))
-                    .with_children(|parent| {
-                        parent.spawn((
-                            Text::new(&choice.text),
-                            TextFont {
-                                font: font.clone(),
-                                font_size: 20.0,
-                                ..default()
-                            },
-                            TextColor(text_color),
-                        ));
-                    });
-            });
-        }
-    }
-}
-
-/// Updates choice button styles based on selection state.
-///
-/// 根据选择状态更新选项按钮样式。
-fn update_choice_button_styles(
-    runtime: Res<MortarRuntime>,
-    mut button_query: Query<(&ChoiceButton, &mut BackgroundColor, &mut BorderColor)>,
-) {
-    if !runtime.is_changed() {
-        return;
-    }
-
-    let Some(state) = &runtime.active_dialogue else {
-        return;
-    };
-
-    for (choice_button, mut bg_color, mut border_color) in button_query.iter_mut() {
-        let is_selected = state.selected_choice == Some(choice_button.index);
-
-        if is_selected {
-            // Selected style - bright green
-            *bg_color = BackgroundColor(Color::srgb(0.4, 0.6, 0.2));
-            *border_color = BorderColor::all(Color::srgb(0.6, 0.9, 0.3));
-        } else {
-            // Normal style
-            *bg_color = BackgroundColor(Color::srgb(0.2, 0.25, 0.35));
-            *border_color = BorderColor::all(Color::srgb(0.4, 0.5, 0.65));
-        }
-    }
-}
-
-/// Updates the continue button state.
-///
-/// 更新继续按钮状态。
-fn update_button_states(
-    runtime: Res<MortarRuntime>,
-    mut continue_query: Query<
-        (
-            &mut Text,
-            &mut Visibility,
-            &mut BackgroundColor,
-            &mut BorderColor,
-        ),
-        With<ContinueButton>,
-    >,
-    runs_executing: Res<RunsExecuting>,
-) {
-    if !runtime.is_changed() && !runs_executing.is_changed() {
-        return;
-    }
-
-    for (mut text, mut visibility, mut bg_color, mut border_color) in continue_query.iter_mut() {
-        // Apply disabled style if runs are being executed
-        if runs_executing.executing {
-            *visibility = Visibility::Visible;
-            **text = "执行中...".to_string();
-            // Disabled style - grayed out
-            *bg_color = BackgroundColor(Color::srgb(0.15, 0.15, 0.15));
-            *border_color = BorderColor::all(Color::srgb(0.25, 0.25, 0.25));
-            continue;
-        }
-
-        // Normal enabled style
-        *bg_color = BackgroundColor(Color::srgb(0.2, 0.4, 0.6));
-        *border_color = BorderColor::all(Color::srgb(0.4, 0.6, 0.8));
-
-        if let Some(state) = &runtime.active_dialogue {
-            if state.has_choices() && !state.has_next_text() {
-                // Has choices - show continue button only if choice is selected
-                if state.selected_choice.is_some() {
-                    *visibility = Visibility::Visible;
-                    **text = "确认选择".to_string();
-                } else {
-                    *visibility = Visibility::Hidden;
-                }
-            } else {
-                // No choices or has more text
-                *visibility = Visibility::Visible;
-                **text = "继续".to_string();
-            }
-        } else {
-            *visibility = Visibility::Visible;
-            **text = "继续".to_string();
-        }
-    }
-}
-
-/// Handles clicks on the "Reload" button.
-///
-/// 处理"重载"按钮的点击事件。
-fn handle_reload_button(
-    interaction_query: Query<&Interaction, (Changed<Interaction>, With<ReloadButton>)>,
-    asset_server: Res<AssetServer>,
-    mut registry: ResMut<MortarRegistry>,
-    mut events: MessageWriter<MortarEvent>,
-    dialogue_files: Res<DialogueFiles>,
-    runtime: Res<MortarRuntime>,
-) {
-    for interaction in &interaction_query {
-        if *interaction == Interaction::Pressed {
-            let path = dialogue_files.current().to_string();
-            info!("Example: Reload file: {}", &path);
-
-            // Stop current dialogue
-            events.write(MortarEvent::StopDialogue);
-
-            // Reload asset
-            let handle = asset_server.load(&path);
-            registry.register(path.clone(), handle);
-
-            // Restart from the current node or Start
-            let start_node = runtime
-                .active_dialogue
-                .as_ref()
-                .map(|state| state.current_node.clone())
-                .unwrap_or_else(|| "Start".to_string());
-
-            info!("Example: 重新启动节点: {} / {}", &path, &start_node);
-            events.write(MortarEvent::StartNode {
-                path,
-                node: start_node,
-            });
-        }
-    }
-}
-
-/// Handles clicks on the "Switch File" button.
-///
-/// 处理"切换文件"按钮的点击事件。
-fn handle_switch_file_button(
-    interaction_query: Query<&Interaction, (Changed<Interaction>, With<SwitchFileButton>)>,
-    asset_server: Res<AssetServer>,
-    mut registry: ResMut<MortarRegistry>,
-    mut events: MessageWriter<MortarEvent>,
-    mut dialogue_files: ResMut<DialogueFiles>,
-) {
-    for interaction in &interaction_query {
-        if *interaction == Interaction::Pressed {
-            // Stop current dialogue
-            events.write(MortarEvent::StopDialogue);
-
-            // Switch to next file
-            dialogue_files.next();
-            let path = dialogue_files.current().to_string();
-            info!("Example: Switch to file: {}", &path);
-
-            // Load new file
-            let handle = asset_server.load(&path);
-            registry.register(path.clone(), handle);
-
-            // Start from the beginning
-            const START_NODE: &str = "Start";
-            info!("Example: Start a new file node: {} / {}", &path, START_NODE);
-            events.write(MortarEvent::StartNode {
-                path,
-                node: START_NODE.to_string(),
-            });
-        }
-    }
-}
 
 /// Manages variable state lifecycle
 ///
@@ -666,45 +335,16 @@ fn process_run_statements_after_text(
     // 在新架构中，runs作为文本之间或之后的内容项出现。
     // 我们需要找到上一条文本之后的内容位置并收集任何连续的 runs。
 
+    let run_items = state.collect_run_items_from(start_search_idx);
     let mut run_sequence = Vec::new();
     let mut content_indices_to_mark = Vec::new();
 
-    for (idx, content_value) in state
-        .node_data()
-        .content
-        .iter()
-        .enumerate()
-        .skip(start_search_idx)
-    {
-        if state.executed_content_indices.contains(&idx) {
-            continue;
-        }
-
-        if let Some(type_str) = content_value.get("type").and_then(|v| v.as_str()) {
-            match type_str {
-                "run_event" => {
-                    if let Some(name) = content_value.get("name").and_then(|v| v.as_str()) {
-                        let ignore_duration = content_value
-                            .get("ignore_duration")
-                            .and_then(|v| v.as_bool())
-                            .unwrap_or(false);
-                        run_sequence.push((name.to_string(), None::<f64>, ignore_duration));
-                        content_indices_to_mark.push(idx);
-                    }
-                }
-                "run_timeline" => {
-                    if let Some(name) = content_value.get("name").and_then(|v| v.as_str()) {
-                        run_sequence.push((name.to_string(), None::<f64>, false));
-                        content_indices_to_mark.push(idx);
-                    }
-                }
-                _ => {
-                    // Stop at non-run items (text, choice, etc.)
-                    break;
-                }
+    for item in &run_items {
+        match item.kind {
+            DialogueRunKind::Event | DialogueRunKind::Timeline => {
+                run_sequence.push((item.name.clone(), None::<f64>, item.ignore_duration));
+                content_indices_to_mark.push(item.content_index);
             }
-        } else {
-            break;
         }
     }
 
@@ -768,7 +408,10 @@ fn process_run_statements_after_text(
         if !pending {
             runs_executing.executing = false;
         }
-    } else if let Some((event_name, _, _)) = run_sequence_with_durations.first() {
+    } else if let Some((event_name, maybe_duration, ignore_duration)) =
+        run_sequence_with_durations.first()
+    {
+        let first_kind = run_items.first().map(|item| item.kind.clone());
         // Single run - may still trigger a timeline, so check return value
         let timeline_running = execute_run_by_name(
             event_name,
@@ -777,9 +420,27 @@ fn process_run_statements_after_text(
             &mut commands,
             dialogue_entity,
         );
-        if !timeline_running {
-            // No pending execution for simple events
-            runs_executing.executing = false;
+
+        match first_kind {
+            Some(DialogueRunKind::Timeline) => {
+                if !timeline_running {
+                    runs_executing.executing = false;
+                }
+            }
+            Some(DialogueRunKind::Event) | None => {
+                if !timeline_running && !ignore_duration && maybe_duration.unwrap_or(0.0) > 0.0 {
+                    let duration_secs = maybe_duration.unwrap_or(0.0);
+                    commands.spawn(PendingRunExecution {
+                        timer: Timer::from_seconds(duration_secs as f32, TimerMode::Once),
+                        remaining_runs: Vec::new(),
+                        event_defs: event_defs.clone(),
+                        timeline_defs: timeline_defs.clone(),
+                        dialogue_entity,
+                    });
+                } else if !timeline_running {
+                    runs_executing.executing = false;
+                }
+            }
         }
     }
 
@@ -1306,6 +967,15 @@ fn process_pending_run_executions(
         pending.timer.tick(time.delta());
 
         if pending.timer.is_finished() {
+            if pending.remaining_runs.is_empty() {
+                commands.entity(entity).despawn();
+                info!("Example: Run wait completed, ready to show next text");
+                if let Some(_state) = &runtime.active_dialogue {
+                    runtime.set_changed();
+                }
+                continue;
+            }
+
             // Execute next event in sequence
             if let Some((event_name, _, _)) = pending.remaining_runs.first() {
                 if event_name != "__WAIT__" {

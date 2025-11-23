@@ -196,6 +196,44 @@ pub struct DialogueState {
     choices: Option<Vec<Choice>>,
 }
 
+/// Type of run content embedded in a node.
+///
+/// 节点内的 run 内容类型。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DialogueRunKind {
+    /// Calls a named event.
+    ///
+    /// 调用特定事件。
+    Event,
+    /// Executes a named timeline.
+    ///
+    /// 执行指定时间轴。
+    Timeline,
+}
+
+/// Metadata describing run_event / run_timeline entries in node content.
+///
+/// 描述节点中 run_event / run_timeline 条目的元信息。
+#[derive(Debug, Clone)]
+pub struct DialogueRunItem {
+    /// Content index in the node.
+    ///
+    /// 该 run 项所在的内容索引。
+    pub content_index: usize,
+    /// Target event or timeline name.
+    ///
+    /// 目标事件或时间轴名称。
+    pub name: String,
+    /// Item kind.
+    ///
+    /// 内容类型。
+    pub kind: DialogueRunKind,
+    /// Whether the event should ignore its declared duration.
+    ///
+    /// 是否忽略事件声明的 duration。
+    pub ignore_duration: bool,
+}
+
 impl DialogueState {
     /// Creates a new dialogue state.
     ///
@@ -426,6 +464,57 @@ impl DialogueState {
     /// 重置到节点开始处。
     pub fn reset(&mut self) {
         self.text_index = 0;
+    }
+
+    /// Collects consecutive pending run statements starting at the given content index.
+    ///
+    /// 收集从指定内容索引开始的连续 run 语句。
+    pub fn collect_run_items_from(&self, start_index: usize) -> Vec<DialogueRunItem> {
+        let mut runs = Vec::new();
+
+        for (idx, content_value) in self.node_data.content.iter().enumerate().skip(start_index) {
+            if self.executed_content_indices.contains(&idx) {
+                continue;
+            }
+
+            let Some(type_str) = content_value.get("type").and_then(|v| v.as_str()) else {
+                break;
+            };
+
+            match type_str {
+                "run_event" => {
+                    // Run items with index_override are treated as text events (handled inline)
+                    if content_value.get("index_override").is_some() {
+                        continue;
+                    }
+                    if let Some(name) = content_value.get("name").and_then(|v| v.as_str()) {
+                        let ignore_duration = content_value
+                            .get("ignore_duration")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false);
+                        runs.push(DialogueRunItem {
+                            content_index: idx,
+                            name: name.to_string(),
+                            kind: DialogueRunKind::Event,
+                            ignore_duration,
+                        });
+                    }
+                }
+                "run_timeline" => {
+                    if let Some(name) = content_value.get("name").and_then(|v| v.as_str()) {
+                        runs.push(DialogueRunItem {
+                            content_index: idx,
+                            name: name.to_string(),
+                            kind: DialogueRunKind::Timeline,
+                            ignore_duration: false,
+                        });
+                    }
+                }
+                _ => break,
+            }
+        }
+
+        runs
     }
 
     /// Checks if the current node has choices.

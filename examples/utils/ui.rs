@@ -1,12 +1,42 @@
-//! Common UI components for dialogue examples.
+//! UI helpers and plugin for the dialogue example.
 //!
-//! This module provides pure UI components without dependencies on bevy_mortar_bond.
+//! All layout + button handling is kept here so the example file can focus on binding logic.
 //!
-//! 对话示例的通用 UI 组件。
+//! 对话示例的 UI 插件与组件。
 //!
-//! 此模块提供纯 UI 组件，不依赖 bevy_mortar_bond。
+//! 这里集中处理布局和按钮交互，示例文件可专注于讲解绑定。
 
+use bevy::asset::Assets;
+use bevy::ecs::system::Local;
+use bevy::log::info;
 use bevy::prelude::*;
+use bevy::ui::FlexDirection;
+use bevy_mortar_bond::{MortarAsset, MortarEvent, MortarRegistry, MortarRuntime};
+
+use crate::{DialogueFiles, RunsExecuting};
+
+/// UI plugin bundling layout + button logic for dialogue examples.
+///
+/// 用于对话示例的 UI 插件，封装布局及按钮逻辑。
+pub struct DialogueUiPlugin;
+
+impl Plugin for DialogueUiPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Startup, setup_dialogue_ui).add_systems(
+            Update,
+            (
+                button_interaction_system,
+                handle_continue_button,
+                handle_choice_buttons,
+                handle_reload_button,
+                handle_switch_file_button,
+                manage_choice_buttons,
+                update_choice_button_styles,
+                update_button_states,
+            ),
+        );
+    }
+}
 
 /// A component for the dialogue text UI element.
 ///
@@ -49,7 +79,9 @@ pub struct SwitchFileButton;
 /// Creates the dialogue UI layout.
 ///
 /// 创建对话 UI 布局。
-pub fn setup_dialogue_ui(commands: &mut Commands, font: Handle<Font>) {
+pub fn setup_dialogue_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let font = asset_server.load("Unifont.otf");
+
     commands
         .spawn(Node {
             width: Val::Percent(100.0),
@@ -305,6 +337,319 @@ pub fn button_interaction_system(
                 *bg_color = BackgroundColor(Color::srgb(0.4, 0.3, 0.5));
                 *border_color = BorderColor::all(Color::srgb(0.6, 0.5, 0.7));
             }
+        }
+    }
+}
+
+/// Handles clicks on the "Continue" button.
+///
+/// 处理“继续”按钮点击。
+fn handle_continue_button(
+    interaction_query: Query<&Interaction, (Changed<Interaction>, With<ContinueButton>)>,
+    mut events: MessageWriter<MortarEvent>,
+    runtime: Res<MortarRuntime>,
+    runs_executing: Res<RunsExecuting>,
+) {
+    if runs_executing.executing {
+        return;
+    }
+
+    for interaction in &interaction_query {
+        if *interaction == Interaction::Pressed
+            && let Some(state) = &runtime.active_dialogue
+        {
+            if state.selected_choice.is_some() {
+                info!("Example: Confirming choice selection");
+                events.write(MortarEvent::ConfirmChoice);
+            } else {
+                events.write(MortarEvent::NextText);
+                if !state.has_next_text() {
+                    info!(
+                        "Example: Reached end of text in node '{}'",
+                        state.current_node
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// Handles clicks on choice buttons.
+///
+/// 处理选项按钮点击。
+fn handle_choice_buttons(
+    choice_query: Query<(&Interaction, &ChoiceButton), Changed<Interaction>>,
+    mut events: MessageWriter<MortarEvent>,
+) {
+    for (interaction, choice_button) in &choice_query {
+        if *interaction == Interaction::Pressed {
+            info!("Example: Choice button {} pressed", choice_button.index);
+            events.write(MortarEvent::SelectChoice {
+                index: choice_button.index,
+            });
+        }
+    }
+}
+
+/// Dynamically creates/updates choice buttons based on dialogue state.
+///
+/// 根据对话状态动态创建/更新选项按钮。
+fn manage_choice_buttons(
+    mut commands: Commands,
+    runtime: Res<MortarRuntime>,
+    container_query: Query<Entity, With<ChoiceContainer>>,
+    button_query: Query<Entity, With<ChoiceButton>>,
+    asset_server: Res<AssetServer>,
+    registry: Res<MortarRegistry>,
+    assets: Res<Assets<MortarAsset>>,
+    mut last_state: Local<Option<(String, String, Vec<usize>, bool)>>,
+) {
+    if !runtime.is_changed() {
+        return;
+    }
+
+    let Ok(container) = container_query.single() else {
+        return;
+    };
+
+    let current_state = runtime.active_dialogue.as_ref().map(|state| {
+        (
+            state.mortar_path.clone(),
+            state.current_node.clone(),
+            state.choice_stack.clone(),
+            state.choices_broken,
+        )
+    });
+
+    if *last_state == current_state && !button_query.is_empty() {
+        return;
+    }
+
+    *last_state = current_state;
+
+    for entity in button_query.iter() {
+        commands.entity(entity).despawn();
+    }
+
+    if let Some(state) = &runtime.active_dialogue
+        && let Some(choices) = state.get_choices()
+    {
+        let should_show_choices = !state.has_next_text_before_choice();
+        if !should_show_choices {
+            return;
+        }
+
+        let font = asset_server.load("Unifont.otf");
+        let function_decls = registry
+            .get(&state.mortar_path)
+            .and_then(|handle| assets.get(handle))
+            .map(|asset| asset.data.functions.as_slice())
+            .unwrap_or(&[]);
+
+        for (index, choice) in choices.iter().enumerate() {
+            let is_selected = state.selected_choice == Some(index);
+            let is_enabled = choice
+                .condition
+                .as_ref()
+                .map(|cond| {
+                    bevy_mortar_bond::evaluate_condition(cond, &runtime.functions, function_decls)
+                })
+                .unwrap_or(true);
+
+            let (bg_color, border_color, text_color) = if !is_enabled {
+                (
+                    Color::srgb(0.15, 0.15, 0.15),
+                    Color::srgb(0.25, 0.25, 0.25),
+                    Color::srgb(0.4, 0.4, 0.4),
+                )
+            } else if is_selected {
+                (
+                    Color::srgb(0.4, 0.6, 0.2),
+                    Color::srgb(0.6, 0.9, 0.3),
+                    Color::srgb(1.0, 1.0, 1.0),
+                )
+            } else {
+                (
+                    Color::srgb(0.2, 0.25, 0.35),
+                    Color::srgb(0.4, 0.5, 0.65),
+                    Color::srgb(0.85, 0.85, 0.85),
+                )
+            };
+
+            commands.entity(container).with_children(|parent| {
+                parent
+                    .spawn((
+                        Button,
+                        Node {
+                            width: Val::Percent(100.0),
+                            height: Val::Px(60.0),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            border: UiRect::all(Val::Px(3.0)),
+                            ..default()
+                        },
+                        BackgroundColor(bg_color),
+                        BorderColor::all(border_color),
+                        ChoiceButton { index },
+                    ))
+                    .with_children(|parent| {
+                        parent.spawn((
+                            Text::new(&choice.text),
+                            TextFont {
+                                font: font.clone(),
+                                font_size: 20.0,
+                                ..default()
+                            },
+                            TextColor(text_color),
+                        ));
+                    });
+            });
+        }
+    }
+}
+
+/// Highlights choice buttons when the selection changes.
+///
+/// 根据选择状态刷新按钮样式。
+fn update_choice_button_styles(
+    runtime: Res<MortarRuntime>,
+    mut button_query: Query<(&ChoiceButton, &mut BackgroundColor, &mut BorderColor)>,
+) {
+    if !runtime.is_changed() {
+        return;
+    }
+
+    let Some(state) = &runtime.active_dialogue else {
+        return;
+    };
+
+    for (choice_button, mut bg_color, mut border_color) in button_query.iter_mut() {
+        let is_selected = state.selected_choice == Some(choice_button.index);
+
+        if is_selected {
+            *bg_color = BackgroundColor(Color::srgb(0.4, 0.6, 0.2));
+            *border_color = BorderColor::all(Color::srgb(0.6, 0.9, 0.3));
+        } else {
+            *bg_color = BackgroundColor(Color::srgb(0.2, 0.25, 0.35));
+            *border_color = BorderColor::all(Color::srgb(0.4, 0.5, 0.65));
+        }
+    }
+}
+
+/// Updates the continue button state/label based on runtime state.
+///
+/// 根据状态更新“继续”按钮。
+fn update_button_states(
+    runtime: Res<MortarRuntime>,
+    mut continue_query: Query<
+        (
+            &mut Text,
+            &mut Visibility,
+            &mut BackgroundColor,
+            &mut BorderColor,
+        ),
+        With<ContinueButton>,
+    >,
+    runs_executing: Res<RunsExecuting>,
+) {
+    if !runtime.is_changed() && !runs_executing.is_changed() {
+        return;
+    }
+
+    for (mut text, mut visibility, mut bg_color, mut border_color) in continue_query.iter_mut() {
+        if runs_executing.executing {
+            *visibility = Visibility::Visible;
+            **text = "执行中...".to_string();
+            *bg_color = BackgroundColor(Color::srgb(0.15, 0.15, 0.15));
+            *border_color = BorderColor::all(Color::srgb(0.25, 0.25, 0.25));
+            continue;
+        }
+
+        *bg_color = BackgroundColor(Color::srgb(0.2, 0.4, 0.6));
+        *border_color = BorderColor::all(Color::srgb(0.4, 0.6, 0.8));
+
+        if let Some(state) = &runtime.active_dialogue {
+            if state.has_choices() && !state.has_next_text() {
+                if state.selected_choice.is_some() {
+                    *visibility = Visibility::Visible;
+                    **text = "确认选择".to_string();
+                } else {
+                    *visibility = Visibility::Hidden;
+                }
+            } else {
+                *visibility = Visibility::Visible;
+                **text = "继续".to_string();
+            }
+        } else {
+            *visibility = Visibility::Visible;
+            **text = "继续".to_string();
+        }
+    }
+}
+
+/// Handles clicks on the "Reload" button.
+///
+/// 处理“重载”按钮点击。
+fn handle_reload_button(
+    interaction_query: Query<&Interaction, (Changed<Interaction>, With<ReloadButton>)>,
+    asset_server: Res<AssetServer>,
+    mut registry: ResMut<MortarRegistry>,
+    mut events: MessageWriter<MortarEvent>,
+    dialogue_files: Res<DialogueFiles>,
+    runtime: Res<MortarRuntime>,
+) {
+    for interaction in &interaction_query {
+        if *interaction == Interaction::Pressed {
+            let path = dialogue_files.current().to_string();
+            info!("Example: Reload file: {}", &path);
+
+            events.write(MortarEvent::StopDialogue);
+
+            let handle = asset_server.load(&path);
+            registry.register(path.clone(), handle);
+
+            let start_node = runtime
+                .active_dialogue
+                .as_ref()
+                .map(|state| state.current_node.clone())
+                .unwrap_or_else(|| "Start".to_string());
+
+            info!("Example: Restart node {} / {}", &path, &start_node);
+            events.write(MortarEvent::StartNode {
+                path,
+                node: start_node,
+            });
+        }
+    }
+}
+
+/// Handles clicks on the "Switch File" button.
+///
+/// 处理“切换文件”按钮点击。
+fn handle_switch_file_button(
+    interaction_query: Query<&Interaction, (Changed<Interaction>, With<SwitchFileButton>)>,
+    asset_server: Res<AssetServer>,
+    mut registry: ResMut<MortarRegistry>,
+    mut events: MessageWriter<MortarEvent>,
+    mut dialogue_files: ResMut<DialogueFiles>,
+) {
+    for interaction in &interaction_query {
+        if *interaction == Interaction::Pressed {
+            events.write(MortarEvent::StopDialogue);
+
+            dialogue_files.next();
+            let path = dialogue_files.current().to_string();
+            info!("Example: Switch to file: {}", &path);
+
+            let handle = asset_server.load(&path);
+            registry.register(path.clone(), handle);
+
+            const START_NODE: &str = "Start";
+            info!("Example: Start a new file node: {} / {}", &path, START_NODE);
+            events.write(MortarEvent::StartNode {
+                path,
+                node: START_NODE.to_string(),
+            });
         }
     }
 }
