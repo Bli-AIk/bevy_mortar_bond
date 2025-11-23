@@ -69,6 +69,7 @@ impl Default for DialogueFiles {
     fn default() -> Self {
         Self {
             files: vec![
+                "master_test.mortar".to_string(),
                 "branch_interpolation.mortar".to_string(),
                 "enum_branch.mortar".to_string(),
                 "demo.mortar".to_string(),
@@ -859,7 +860,11 @@ fn update_dialogue_text_with_typewriter(
 
                 // Check if condition is satisfied FIRST
                 if let Some(condition) = &text_data.condition
-                    && !variable_state.evaluate_condition(condition)
+                    && !bevy_mortar_bond::evaluate_if_condition(
+                        condition,
+                        &runtime.functions,
+                        &variable_state,
+                    )
                 {
                     info!("Example: Condition not satisfied, auto-advancing to next text");
                     *skip_next_conditional = false;

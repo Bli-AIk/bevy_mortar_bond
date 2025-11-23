@@ -1,0 +1,193 @@
+// ==============================================================================
+// Master Test File for Mortar Language
+// ==============================================================================
+// This file aims to test all syntax features, edge cases, and their
+// interactions. It uses only the functions declared in the dialogue_ui example.
+
+// ------------------------------------------------------------------------------
+// I. Declarations
+// ------------------------------------------------------------------------------
+
+// -- Enums --
+// For testing branch variables and default value initialization.
+enum Status {
+    Idle,
+    Working,
+    OnBreak,
+}
+
+enum Equipment {
+    None,
+    Basic,
+    Advanced,
+}
+
+// -- Variables --
+// Test all primitive types, with and without initial values.
+let test_string: String = "Initial String"
+let test_number: Number = 100
+let test_bool: Bool = true
+let uninitialized_string: String
+let uninitialized_number: Number
+let uninitialized_bool: Bool
+
+// Test uninitialized enum to verify auto-defaulting fix.
+let current_status: Status
+let current_equipment: Equipment = Equipment.Basic
+
+// -- Branch Variables --
+// Test both Bool and Enum branching.
+let bool_branch: branch [
+    test_bool, "Bool is True"
+]
+
+let status_branch: branch<current_status> [
+    Idle, "Currently Idle", events: [ 0, set_color("#CCCCCC") ]
+    Working, "Currently Working", events: [ 0, set_color("#00FF00") ]
+    OnBreak, "On a Break", events: [ 0, set_color("#FFFF00") ]
+]
+
+let equipment_branch: branch<current_equipment> [
+    None, "Bare hands"
+    Basic, "Basic Gear"
+    Advanced, "Advanced Kit"
+]
+
+// -- Function Declarations --
+// All functions available in the 'dialogue_ui' example.
+fn get_name() -> String
+fn get_exclamation(count: Number) -> String
+fn create_message(verb: String, obj: String, level: Number) -> String
+fn play_sound(file_name: String)
+fn has_map() -> Bool
+fn has_backpack() -> Bool
+fn set_animation(anim_name: String)
+fn set_color(color: String)
+
+// -- Event & Timeline Definitions --
+// For testing run, with, and timeline features.
+event WaveAnimation {
+    action: set_animation("wave")
+    duration: 1.0
+}
+
+event ColorReset {
+    index: 0
+    action: set_color("#FFFFFF")
+}
+
+event PlaySoundEvent {
+    action: play_sound("random-sound-1-80941.wav")
+}
+
+timeline TestTimeline {
+    run WaveAnimation
+    wait 0.5
+    now run ColorReset
+}
+
+// ------------------------------------------------------------------------------
+// II. Node Chain for Testing
+// ------------------------------------------------------------------------------
+
+// -- Start Node: Basic Syntax and Interpolation --
+node Start {
+    text: "1. Master test sequence initiated."
+    text: $"2. Initial values: string='{test_string}', number={test_number}, bool={test_bool}"
+    // Test uninitialized variables (should have defaults: "", 0, false)
+    text: $"3. Uninitialized defaults: string='{uninitialized_string}', number={uninitialized_number}, bool={uninitialized_bool}"
+    // Test function calls in interpolation
+    text: $"4. Hello, {get_name()}{get_exclamation(3)}"
+    // Test multi-param function call
+    text: $"5. Let's {create_message("start", "the test", 5)}"
+} -> BranchAndEnumTest
+
+// -- Node 2: Branching and Default Enum Value --
+nd BranchAndEnumTest {
+    // Test branch on a pre-initialized boolean
+    text: $"1. Bool branch says: {bool_branch}"
+    // Test branch on an uninitialized enum (should default to 'Idle')
+    text: $"2. Status branch (default): {status_branch}"
+    // Test branch on a pre-initialized enum
+    text: $"3. Equipment branch: {equipment_branch}"
+    
+    // Change the status and test again
+    current_status = Status.Working
+    text: $"4. Status branch (updated): {status_branch}"
+} -> EventSystemTest
+
+// -- Node 3: Event System (with, run, timeline) --
+node EventSystemTest {
+    // Test basic 'with' and event referencing
+    text: "1. This text should trigger a color reset."
+    with ColorReset
+
+    // Test 'run' (immediate execution) and 'with' with inline event
+    run WaveAnimation
+    text: "2. A wave animation should have just started. This text has inline sound."
+    with event { 0, play_sound("vibrating-thud-39536.wav") }
+    
+    // Test 'with run' to associate a run to a text index
+    uninitialized_number = 15
+    text: "3. Sound should play at character 15."
+    with run PlaySoundEvent with uninitialized_number
+
+    // Test timeline execution
+    text: "4. Now, running a complex timeline..."
+    run TestTimeline
+    text: "5. Timeline finished."
+} -> ControlFlowTest
+
+// -- Node 4: Control Flow (if/else) --
+nd ControlFlowTest {
+    text: "1. Testing control flow..."
+    test_number = 50
+    if (test_number < 100 && !test_bool) || (test_number == 50 && has_map()) {
+        text: "2. Complex IF condition PASSED."
+    } else {
+        text: "2. Complex IF condition FAILED."
+    }
+
+    if test_number > 100 {
+        text: "3. This should NOT appear."
+    }
+
+    if !(test_number > 100) {
+        text: "4. This SHOULD appear (negation test)."
+    }
+} -> ChoiceSystemTest
+
+// -- Node 5: Choice System --
+node ChoiceSystemTest {
+    text: "1. Choose your destiny."
+    choice: [
+        "Conditional (has_backpack -> false)" when has_backpack() -> ChoiceResult_Backpack,
+        "Conditional (has_map -> true)" when has_map() -> ChoiceResult_Map,
+        "Nested Choices" -> [
+            "Go to End" -> FinalNode,
+            "Exit this node" -> return
+        ],
+        "Break out of choices" -> break
+    ]
+
+    // This text only appears if "Break" is chosen
+    text: "2. You broke the choice block."
+} -> ChoiceResult_Break
+
+// -- Choice Destination Nodes --
+node ChoiceResult_Map {
+    text: "You chose the 'Map' path."
+} -> FinalNode
+
+node ChoiceResult_Backpack {
+    text: "This should not be reachable as has_backpack() is false."
+} -> FinalNode
+
+node ChoiceResult_Break {
+    text: "Continuing after the break."
+} -> FinalNode
+
+// -- Final Node --
+node FinalNode {
+    text: "Master test completed."
+}

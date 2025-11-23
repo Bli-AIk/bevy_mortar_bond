@@ -345,6 +345,7 @@ impl MortarVariableState {
             "unary" => self.evaluate_unary_condition(condition),
             "identifier" => self.evaluate_identifier_condition(condition),
             "literal" => self.evaluate_literal_condition(condition),
+            "func_call" => self.evaluate_func_call_condition(condition),
             _ => {
                 warn!("Unknown condition type: {}", condition.cond_type);
                 false
@@ -422,6 +423,15 @@ impl MortarVariableState {
                 false
             }
         }
+    }
+
+    fn evaluate_func_call_condition(&self, _condition: &IfCondition) -> bool {
+        // Function calls in conditions require access to MortarFunctionRegistry
+        // which is not available in MortarVariableState.
+        // This should be handled at a higher level where both variable_state and functions are available.
+        // For now, we return false and log an info message.
+        info!("Function call in condition requires runtime function evaluation");
+        false
     }
 
     fn compare_values<F>(&self, left: &IfCondition, right: &IfCondition, cmp: F) -> bool
@@ -540,6 +550,8 @@ mod tests {
             right: None,
             operand: None,
             value: Some("is_winner".to_string()),
+            function_name: None,
+            args: vec![],
         };
 
         assert!(state.evaluate_condition(&condition));
@@ -561,6 +573,8 @@ mod tests {
                 right: None,
                 operand: None,
                 value: Some("score".to_string()),
+                function_name: None,
+                args: vec![],
             })),
             right: Some(Box::new(IfCondition {
                 cond_type: "literal".to_string(),
@@ -569,9 +583,13 @@ mod tests {
                 right: None,
                 operand: None,
                 value: Some("100".to_string()),
+                function_name: None,
+                args: vec![],
             })),
             operand: None,
             value: None,
+            function_name: None,
+            args: vec![],
         };
 
         assert!(state.evaluate_condition(&condition));

@@ -272,6 +272,7 @@ impl DialogueState {
     pub fn current_text_data_evaluated(
         &self,
         variable_state: &crate::variable_state::MortarVariableState,
+        functions: &binder::MortarFunctionRegistry,
     ) -> Option<&mortar_compiler::Text> {
         // Find the appropriate text based on conditions
         let text_data = self.node_data.texts.get(self.text_index)?;
@@ -283,7 +284,7 @@ impl DialogueState {
 
         // If there's a condition, check it
         if let Some(condition) = &text_data.condition {
-            if variable_state.evaluate_condition(condition) {
+            if crate::evaluate_if_condition(condition, functions, variable_state) {
                 return Some(text_data);
             } else {
                 // Condition failed, try to find else branch
@@ -413,6 +414,86 @@ fn get_default_return_value(return_type: &str) -> String {
         "Number" => "0".to_string(),
         "String" => String::new(),
         _ => String::new(), // void or unknown
+    }
+}
+
+/// Evaluates an IfCondition with support for function calls.
+///
+/// 评估 IfCondition，支持函数调用。
+pub fn evaluate_if_condition(
+    condition: &mortar_compiler::IfCondition,
+    functions: &binder::MortarFunctionRegistry,
+    variable_state: &crate::variable_state::MortarVariableState,
+) -> bool {
+    match condition.cond_type.as_str() {
+        "func_call" => {
+            // Handle function call condition
+            if let Some(func_name) = &condition.function_name {
+                let args: Vec<binder::MortarValue> = condition
+                    .args
+                    .iter()
+                    .map(|arg| binder::MortarValue::parse(arg))
+                    .collect();
+
+                if let Some(value) = functions.call(func_name, &args) {
+                    match value {
+                        binder::MortarValue::Boolean(b) => b.0,
+                        binder::MortarValue::Number(n) => n.0 != 0.0,
+                        binder::MortarValue::String(s) => !s.0.is_empty(),
+                        binder::MortarValue::Void => false,
+                    }
+                } else {
+                    warn!(
+                        "Condition function '{}' not bound, defaulting to false",
+                        func_name
+                    );
+                    false
+                }
+            } else {
+                warn!("Function call condition missing function_name");
+                false
+            }
+        }
+        "binary" => {
+            // Recursively evaluate left and right
+            let left_result = evaluate_if_condition(
+                condition.left.as_ref().unwrap().as_ref(),
+                functions,
+                variable_state,
+            );
+            let right_result = evaluate_if_condition(
+                condition.right.as_ref().unwrap().as_ref(),
+                functions,
+                variable_state,
+            );
+
+            match condition.operator.as_deref() {
+                Some("&&") => left_result && right_result,
+                Some("||") => left_result || right_result,
+                _ => {
+                    // For comparison operators, delegate to variable_state
+                    variable_state.evaluate_condition(condition)
+                }
+            }
+        }
+        "unary" => {
+            let operand_result = evaluate_if_condition(
+                condition.operand.as_ref().unwrap().as_ref(),
+                functions,
+                variable_state,
+            );
+            match condition.operator.as_deref() {
+                Some("!") => !operand_result,
+                _ => {
+                    warn!("Unknown unary operator: {:?}", condition.operator);
+                    false
+                }
+            }
+        }
+        _ => {
+            // For other types, use variable_state's evaluation
+            variable_state.evaluate_condition(condition)
+        }
     }
 }
 

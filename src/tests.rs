@@ -311,7 +311,7 @@ mod core_tests {
             },
         ];
 
-        let state = MortarVariableState::from_variables(&variables);
+        let state = MortarVariableState::from_variables(&variables, &[]);
 
         assert_eq!(
             state.get("health"),
@@ -331,7 +331,7 @@ mod core_tests {
             value: Some(serde_json::json!(0.0)),
         }];
 
-        let mut state = MortarVariableState::from_variables(&variables);
+        let mut state = MortarVariableState::from_variables(&variables, &[]);
 
         // Update variable
         state.execute_assignment("count", "42");
@@ -360,7 +360,7 @@ mod core_tests {
             },
         ];
 
-        let state = MortarVariableState::from_variables(&variables);
+        let state = MortarVariableState::from_variables(&variables, &[]);
 
         // Test identifier condition (true boolean variable)
         let condition = mortar_compiler::IfCondition {
@@ -370,6 +370,8 @@ mod core_tests {
             right: None,
             operand: None,
             value: Some("has_key".to_string()),
+            function_name: None,
+            args: vec![],
         };
         assert!(state.evaluate_condition(&condition));
 
@@ -381,6 +383,8 @@ mod core_tests {
             right: None,
             operand: None,
             value: Some("is_locked".to_string()),
+            function_name: None,
+            args: vec![],
         };
         assert!(!state.evaluate_condition(&condition));
     }
@@ -483,7 +487,7 @@ mod core_tests {
             var_type: "String".to_string(),
             value: Some(serde_json::json!("Alice")),
         }];
-        let var_state = MortarVariableState::from_variables(&variables);
+        let var_state = MortarVariableState::from_variables(&variables, &[]);
 
         let result = process_interpolated_text(&text_data, &functions, &function_decls, &var_state);
         assert_eq!(result, "Hello Alice!");
@@ -671,7 +675,7 @@ mod core_tests {
             value: Some(serde_json::json!(42.0)),
         }];
 
-        let mut state = MortarVariableState::from_variables(&variables);
+        let mut state = MortarVariableState::from_variables(&variables, &[]);
 
         // Parse number
         state.execute_assignment("test", "100");
