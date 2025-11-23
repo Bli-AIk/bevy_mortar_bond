@@ -90,8 +90,8 @@ impl MortarVariableState {
         for var in variables {
             // Handle Branch type specially
             if var.var_type == "Branch" {
-                if let Some(value) = &var.value {
-                    if let Some(obj) = value.as_object() {
+                if let Some(value) = &var.value
+                    && let Some(obj) = value.as_object() {
                         let enum_type = obj
                             .get("enum_type")
                             .and_then(|v| v.as_str())
@@ -120,7 +120,6 @@ impl MortarVariableState {
                             .branches
                             .insert(var.name.clone(), BranchDef { enum_type, cases });
                     }
-                }
                 continue;
             }
 
@@ -290,11 +289,10 @@ impl MortarVariableState {
         } else {
             // Boolean-based branch: check each condition
             for case in &branch.cases {
-                if let Some(condition_value) = self.get(&case.condition) {
-                    if let MortarVariableValue::Boolean(true) = condition_value {
+                if let Some(condition_value) = self.get(&case.condition)
+                    && let MortarVariableValue::Boolean(true) = condition_value {
                         return Some(case.text.clone());
                     }
-                }
             }
         }
 
@@ -436,10 +434,7 @@ impl MortarVariableState {
         match condition.cond_type.as_str() {
             "identifier" => {
                 let identifier = condition.value.as_ref()?;
-                match self.get(identifier) {
-                    Some(val) => Some(val.to_display_string()),
-                    None => None,
-                }
+                self.get(identifier).map(|val| val.to_display_string())
             }
             "enum_member" => condition.value.clone(),
             "literal" => condition.value.clone(),
