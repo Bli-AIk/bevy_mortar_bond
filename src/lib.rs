@@ -427,15 +427,31 @@ pub fn evaluate_if_condition(
 ) -> bool {
     match condition.cond_type.as_str() {
         "func_call" => {
-            // Handle function call condition
-            if let Some(func_name) = &condition.function_name {
-                let args: Vec<binder::MortarValue> = condition
-                    .args
-                    .iter()
-                    .map(|arg| binder::MortarValue::parse(arg))
-                    .collect();
+            let func_name = if let Some(operand) = &condition.operand {
+                if let Some(val) = &operand.value {
+                    Some(val.clone())
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
 
-                if let Some(value) = functions.call(func_name, &args) {
+            if let Some(func_name) = func_name {
+                let args: Vec<binder::MortarValue> = if let Some(right) = &condition.right {
+                    if let Some(value) = &right.value {
+                        value
+                            .split_whitespace()
+                            .map(binder::MortarValue::parse)
+                            .collect()
+                    } else {
+                        vec![]
+                    }
+                } else {
+                    vec![]
+                };
+
+                if let Some(value) = functions.call(&func_name, &args) {
                     match value {
                         binder::MortarValue::Boolean(b) => b.0,
                         binder::MortarValue::Number(n) => n.0 != 0.0,
