@@ -48,14 +48,14 @@ let location: branch<current_location> [
 // 定义 branch 类型变量（带 events）
 let object: branch<current_location> [
     forest, "树木", events: [
-        0, set_color("green")
+        0, play_sound("random-sound-1-80941.wav")
     ]
     city, "高楼", events: [
-        0, set_color("gray")
-        1, set_color("blue")
+        0, play_sound("random-sound-1-80941.wav")
+        1, play_sound("vibrating-thud-39536.wav")
     ]
     town, "房屋", events: [
-        0, set_color("brown")
+        0, play_sound("vibrating-thud-39536.wav")
     ]
 ]
 

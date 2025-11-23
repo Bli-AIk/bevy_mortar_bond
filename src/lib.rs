@@ -29,6 +29,9 @@ mod binder;
 mod system;
 mod variable_state;
 
+#[cfg(test)]
+mod tests;
+
 pub use asset::{MortarAsset, MortarAssetLoader};
 pub use bevy_mortar_bond_macros::{MortarFunctions, mortar_functions};
 pub use binder::{
