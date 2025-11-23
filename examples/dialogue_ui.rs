@@ -652,7 +652,7 @@ fn process_run_statements_after_text(
 
     // In the new architecture, runs appear as content items between or after texts
     // We need to find the content position after the current text and collect any consecutive runs
-    
+
     // Get the current text's content position
     let Some(current_text_content_idx) = state.current_text_content_index() else {
         return; // No valid text position
@@ -663,7 +663,13 @@ fn process_run_statements_after_text(
     let mut content_indices_to_mark = Vec::new();
     let start_search_idx = current_text_content_idx + 1;
 
-    for (idx, content_value) in state.node_data().content.iter().enumerate().skip(start_search_idx) {
+    for (idx, content_value) in state
+        .node_data()
+        .content
+        .iter()
+        .enumerate()
+        .skip(start_search_idx)
+    {
         if state.executed_content_indices.contains(&idx) {
             continue;
         }
@@ -1012,21 +1018,38 @@ fn update_dialogue_text_with_typewriter(
                 // In the new architecture, run events with index_override appear in the content array
                 // We need to check the content item at the current text's position
                 if let Some(asset_data) = asset_data
-                    && let Some(current_text_content_idx) = state.current_text_content_index() {
-                    
+                    && let Some(current_text_content_idx) = state.current_text_content_index()
+                {
                     // Look for run_event items at the same content position as current text
-                    if let Some(_content_value) = state.node_data().content.get(current_text_content_idx) {
+                    if let Some(_content_value) =
+                        state.node_data().content.get(current_text_content_idx)
+                    {
                         // Check if there's a run_event right before this text
                         if current_text_content_idx > 0 {
-                            if let Some(prev_content) = state.node_data().content.get(current_text_content_idx - 1) {
-                                if let Some(type_str) = prev_content.get("type").and_then(|v| v.as_str()) {
+                            if let Some(prev_content) =
+                                state.node_data().content.get(current_text_content_idx - 1)
+                            {
+                                if let Some(type_str) =
+                                    prev_content.get("type").and_then(|v| v.as_str())
+                                {
                                     if type_str == "run_event" {
-                                        if let Some(index_override) = prev_content.get("index_override")
-                                            .and_then(|v| serde_json::from_value::<mortar_compiler::IndexOverride>(v.clone()).ok()) {
-                                            
-                                            if let Some(event_name) = prev_content.get("name").and_then(|v| v.as_str()) {
+                                        if let Some(index_override) =
+                                            prev_content.get("index_override").and_then(|v| {
+                                                serde_json::from_value::<
+                                                    mortar_compiler::IndexOverride,
+                                                >(
+                                                    v.clone()
+                                                )
+                                                .ok()
+                                            })
+                                        {
+                                            if let Some(event_name) =
+                                                prev_content.get("name").and_then(|v| v.as_str())
+                                            {
                                                 // Get the index value
-                                                let index = if index_override.override_type == "variable" {
+                                                let index = if index_override.override_type
+                                                    == "variable"
+                                                {
                                                     // Get variable value
                                                     variable_state
                                                         .get(&index_override.value)
@@ -1040,11 +1063,18 @@ fn update_dialogue_text_with_typewriter(
                                                         .unwrap_or(0.0)
                                                 } else {
                                                     // Direct value
-                                                    index_override.value.parse::<f64>().unwrap_or(0.0)
+                                                    index_override
+                                                        .value
+                                                        .parse::<f64>()
+                                                        .unwrap_or(0.0)
                                                 };
 
                                                 // Find the event definition
-                                                if let Some(event_def) = asset_data.events.iter().find(|e| e.name == event_name) {
+                                                if let Some(event_def) = asset_data
+                                                    .events
+                                                    .iter()
+                                                    .find(|e| e.name == event_name)
+                                                {
                                                     // Create a text event from the event definition
                                                     let text_event = mortar_compiler::Event {
                                                         index,

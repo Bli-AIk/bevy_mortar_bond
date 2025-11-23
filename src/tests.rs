@@ -107,7 +107,7 @@ mod core_tests {
 
     fn create_test_node() -> Node {
         use serde_json::json;
-        
+
         Node {
             name: "TestNode".to_string(),
             content: vec![
@@ -210,13 +210,20 @@ mod core_tests {
 
         // Don't duplicate
         state.mark_content_executed(0);
-        assert_eq!(state.executed_content_indices.iter().filter(|&&x| x == 0).count(), 1);
+        assert_eq!(
+            state
+                .executed_content_indices
+                .iter()
+                .filter(|&&x| x == 0)
+                .count(),
+            1
+        );
     }
 
     #[test]
     fn test_dialogue_state_has_next_text_before_choice() {
         use serde_json::json;
-        
+
         // Create node with text, choice, text pattern
         let node = Node {
             name: "TestNode".to_string(),
@@ -580,7 +587,7 @@ mod core_tests {
     // fn test_dialogue_state_node_data() {
     //     let node = create_test_node();
     //     let state = DialogueState::new("test.mortar".to_string(), "TestNode".to_string(), node);
-    // 
+    //
     //     let node_data = state.node_data();
     //     assert_eq!(node_data.name, "TestNode");
     //     assert_eq!(node_data.content.len(), 2);
@@ -728,7 +735,7 @@ mod core_tests {
     #[test]
     fn test_dialogue_state_choices_broken() {
         use serde_json::json;
-        
+
         let node = Node {
             name: "TestNode".to_string(),
             content: vec![
