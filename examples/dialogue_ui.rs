@@ -16,6 +16,7 @@ use bevy_mortar_bond::{
     MortarAsset, MortarEvent, MortarEventAction, MortarEventTracker, MortarFunctions, MortarNumber,
     MortarPlugin, MortarRegistry, MortarRuntime, MortarString, MortarVariableState,
 };
+use mortar_compiler::deserializer::RunStmt;
 use std::time::Duration;
 use utils::ui::*;
 
@@ -110,6 +111,8 @@ fn main() {
                 handle_reload_button,
                 handle_switch_file_button,
                 manage_variable_state,
+                process_run_statements_before_text,
+                process_run_statements_after_text,
                 update_dialogue_text_with_typewriter,
                 manage_choice_buttons,
                 update_choice_button_styles,
@@ -567,6 +570,153 @@ fn manage_variable_state(
     }
 }
 
+/// Process run statements before the current text
+///
+/// 处理当前文本之前的run语句
+fn process_run_statements_before_text(
+    mut commands: Commands,
+    mut runtime: ResMut<MortarRuntime>,
+    registry: Res<MortarRegistry>,
+    assets: Res<Assets<MortarAsset>>,
+    dialogue_query: Query<Entity, With<DialogueText>>,
+) {
+    if !runtime.is_changed() {
+        return;
+    }
+
+    let Some(state) = &mut runtime.active_dialogue else {
+        return;
+    };
+
+    // Get asset data
+    let Some(handle) = registry.get(&state.mortar_path) else {
+        return;
+    };
+    let Some(asset) = assets.get(handle) else {
+        return;
+    };
+
+    let event_defs = &asset.data.events;
+    let timeline_defs = &asset.data.timelines;
+
+    // Position mapping:
+    // - Before text at index i: position = i * 2
+    // - After text at index i: position = i * 2 + 1
+    // We execute runs before the current text when it first displays
+    let before_text_position = state.text_index * 2;
+
+    // Get runs at this position that haven't been executed
+    let runs_to_execute: Vec<_> = state.node_data()
+        .runs
+        .iter()
+        .filter(|run| run.position == before_text_position && !state.executed_runs.contains(&run.position))
+        .collect();
+
+    if runs_to_execute.is_empty() {
+        return;
+    }
+
+    // Get the dialogue entity to pass to execute functions
+    let Ok(dialogue_entity) = dialogue_query.single() else {
+        return;
+    };
+
+    // Execute all runs at this position
+    for run in runs_to_execute {
+        execute_run_statement(run, event_defs, timeline_defs, &mut commands, dialogue_entity);
+    }
+
+    // Mark runs as executed
+    if let Some(state) = &mut runtime.active_dialogue {
+        state.mark_run_executed(before_text_position);
+    }
+}
+
+/// Process run statements after the current text (when user advances)
+///
+/// 处理当前文本之后的run语句（当用户前进时）
+fn process_run_statements_after_text(
+    mut commands: Commands,
+    mut runtime: ResMut<MortarRuntime>,
+    registry: Res<MortarRegistry>,
+    assets: Res<Assets<MortarAsset>>,
+    dialogue_query: Query<Entity, With<DialogueText>>,
+) {
+    if !runtime.is_changed() {
+        return;
+    }
+
+    let Some(state) = &mut runtime.active_dialogue else {
+        return;
+    };
+
+    // Get or determine the position to check
+    let position = if let Some(pos) = state.pending_run_position {
+        pos
+    } else {
+        // Also check if we should execute "after last text" runs when reaching end of node
+        // This handles the case where the user clicks continue on the last text
+        if !state.has_next_text() {
+            let after_last_text_position = state.text_index * 2 + 1;
+            let has_runs_at_position = state.node_data()
+                .runs
+                .iter()
+                .any(|run| run.position == after_last_text_position && !state.executed_runs.contains(&run.position));
+            
+            if has_runs_at_position {
+                info!("Example: Checking for runs at position {} (after last text)", after_last_text_position);
+                after_last_text_position
+            } else {
+                return;
+            }
+        } else {
+            return;
+        }
+    };
+
+    // Get asset data
+    let Some(handle) = registry.get(&state.mortar_path) else {
+        return;
+    };
+    let Some(asset) = assets.get(handle) else {
+        return;
+    };
+
+    let event_defs = &asset.data.events;
+    let timeline_defs = &asset.data.timelines;
+
+    // Get runs at this position that haven't been executed
+    let runs_to_execute: Vec<_> = state.node_data()
+        .runs
+        .iter()
+        .filter(|run| run.position == position && !state.executed_runs.contains(&run.position))
+        .collect();
+
+    if runs_to_execute.is_empty() {
+        // Clear pending position even if no runs
+        state.pending_run_position = None;
+        return;
+    }
+
+    // Get the dialogue entity to pass to execute functions
+    let Ok(dialogue_entity) = dialogue_query.single() else {
+        return;
+    };
+
+    info!("Example: Executing {} run(s) at position {}", runs_to_execute.len(), position);
+
+    // Execute all runs at this position
+    for run in runs_to_execute {
+        execute_run_statement(run, event_defs, timeline_defs, &mut commands, dialogue_entity);
+    }
+
+    // Mark runs as executed and clear pending position
+    if let Some(state) = &mut runtime.active_dialogue {
+        state.mark_run_executed(position);
+        state.pending_run_position = None;
+    }
+}
+
 /// Updates dialogue text with typewriter effect
 ///
 /// 使用打字机效果更新对话文本
@@ -606,6 +756,8 @@ fn update_dialogue_text_with_typewriter(
                 let function_decls = asset_data
                     .map(|data| data.functions.as_slice())
                     .unwrap_or(&[]);
+
+
 
                 // Get or initialize variable state
                 if var_state_res.state.is_none() {
@@ -888,4 +1040,65 @@ fn parse_hex_color(hex: &str) -> Option<Color> {
         g as f32 / 255.0,
         b as f32 / 255.0,
     ))
+}
+
+/// Execute a run statement - either an event or a timeline
+///
+/// 执行run语句 - 事件或时间轴
+fn execute_run_statement(
+    run_stmt: &RunStmt,
+    event_defs: &[mortar_compiler::EventDef],
+    timeline_defs: &[mortar_compiler::TimelineDef],
+    commands: &mut Commands,
+    entity: Entity,
+) {
+    // First try to find as an event
+    if let Some(event_def) = event_defs.iter().find(|e| e.name == run_stmt.event_name) {
+        info!("Example: Executing event: {}", run_stmt.event_name);
+        execute_event_action(&event_def.action, commands, entity);
+        return;
+    }
+
+    // Then try to find as a timeline
+    if let Some(timeline_def) = timeline_defs.iter().find(|t| t.name == run_stmt.event_name) {
+        info!("Example: Executing timeline: {}", run_stmt.event_name);
+        // For timelines, execute all run statements in sequence
+        for stmt in &timeline_def.statements {
+            if stmt.stmt_type == "run" {
+                if let Some(event_name) = &stmt.event_name {
+                    if let Some(event_def) = event_defs.iter().find(|e| e.name == *event_name) {
+                        execute_event_action(&event_def.action, commands, entity);
+                    }
+                }
+            }
+            // Note: "wait" statements are currently ignored in this implementation
+            // A full implementation would need to handle async execution
+        }
+        return;
+    }
+
+    warn!("Example: Run statement target not found: {}", run_stmt.event_name);
+}
+
+/// Execute an event action
+///
+/// 执行事件动作
+fn execute_event_action(
+    action: &mortar_compiler::Action,
+    commands: &mut Commands,
+    entity: Entity,
+) {
+    // Parse args - remove quotes if present
+    let parsed_args: Vec<String> = action
+        .args
+        .iter()
+        .map(|arg| arg.trim_matches('"').to_string())
+        .collect();
+
+    let mortar_action = MortarEventAction {
+        action_name: action.action_type.clone(),
+        args: parsed_args,
+    };
+
+    handle_mortar_action(entity, mortar_action, commands);
 }

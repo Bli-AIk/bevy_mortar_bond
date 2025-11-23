@@ -37,6 +37,12 @@ pub fn process_mortar_events_system(
                 let Some(state) = &mut runtime.active_dialogue else {
                     continue;
                 };
+                
+                // Mark "after text" position for run execution
+                // The position after current text is: text_index * 2 + 1
+                let after_text_position = state.text_index * 2 + 1;
+                state.pending_run_position = Some(after_text_position);
+                
                 if state.next_text() {
                     continue;
                 }

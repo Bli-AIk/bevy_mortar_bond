@@ -1,7 +1,7 @@
 {
   "metadata": {
     "version": "0.4.0",
-    "generated_at": "2025-11-22T14:41:15.312064427Z"
+    "generated_at": "2025-11-23T00:26:04.800176558Z"
   },
   "nodes": [
     {
@@ -38,7 +38,7 @@
                 {
                   "type": "set_color",
                   "args": [
-                    "#228B22"
+                    "#FFFFFF"
                   ]
                 }
               ]
@@ -262,6 +262,16 @@
       }
     },
     {
+      "name": "SetColor2",
+      "index": 0.0,
+      "action": {
+        "type": "set_color",
+        "args": [
+          "\"#FFFFFF\""
+        ]
+      }
+    },
+    {
       "name": "TPRight",
       "action": {
         "type": "set_animation",
@@ -332,7 +342,7 @@
         },
         {
           "type": "run",
-          "event_name": "SetColor"
+          "event_name": "SetColor2"
         }
       ]
     },

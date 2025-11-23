@@ -14,6 +14,10 @@ event SetColor {
     index: 0
     action: set_color("#228B22")
 }
+event SetColor2 {
+    index: 0
+    action: set_color("#FFFFFF")
+}
 
 event TPRight {
     action: set_animation("right")
@@ -48,7 +52,7 @@ timeline OpeningCutscene {
     wait 0.5
     run PlaySound
     wait 2.0
-    run SetColor
+    run SetColor2
 }
 
 timeline EndingCutscene {
@@ -67,10 +71,10 @@ timeline EndingCutscene {
 node Start {
     text: "The scene begins..."
 
+    //
+    run TPRight
     // Execute immediately, then execute the next one
     run SetColor
-    // Execute immediately, then execute the next one
-    run TPRight
 
     text: "Alice appears in the forest."
 } -> WithEventsExample
@@ -80,7 +84,7 @@ node Start {
 // Events are sorted by their index and executed as the text displays.
 node WithEventsExample {
     text: "Welcome to the adventure!"
-    with SetColor  // Single event
+    with SetColor2  // Single event
 
     text: "The forest comes alive with sound and color."
     with events: [

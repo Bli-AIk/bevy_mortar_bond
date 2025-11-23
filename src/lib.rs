@@ -18,6 +18,7 @@
 //!
 
 use bevy::prelude::*;
+use mortar_compiler::deserializer::RunStmt;
 use mortar_compiler::{Choice, Node};
 use std::collections::HashMap;
 
@@ -151,6 +152,14 @@ pub struct DialogueState {
     ///
     /// 标志表示选项已被 break，不应再显示。
     pub choices_broken: bool,
+    /// Track which run statements have been executed (by index).
+    ///
+    /// 追踪哪些run语句已经被执行（通过索引）。
+    pub executed_runs: Vec<usize>,
+    /// Position to execute runs at (set by NextText handler).
+    ///
+    /// 要执行run的位置（由NextText处理器设置）。
+    pub pending_run_position: Option<usize>,
     /// A snapshot of the node data (to avoid repeated queries).
     ///
     /// 节点数据的快照（避免重复查询）。
@@ -169,6 +178,8 @@ impl DialogueState {
             selected_choice: None,
             choice_stack: Vec::new(),
             choices_broken: false,
+            executed_runs: Vec::new(),
+            pending_run_position: None,
             node_data,
         }
     }
@@ -321,6 +332,35 @@ impl DialogueState {
     pub fn get_next_node(&self) -> Option<&str> {
         self.node_data.next.as_deref()
     }
+
+    /// Gets run statements that should execute at the current position.
+    /// Position is calculated as: text_index * 2 + (before text: 0, after text: 1)
+    ///
+    /// 获取应该在当前位置执行的run语句。
+    /// 位置计算为：text_index * 2 + (文本前: 0, 文本后: 1)
+    pub fn get_runs_at_position(&self, position: usize) -> Vec<&RunStmt> {
+        self.node_data
+            .runs
+            .iter()
+            .filter(|run| run.position == position && !self.executed_runs.contains(&run.position))
+            .collect()
+    }
+
+    /// Marks a run statement at the given position as executed.
+    ///
+    /// 标记给定位置的run语句为已执行。
+    pub fn mark_run_executed(&mut self, position: usize) {
+        if !self.executed_runs.contains(&position) {
+            self.executed_runs.push(position);
+        }
+    }
+
+    /// Gets the node data reference.
+    ///
+    /// 获取节点数据引用。
+    pub fn node_data(&self) -> &Node {
+        &self.node_data
+    }
 }
 
 /// The event system for Mortar.
@@ -368,7 +408,7 @@ fn get_default_return_value(return_type: &str) -> String {
 pub fn evaluate_condition(
     condition: &mortar_compiler::Condition,
     functions: &binder::MortarFunctionRegistry,
-    function_decls: &[mortar_compiler::Function],
+    _function_decls: &[mortar_compiler::Function],
 ) -> bool {
     // Parse arguments
     let args: Vec<binder::MortarValue> = condition
