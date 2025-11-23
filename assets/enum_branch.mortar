@@ -31,13 +31,13 @@ let place: branch<current_location> [
 ]
 
 // 在节点中使用 branch 变量（通过插值字符串）
-node StatusDisplay {
+node Start {
     text: $"游戏状态是 {status}。"
-}
+} -> LocationDisplay
 
 node LocationDisplay {
     text: $"你现在在 {place}。"
-}
+} -> WeatherDisplay
 
 // 更复杂的例子：带有 events 的 branch
 enum Weather {

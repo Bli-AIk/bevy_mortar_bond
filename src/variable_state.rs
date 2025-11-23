@@ -3,7 +3,7 @@
 //! Mortar 运行时的变量状态管理。
 
 use bevy::prelude::*;
-use mortar_compiler::{IfCondition, Variable};
+use mortar_compiler::{Enum, IfCondition, Variable};
 use std::collections::HashMap;
 
 /// Runtime value for a Mortar variable.
@@ -83,62 +83,98 @@ impl MortarVariableState {
     }
 
     /// Initialize from a list of variable declarations.
+
     ///
+
     /// 从变量声明列表初始化。
-    pub fn from_variables(variables: &[Variable]) -> Self {
+
+    pub fn from_variables(variables: &[Variable], enums: &[Enum]) -> Self {
         let mut state = Self::new();
+
         for var in variables {
             // Handle Branch type specially
+
             if var.var_type == "Branch" {
                 if let Some(value) = &var.value
-                    && let Some(obj) = value.as_object() {
-                        let enum_type = obj
-                            .get("enum_type")
-                            .and_then(|v| v.as_str())
-                            .map(|s| s.to_string());
+                    && let Some(obj) = value.as_object()
+                {
+                    let enum_type = obj
+                        .get("enum_type")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
 
-                        let mut cases = Vec::new();
-                        if let Some(cases_array) = obj.get("cases").and_then(|v| v.as_array()) {
-                            for case in cases_array {
-                                if let Some(case_obj) = case.as_object() {
-                                    let condition = case_obj
-                                        .get("condition")
-                                        .and_then(|v| v.as_str())
-                                        .unwrap_or("")
-                                        .to_string();
-                                    let text = case_obj
-                                        .get("text")
-                                        .and_then(|v| v.as_str())
-                                        .unwrap_or("")
-                                        .to_string();
-                                    cases.push(BranchCase { condition, text });
-                                }
+                    let mut cases = Vec::new();
+
+                    if let Some(cases_array) = obj.get("cases").and_then(|v| v.as_array()) {
+                        for case in cases_array {
+                            if let Some(case_obj) = case.as_object() {
+                                let condition = case_obj
+                                    .get("condition")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("")
+                                    .to_string();
+
+                                let text = case_obj
+                                    .get("text")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("")
+                                    .to_string();
+
+                                cases.push(BranchCase { condition, text });
                             }
                         }
-
-                        state
-                            .branches
-                            .insert(var.name.clone(), BranchDef { enum_type, cases });
                     }
+
+                    state
+                        .branches
+                        .insert(var.name.clone(), BranchDef { enum_type, cases });
+                }
+
                 continue;
             }
 
             // Try to parse the value
+
             if let Some(value) = &var.value {
                 if let Some(parsed_value) = MortarVariableValue::from_json(value) {
                     state.set(&var.name, parsed_value);
                 }
             } else {
                 // Set default value based on type
+
                 let default_value = match var.var_type.as_str() {
                     "String" => MortarVariableValue::String(String::new()),
+
                     "Number" => MortarVariableValue::Number(0.0),
+
                     "Boolean" | "Bool" => MortarVariableValue::Boolean(false),
-                    _ => continue, // Skip unknown types
+
+                    // Non-primitive type, check if it's a known enum
+                    enum_type_name => {
+                        if let Some(enum_def) = enums.iter().find(|e| e.name == enum_type_name) {
+                            if let Some(first_member) = enum_def.variants.first() {
+                                // Default to the first member of the enum
+
+                                let enum_value = format!("{}.{}", enum_def.name, first_member);
+
+                                MortarVariableValue::String(enum_value)
+                            } else {
+                                // Enum has no members, skip
+
+                                continue;
+                            }
+                        } else {
+                            // Unknown type, skip
+
+                            continue;
+                        }
+                    }
                 };
+
                 state.set(&var.name, default_value);
             }
         }
+
         state
     }
 
@@ -290,9 +326,10 @@ impl MortarVariableState {
             // Boolean-based branch: check each condition
             for case in &branch.cases {
                 if let Some(condition_value) = self.get(&case.condition)
-                    && let MortarVariableValue::Boolean(true) = condition_value {
-                        return Some(case.text.clone());
-                    }
+                    && let MortarVariableValue::Boolean(true) = condition_value
+                {
+                    return Some(case.text.clone());
+                }
             }
         }
 

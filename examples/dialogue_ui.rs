@@ -70,6 +70,7 @@ impl Default for DialogueFiles {
         Self {
             files: vec![
                 "branch_interpolation.mortar".to_string(),
+                "enum_branch.mortar".to_string(),
                 "demo.mortar".to_string(),
                 "simple.mortar".to_string(),
                 "basic.mortar".to_string(),
@@ -840,7 +841,9 @@ fn update_dialogue_text_with_typewriter(
                     let variables = asset_data
                         .map(|data| data.variables.as_slice())
                         .unwrap_or(&[]);
-                    var_state_res.state = Some(MortarVariableState::from_variables(variables));
+                    let enums = asset_data.map(|data| data.enums.as_slice()).unwrap_or(&[]);
+                    var_state_res.state =
+                        Some(MortarVariableState::from_variables(variables, enums));
                 }
 
                 let variable_state = var_state_res.state.as_mut().unwrap();
