@@ -358,12 +358,22 @@ fn manage_choice_buttons(
     }
 
     // Create new buttons if we have choices
-    // Show choices only after all text has been displayed
+    // Show choices after the text at choice_position has been displayed
     if let Some(state) = &runtime.active_dialogue
         && let Some(choices) = state.get_choices()
-        && !state.has_next_text()
-    // Only show when no more text to display
     {
+        // Check if we should show choices based on choice_position
+        let should_show_choices = if let Some(choice_pos) = state.node_data().choice_position {
+            // Show choices if we've reached or passed the choice_position
+            state.text_index + 1 >= choice_pos && !state.has_next_text_before_choice()
+        } else {
+            // If no choice_position, use old behavior (show after all text)
+            !state.has_next_text()
+        };
+
+        if !should_show_choices {
+            return;
+        }
         let font = asset_server.load("Unifont.otf");
 
         // Get function declarations for condition evaluation
@@ -476,7 +486,12 @@ fn update_choice_button_styles(
 fn update_button_states(
     runtime: Res<MortarRuntime>,
     mut continue_query: Query<
-        (&mut Text, &mut Visibility, &mut BackgroundColor, &mut BorderColor),
+        (
+            &mut Text,
+            &mut Visibility,
+            &mut BackgroundColor,
+            &mut BorderColor,
+        ),
         With<ContinueButton>,
     >,
     runs_executing: Res<RunsExecuting>,
@@ -916,17 +931,14 @@ fn update_dialogue_text_with_typewriter(
 
                 // Collect events from text_data.events and run statements with index_override
                 let mut all_events = text_data.events.clone().unwrap_or_default();
-                
+
                 // Resolve index_variable for events that have it
                 for event in &mut all_events {
                     if let Some(var_name) = &event.index_variable {
                         if let Some(value) = variable_state.get(var_name) {
                             if let bevy_mortar_bond::MortarVariableValue::Number(n) = value {
                                 event.index = *n;
-                                info!(
-                                    "Example: Resolved index_variable '{}' to {}",
-                                    var_name, n
-                                );
+                                info!("Example: Resolved index_variable '{}' to {}", var_name, n);
                             }
                         }
                     }

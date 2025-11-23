@@ -300,6 +300,17 @@ impl DialogueState {
         self.text_index + 1 < self.node_data.texts.len()
     }
 
+    /// Checks if there is more text to display before the choice position.
+    ///
+    /// 检查在choice位置之前是否还有更多文本。
+    pub fn has_next_text_before_choice(&self) -> bool {
+        if let Some(choice_pos) = self.node_data.choice_position {
+            self.text_index + 1 < choice_pos
+        } else {
+            self.has_next_text()
+        }
+    }
+
     /// Advances to the next text.
     ///
     /// 步进到下一条文本。
