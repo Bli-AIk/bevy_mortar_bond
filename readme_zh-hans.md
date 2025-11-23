@@ -12,18 +12,18 @@
 
 ## 介绍
 
-`bevy_mortar_bond` 是一个<待补充>。
-它解决了<待补充>，让用户能够<待补充>。
+`bevy_mortar_bond` 是一个 Bevy 插件，它将 Mortar 脚本语言集成到 Bevy 游戏引擎中。它提供了一个强大的框架，用于使用 Mortar 脚本创建动态对话系统、交互式事件和复杂的游戏逻辑。
+它解决了为内容创作者和游戏设计师集成灵活的外部脚本语言的问题，允许用户在无需重新编译游戏引擎的情况下定义游戏流程、角色交互和动态场景。
 
-使用 `bevy_mortar_bond`，你只需要<待补充>。
-未来还计划支持<待补充>。
+使用 `bevy_mortar_bond`，你只需将游戏逻辑和对话编写在 `.mortar` 脚本文件中，并将其无缝集成到你的 Bevy 应用程序中。
+未来，它可能还会支持更高级的脚本功能和集成。
 
 ## 功能
 
-* <待补充>
-* <待补充>
-* <待补充>
-* （计划中）<待补充>
+*   **Mortar 脚本集成**: 在你的 Bevy 应用程序中无缝加载和执行 `.mortar` 脚本文件。
+*   **Bevy ECS 兼容性**: 旨在与 Bevy 的实体组件系统 (ECS) 惯用地工作，允许脚本与游戏实体和组件交互。
+*   **资源加载**: 为 `.mortar` 文件提供 Bevy 资源加载器，实现脚本资源的轻松管理和热重载。
+*   **对话系统基础**: 提供核心实用程序和示例，用于构建动态和分支对话系统。
 
 ## 使用方法
 
@@ -63,29 +63,25 @@
    cargo run --example dialogue_ui
    ```
 
-2. **动态对话示例** - 展示动态增减选项数量的对话系统：
-   ```bash
-   cargo run --example dynamic_dialogue
-   ```
 
 ### 示例说明
 
-- **dialogue_ui**: 一个简单的对话显示区域和3个固定的选项按钮
+-   **dialogue_ui**: 此示例展示了一个功能齐全的对话 UI，具有打字机文本效果、动态 Mortar 事件处理（例如动画、颜色变化、声音播放）、变量状态管理和条件文本，所有这些都集成到自定义 Bevy UI 中。
   - 点击选项按钮会更新对话文本
   - 按钮有鼠标悬停和点击的视觉反馈
   
-- **dynamic_dialogue**: 支持动态修改选项数量
-  - 点击"增加选项"可添加新选项（最多10个）
-  - 点击"减少选项"可移除最后一个选项（最少保留1个）
-  - 所有选项都可以点击并触发对话更新
 
 ## 依赖
 
 本项目使用以下 crate：
 
-| Crate                                             | 版本    | 描述   |
-| ------------------------------------------------- | ----- | ---- |
-| [bevy](https://crates.io/crates/bevy) | 0.17.2 | 游戏引擎 |
+| Crate                                                                                          | 版本     | 描述                 |
+|------------------------------------------------------------------------------------------------|--------|--------------------|
+| [bevy](https://crates.io/crates/bevy)                                                          | 0.17.2 | 游戏引擎               |
+| [mortar_compiler](https://github.com/Bli-AIk/souprune/tree/main/mortar/crates/mortar_compiler) | 本地     | Mortar 语言编译器       |
+| [serde_json](https://crates.io/crates/serde_json)                                              | 1.0    | JSON 序列化/反序列化      |
+| bevy_mortar_bond_macros                                                                        | 本地     | bevy_mortar_bond 宏 |
+| [bevy_ecs_typewriter](https://github.com/Bli-AIk/bevy_ecs_typewriter)                          | 本地     | Bevy ECS 打字机效果     |
 
 ## 贡献指南
 
