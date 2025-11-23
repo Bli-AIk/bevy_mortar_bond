@@ -268,7 +268,13 @@ fn handle_continue_button(
     interaction_query: Query<&Interaction, (Changed<Interaction>, With<ContinueButton>)>,
     mut events: MessageWriter<MortarEvent>,
     runtime: Res<MortarRuntime>,
+    runs_executing: Res<RunsExecuting>,
 ) {
+    // Don't handle clicks if runs are executing
+    if runs_executing.executing {
+        return;
+    }
+
     for interaction in &interaction_query {
         if *interaction == Interaction::Pressed
             && let Some(state) = &runtime.active_dialogue
@@ -469,19 +475,30 @@ fn update_choice_button_styles(
 /// 更新继续按钮状态。
 fn update_button_states(
     runtime: Res<MortarRuntime>,
-    mut continue_query: Query<(&mut Text, &mut Visibility), With<ContinueButton>>,
+    mut continue_query: Query<
+        (&mut Text, &mut Visibility, &mut BackgroundColor, &mut BorderColor),
+        With<ContinueButton>,
+    >,
     runs_executing: Res<RunsExecuting>,
 ) {
     if !runtime.is_changed() && !runs_executing.is_changed() {
         return;
     }
 
-    for (mut text, mut visibility) in continue_query.iter_mut() {
-        // Hide continue button if runs are being executed
+    for (mut text, mut visibility, mut bg_color, mut border_color) in continue_query.iter_mut() {
+        // Apply disabled style if runs are being executed
         if runs_executing.executing {
-            *visibility = Visibility::Hidden;
+            *visibility = Visibility::Visible;
+            **text = "执行中...".to_string();
+            // Disabled style - grayed out
+            *bg_color = BackgroundColor(Color::srgb(0.15, 0.15, 0.15));
+            *border_color = BorderColor::all(Color::srgb(0.25, 0.25, 0.25));
             continue;
         }
+
+        // Normal enabled style
+        *bg_color = BackgroundColor(Color::srgb(0.2, 0.4, 0.6));
+        *border_color = BorderColor::all(Color::srgb(0.4, 0.6, 0.8));
 
         if let Some(state) = &runtime.active_dialogue {
             if state.has_choices() && !state.has_next_text() {
@@ -626,7 +643,8 @@ fn process_run_statements_after_text(
     mut runtime: ResMut<MortarRuntime>,
     registry: Res<MortarRegistry>,
     assets: Res<Assets<MortarAsset>>,
-    dialogue_query: Query<Entity, With<DialogueText>>,
+    mut dialogue_text_query: Query<&mut Text, With<DialogueText>>,
+    dialogue_entity_query: Query<Entity, With<DialogueText>>,
     mut runs_executing: ResMut<RunsExecuting>,
 ) {
     if !runtime.is_changed() {
@@ -722,11 +740,6 @@ fn process_run_statements_after_text(
     // Collect positions to mark as executed
     let positions_to_mark: Vec<usize> = consecutive_runs.iter().map(|r| r.position).collect();
 
-    // Get the dialogue entity to pass to execute functions
-    let Ok(dialogue_entity) = dialogue_query.single() else {
-        return;
-    };
-
     info!(
         "Example: Executing {} consecutive run(s) at position {}",
         consecutive_runs.len(),
@@ -735,6 +748,17 @@ fn process_run_statements_after_text(
 
     // Set flag to indicate runs are executing
     runs_executing.executing = true;
+
+    // Clear the dialogue text during execution
+    if let Ok(mut text) = dialogue_text_query.single_mut() {
+        **text = String::new();
+        info!("Example: Cleared dialogue text during run execution");
+    }
+
+    // Get the dialogue entity to pass to execute functions
+    let Ok(dialogue_entity) = dialogue_entity_query.single() else {
+        return;
+    };
 
     // If there are multiple consecutive runs, treat them like a timeline sequence with durations
     if run_sequence.len() > 1 {
