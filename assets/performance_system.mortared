@@ -1,7 +1,7 @@
 {
   "metadata": {
     "version": "0.4.0",
-    "generated_at": "2025-11-23T00:26:04.800176558Z"
+    "generated_at": "2025-11-23T00:53:52.505272015Z"
   },
   "nodes": [
     {
@@ -16,11 +16,11 @@
       ],
       "runs": [
         {
-          "event_name": "SetColor",
+          "event_name": "TPRight",
           "position": 1
         },
         {
-          "event_name": "TPRight",
+          "event_name": "SetColor",
           "position": 2
         }
       ],
@@ -54,7 +54,7 @@
                 {
                   "type": "set_animation",
                   "args": [
-                    "right"
+                    "left"
                   ]
                 }
               ]
@@ -86,7 +86,7 @@
         {
           "name": "custom_time",
           "type": "Number",
-          "value": 0.5
+          "value": 5.0
         }
       ],
       "runs": [
@@ -106,23 +106,6 @@
       "texts": [
         {
           "text": "Dynamic event timing."
-        }
-      ],
-      "variables": [
-        {
-          "name": "dynamic_index",
-          "type": "Number",
-          "value": 1.0
-        }
-      ],
-      "runs": [
-        {
-          "event_name": "TPLeft",
-          "index_override": {
-            "type": "reference",
-            "value": "dynamic_index"
-          },
-          "position": 2
         }
       ],
       "next": "MixedExample"
@@ -157,7 +140,7 @@
         {
           "name": "reveal_time",
           "type": "Number",
-          "value": 0.3
+          "value": 3.0
         }
       ],
       "runs": [
@@ -334,36 +317,16 @@
         },
         {
           "type": "run",
-          "event_name": "PlaySound"
+          "event_name": "PlaySound",
+          "ignore_duration": true
         },
         {
           "type": "wait",
-          "duration": 2.0
+          "duration": 10.0
         },
         {
           "type": "run",
           "event_name": "SetColor2"
-        }
-      ]
-    },
-    {
-      "name": "EndingCutscene",
-      "statements": [
-        {
-          "type": "run",
-          "event_name": "SetBlack"
-        },
-        {
-          "type": "wait",
-          "duration": 1.5
-        },
-        {
-          "type": "run",
-          "event_name": "PlaySound"
-        },
-        {
-          "type": "wait",
-          "duration": 3.0
         }
       ]
     }

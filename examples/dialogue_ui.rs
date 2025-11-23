@@ -44,6 +44,18 @@ struct PendingAudioPlay(String);
 #[derive(Component)]
 struct TriangleSprite;
 
+/// Component to track pending run statements with duration
+///
+/// 追踪带有duration的待执行run语句
+#[derive(Component)]
+struct PendingRunExecution {
+    timer: Timer,
+    remaining_runs: Vec<(String, Option<f64>, bool)>, // (event_name, duration, ignore_duration)
+    event_defs: Vec<mortar_compiler::EventDef>,
+    timeline_defs: Vec<mortar_compiler::TimelineDef>,
+    dialogue_entity: Entity,
+}
+
 /// Resource to track the current dialogue file and available files.
 ///
 /// 资源：跟踪当前对话文件和可用文件。
@@ -122,6 +134,7 @@ fn main() {
                 apply_pending_colors,
                 play_pending_audio,
                 update_rotate_animation,
+                process_pending_run_executions,
             ),
         )
         .run();
@@ -329,9 +342,11 @@ fn manage_choice_buttons(
     }
 
     // Create new buttons if we have choices
-    // Show choices immediately when available (typically after first text)
+    // Show choices only after all text has been displayed
     if let Some(state) = &runtime.active_dialogue
         && let Some(choices) = state.get_choices()
+        && !state.has_next_text()
+    // Only show when no more text to display
     {
         let font = asset_server.load("Unifont.otf");
 
@@ -606,10 +621,13 @@ fn process_run_statements_before_text(
     let before_text_position = state.text_index * 2;
 
     // Get runs at this position that haven't been executed
-    let runs_to_execute: Vec<_> = state.node_data()
+    let runs_to_execute: Vec<_> = state
+        .node_data()
         .runs
         .iter()
-        .filter(|run| run.position == before_text_position && !state.executed_runs.contains(&run.position))
+        .filter(|run| {
+            run.position == before_text_position && !state.executed_runs.contains(&run.position)
+        })
         .collect();
 
     if runs_to_execute.is_empty() {
@@ -623,7 +641,13 @@ fn process_run_statements_before_text(
 
     // Execute all runs at this position
     for run in runs_to_execute {
-        execute_run_statement(run, event_defs, timeline_defs, &mut commands, dialogue_entity);
+        execute_run_statement(
+            run,
+            event_defs,
+            timeline_defs,
+            &mut commands,
+            dialogue_entity,
+        );
     }
 
     // Mark runs as executed
@@ -658,13 +682,16 @@ fn process_run_statements_after_text(
         // This handles the case where the user clicks continue on the last text
         if !state.has_next_text() {
             let after_last_text_position = state.text_index * 2 + 1;
-            let has_runs_at_position = state.node_data()
-                .runs
-                .iter()
-                .any(|run| run.position == after_last_text_position && !state.executed_runs.contains(&run.position));
-            
+            let has_runs_at_position = state.node_data().runs.iter().any(|run| {
+                run.position == after_last_text_position
+                    && !state.executed_runs.contains(&run.position)
+            });
+
             if has_runs_at_position {
-                info!("Example: Checking for runs at position {} (after last text)", after_last_text_position);
+                info!(
+                    "Example: Checking for runs at position {} (after last text)",
+                    after_last_text_position
+                );
                 after_last_text_position
             } else {
                 return;
@@ -686,7 +713,8 @@ fn process_run_statements_after_text(
     let timeline_defs = &asset.data.timelines;
 
     // Get runs at this position that haven't been executed
-    let runs_to_execute: Vec<_> = state.node_data()
+    let runs_to_execute: Vec<_> = state
+        .node_data()
         .runs
         .iter()
         .filter(|run| run.position == position && !state.executed_runs.contains(&run.position))
@@ -703,11 +731,21 @@ fn process_run_statements_after_text(
         return;
     };
 
-    info!("Example: Executing {} run(s) at position {}", runs_to_execute.len(), position);
+    info!(
+        "Example: Executing {} run(s) at position {}",
+        runs_to_execute.len(),
+        position
+    );
 
     // Execute all runs at this position
     for run in runs_to_execute {
-        execute_run_statement(run, event_defs, timeline_defs, &mut commands, dialogue_entity);
+        execute_run_statement(
+            run,
+            event_defs,
+            timeline_defs,
+            &mut commands,
+            dialogue_entity,
+        );
     }
 
     // Mark runs as executed and clear pending position
@@ -756,8 +794,6 @@ fn update_dialogue_text_with_typewriter(
                 let function_decls = asset_data
                     .map(|data| data.functions.as_slice())
                     .unwrap_or(&[]);
-
-
 
                 // Get or initialize variable state
                 if var_state_res.state.is_none() {
@@ -836,11 +872,61 @@ fn update_dialogue_text_with_typewriter(
                 typewriter.play();
                 commands.entity(entity).insert(typewriter);
 
+                // Collect events from text_data.events and run statements with index_override
+                let mut all_events = text_data.events.clone().unwrap_or_default();
+
+                // Add events from run statements with index_override
+                if let Some(asset_data) = asset_data {
+                    let current_position = state.text_index * 2;
+                    for run in &state.node_data().runs {
+                        if run.position == current_position {
+                            if let Some(index_override) = &run.index_override {
+                                // Get the index value
+                                let index = if index_override.override_type == "variable" {
+                                    // Get variable value
+                                    variable_state
+                                        .get(&index_override.value)
+                                        .and_then(|v| {
+                                            if let bevy_mortar_bond::MortarVariableValue::Number(
+                                                n,
+                                            ) = v
+                                            {
+                                                Some(*n)
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                        .unwrap_or(0.0)
+                                } else {
+                                    // Direct value
+                                    index_override.value.parse::<f64>().unwrap_or(0.0)
+                                };
+
+                                // Find the event definition
+                                if let Some(event_def) =
+                                    asset_data.events.iter().find(|e| e.name == run.event_name)
+                                {
+                                    // Create a text event from the event definition
+                                    let text_event = mortar_compiler::Event {
+                                        index,
+                                        actions: vec![event_def.action.clone()],
+                                    };
+                                    all_events.push(text_event);
+                                    info!(
+                                        "Example: Added run '{}' with index {} to text events",
+                                        run.event_name, index
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Add dialogue events tracking using library component
-                if let Some(events) = &text_data.events {
+                if !all_events.is_empty() {
                     commands
                         .entity(entity)
-                        .insert(MortarEventTracker::new(events.clone()));
+                        .insert(MortarEventTracker::new(all_events));
                 }
 
                 *last_key = Some(current_key);
@@ -1022,6 +1108,79 @@ fn update_rotate_animation(
     }
 }
 
+/// Process pending run executions with duration
+///
+/// 处理带有持续时间的待执行run
+fn process_pending_run_executions(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut query: Query<(Entity, &mut PendingRunExecution)>,
+) {
+    for (entity, mut pending) in &mut query {
+        pending.timer.tick(time.delta());
+
+        if pending.timer.is_finished() {
+            // Execute next event in sequence
+            if let Some((event_name, _, _)) = pending.remaining_runs.first() {
+                if event_name != "__WAIT__" {
+                    if let Some(event_def) =
+                        pending.event_defs.iter().find(|e| e.name == *event_name)
+                    {
+                        execute_event_action(
+                            &event_def.action,
+                            &mut commands,
+                            pending.dialogue_entity,
+                        );
+                    }
+                }
+            }
+
+            // Remove first event and continue
+            if pending.remaining_runs.len() > 1 {
+                let remaining = pending.remaining_runs[1..].to_vec();
+                let next_event = &pending.remaining_runs[0];
+
+                // Calculate next duration
+                let duration_secs = if next_event.0 == "__WAIT__" {
+                    next_event.1.unwrap_or(0.0)
+                } else if next_event.2 {
+                    // ignore_duration is true ("now run")
+                    0.0
+                } else {
+                    pending
+                        .event_defs
+                        .iter()
+                        .find(|e| e.name == next_event.0)
+                        .and_then(|e| e.duration)
+                        .unwrap_or(0.0)
+                };
+
+                if duration_secs > 0.0 {
+                    // Update timer for next event
+                    pending.remaining_runs = remaining;
+                    pending.timer = Timer::from_seconds(duration_secs as f32, TimerMode::Once);
+                } else {
+                    // No duration, spawn new execution for remaining
+                    let event_defs = pending.event_defs.clone();
+                    let timeline_defs = pending.timeline_defs.clone();
+                    let dialogue_entity = pending.dialogue_entity;
+                    commands.entity(entity).despawn();
+                    start_timeline_execution(
+                        remaining,
+                        event_defs,
+                        timeline_defs,
+                        dialogue_entity,
+                        &mut commands,
+                    );
+                }
+            } else {
+                // Timeline complete
+                commands.entity(entity).despawn();
+            }
+        }
+    }
+}
+
 /// Parse hex color string like "#FF6B6B"
 ///
 /// 转换十六进制颜色字符串，如 "#FF6B6B"
@@ -1062,32 +1221,116 @@ fn execute_run_statement(
     // Then try to find as a timeline
     if let Some(timeline_def) = timeline_defs.iter().find(|t| t.name == run_stmt.event_name) {
         info!("Example: Executing timeline: {}", run_stmt.event_name);
-        // For timelines, execute all run statements in sequence
+
+        // Build a list of (event_name, duration, ignore_duration) tuples from the timeline
+        let mut timeline_sequence = Vec::new();
         for stmt in &timeline_def.statements {
-            if stmt.stmt_type == "run" {
-                if let Some(event_name) = &stmt.event_name {
-                    if let Some(event_def) = event_defs.iter().find(|e| e.name == *event_name) {
-                        execute_event_action(&event_def.action, commands, entity);
+            match stmt.stmt_type.as_str() {
+                "run" => {
+                    if let Some(event_name) = &stmt.event_name {
+                        // Check if ignore_duration is set (now run)
+                        let duration = if stmt.ignore_duration {
+                            None // Ignore duration completely
+                        } else {
+                            stmt.duration
+                        };
+                        timeline_sequence.push((
+                            event_name.clone(),
+                            duration,
+                            stmt.ignore_duration,
+                        ));
                     }
                 }
+                "wait" => {
+                    // Wait statements add delay to the next event
+                    if let Some(duration) = stmt.duration {
+                        timeline_sequence.push(("__WAIT__".to_string(), Some(duration), false));
+                    }
+                }
+                _ => {}
             }
-            // Note: "wait" statements are currently ignored in this implementation
-            // A full implementation would need to handle async execution
+        }
+
+        // Start executing the timeline sequence
+        if !timeline_sequence.is_empty() {
+            start_timeline_execution(
+                timeline_sequence,
+                event_defs.to_vec(),
+                timeline_defs.to_vec(),
+                entity,
+                commands,
+            );
         }
         return;
     }
 
-    warn!("Example: Run statement target not found: {}", run_stmt.event_name);
+    warn!(
+        "Example: Run statement target not found: {}",
+        run_stmt.event_name
+    );
+}
+
+/// Start executing a timeline sequence with durations
+///
+/// 开始执行带有持续时间的时间轴序列
+fn start_timeline_execution(
+    sequence: Vec<(String, Option<f64>, bool)>,
+    event_defs: Vec<mortar_compiler::EventDef>,
+    timeline_defs: Vec<mortar_compiler::TimelineDef>,
+    dialogue_entity: Entity,
+    commands: &mut Commands,
+) {
+    // Execute the first event immediately
+    if let Some((first_event, first_duration, ignore_duration)) = sequence.first() {
+        if first_event != "__WAIT__" {
+            if let Some(event_def) = event_defs.iter().find(|e| e.name == *first_event) {
+                execute_event_action(&event_def.action, commands, dialogue_entity);
+            }
+        }
+
+        // If there are more events and the first has a duration, schedule them
+        if sequence.len() > 1 {
+            let remaining = sequence[1..].to_vec();
+            let duration_secs = if first_event == "__WAIT__" {
+                first_duration.unwrap_or(0.0)
+            } else if *ignore_duration {
+                // "now run" - ignore duration completely
+                0.0
+            } else {
+                // Use event's duration or 0
+                event_defs
+                    .iter()
+                    .find(|e| e.name == *first_event)
+                    .and_then(|e| e.duration)
+                    .unwrap_or(0.0)
+            };
+
+            if duration_secs > 0.0 {
+                commands.spawn(PendingRunExecution {
+                    timer: Timer::from_seconds(duration_secs as f32, TimerMode::Once),
+                    remaining_runs: remaining,
+                    event_defs,
+                    timeline_defs,
+                    dialogue_entity,
+                });
+            } else {
+                // No duration, continue immediately
+                start_timeline_execution(
+                    remaining,
+                    event_defs,
+                    timeline_defs,
+                    dialogue_entity,
+                    commands,
+                );
+            }
+        }
+    }
 }
 
 /// Execute an event action
 ///
 /// 执行事件动作
-fn execute_event_action(
-    action: &mortar_compiler::Action,
-    commands: &mut Commands,
-    entity: Entity,
-) {
+fn execute_event_action(action: &mortar_compiler::Action, commands: &mut Commands, entity: Entity) {
     // Parse args - remove quotes if present
     let parsed_args: Vec<String> = action
         .args
