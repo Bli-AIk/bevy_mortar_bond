@@ -601,21 +601,21 @@ fn handle_switch_file_button(
 fn manage_variable_state(
     runtime: Res<MortarRuntime>,
     mut var_state_res: ResMut<RuntimeVariableState>,
-    mut last_dialogue_key: Local<Option<(String, String)>>,
+    mut last_mortar_path: Local<Option<String>>,
 ) {
     if let Some(state) = &runtime.active_dialogue {
-        let current_key = (state.mortar_path.clone(), state.current_node.clone());
+        let current_path = state.mortar_path.clone();
 
-        // Reset variable state when dialogue changes
-        if last_dialogue_key.as_ref() != Some(&current_key) {
-            info!("Example: Resetting variable state for new dialogue");
+        // Only reset variable state when mortar file changes, not when node changes
+        if last_mortar_path.as_ref() != Some(&current_path) {
+            info!("Example: Resetting variable state for new mortar file");
             var_state_res.state = None;
-            *last_dialogue_key = Some(current_key);
+            *last_mortar_path = Some(current_path);
         }
-    } else if last_dialogue_key.is_some() {
+    } else if last_mortar_path.is_some() {
         // Dialogue ended, clear state
         var_state_res.state = None;
-        *last_dialogue_key = None;
+        *last_mortar_path = None;
     }
 }
 
@@ -916,6 +916,21 @@ fn update_dialogue_text_with_typewriter(
 
                 // Collect events from text_data.events and run statements with index_override
                 let mut all_events = text_data.events.clone().unwrap_or_default();
+                
+                // Resolve index_variable for events that have it
+                for event in &mut all_events {
+                    if let Some(var_name) = &event.index_variable {
+                        if let Some(value) = variable_state.get(var_name) {
+                            if let bevy_mortar_bond::MortarVariableValue::Number(n) = value {
+                                event.index = *n;
+                                info!(
+                                    "Example: Resolved index_variable '{}' to {}",
+                                    var_name, n
+                                );
+                            }
+                        }
+                    }
+                }
 
                 // Add events from run statements with index_override
                 if let Some(asset_data) = asset_data {
@@ -951,6 +966,7 @@ fn update_dialogue_text_with_typewriter(
                                     // Create a text event from the event definition
                                     let text_event = mortar_compiler::Event {
                                         index,
+                                        index_variable: None,
                                         actions: vec![event_def.action.clone()],
                                     };
                                     all_events.push(text_event);

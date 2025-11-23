@@ -15,7 +15,7 @@ event SetColor {
     action: set_color("#228B22")
 }
 event SetColor2 {
-    index: 0
+    index: 10
     action: set_color("#FFFFFF")
 }
 
@@ -30,6 +30,7 @@ event TPLeft {
 }
 
 event PlaySound {
+    index: 20
     action: play_sound("random-sound-1-80941.wav")
     duration: 0.0
 }
@@ -38,6 +39,14 @@ event SetBlack {
     action: set_color("#000000")
     duration: 1.0
 }
+
+// ------------------------------------------------------------------------------
+// Variable Definitions
+// ------------------------------------------------------------------------------
+// Variables must be defined at the top level, outside of nodes
+
+let custom_time: Number = 5
+let reveal_time: Number = 3
 
 // ------------------------------------------------------------------------------
 // Timeline Definitions
@@ -95,9 +104,15 @@ node WithEventsExample {
 // You can override an event's index when running it.
 node CustomIndexExample {
     text: "This text has a custom event timing."
-    let custom_time: Number = 5
-    run TPRight with custom_time
-    // 这种写法意思就是，在文本播放到第5个字符时触发 TPRight 事件。
+    // 这里的 with custom_time 覆盖了 PlaySound 事件的默认 index（20） 为 5。
+    // 但由于 run 前面没有 with 关键字，所以它是立即执行的。
+    run PlaySound with custom_time
+
+    // 赋值是允许的，修改变量的值
+    custom_time = 28;
+    text: "Be quiet...until you hear...Blast!"
+    // 应该在播放到第28个字符时触发 PlaySound 事件。
+    with run PlaySound with custom_time
 } -> MixedExample
 
 // Example 4: Mixed usage
@@ -110,11 +125,11 @@ node MixedExample {
     with TPRight
 
     // Another text block
-    // 这个文本应该在选项前出现，但是选项后才出现！！
-    text: "It's Alice!"
+    text: "It's Alice! Alice! Alice! Alice! Alice!"
+    // custom_time 应该仍然是 28
+    with run PlaySound with custom_time
 
     // Run with custom index
-    let reveal_time: Number = 3
     run PlaySound with reveal_time
 
     // Choice with event
