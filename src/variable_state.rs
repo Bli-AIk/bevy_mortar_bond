@@ -177,6 +177,91 @@ impl MortarVariableState {
         }
     }
 
+    /// Set a branch variable's text directly (for testing).
+    ///
+    /// 直接设置分支变量的文本（用于测试）。
+    pub fn set_branch_text(&mut self, name: String, text: String) {
+        let branch_def = BranchDef {
+            enum_type: None,
+            cases: vec![BranchCase {
+                condition: "default".to_string(),
+                text: text.clone(),
+            }],
+        };
+        self.branches.insert(name.clone(), branch_def);
+        // Also set a variable to make the condition true
+        self.set("default", MortarVariableValue::Boolean(true));
+    }
+
+    /// Get a branch variable's events by evaluating its conditions.
+    ///
+    /// 通过评估条件获取分支变量的事件。
+    pub fn get_branch_events(
+        &self,
+        name: &str,
+        variables: &[mortar_compiler::Variable],
+    ) -> Option<Vec<mortar_compiler::Event>> {
+        // Find the branch variable definition
+        let branch_var = variables
+            .iter()
+            .find(|v| v.name == name && v.var_type == "Branch")?;
+
+        // Parse the branch definition
+        let value = branch_var.value.as_ref()?;
+        let cases = value.get("cases")?.as_array()?;
+
+        // Get enum type if exists
+        let enum_type = value.get("enum_type").and_then(|v| v.as_str());
+
+        // Determine which case matches
+        let matching_case = if let Some(enum_var_name) = enum_type {
+            // Enum-based branch
+            if let Some(enum_value) = self.get(enum_var_name) {
+                let enum_member = enum_value.to_display_string();
+                let member_name = if let Some(dot_pos) = enum_member.rfind('.') {
+                    &enum_member[dot_pos + 1..]
+                } else {
+                    &enum_member
+                };
+
+                cases.iter().find(|case| {
+                    case.get("condition")
+                        .and_then(|c| c.as_str())
+                        .map(|c| c == member_name)
+                        .unwrap_or(false)
+                })
+            } else {
+                None
+            }
+        } else {
+            // Boolean-based branch
+            cases.iter().find(|case| {
+                case.get("condition")
+                    .and_then(|c| c.as_str())
+                    .and_then(|cond_name| self.get(cond_name))
+                    .map(|v| matches!(v, MortarVariableValue::Boolean(true)))
+                    .unwrap_or(false)
+            })
+        }?;
+
+        // Extract events from the matching case
+        let events_array = matching_case.get("events")?.as_array()?;
+        let mut result = Vec::new();
+
+        for event_json in events_array {
+            if let Ok(event) = serde_json::from_value::<mortar_compiler::Event>(event_json.clone())
+            {
+                result.push(event);
+            }
+        }
+
+        if result.is_empty() {
+            None
+        } else {
+            Some(result)
+        }
+    }
+
     /// Get a branch variable's text by evaluating its conditions.
     ///
     /// 通过评估条件获取分支变量的文本。

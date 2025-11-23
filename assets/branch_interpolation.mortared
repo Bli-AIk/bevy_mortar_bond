@@ -1,7 +1,7 @@
 {
   "metadata": {
     "version": "0.4.0",
-    "generated_at": "2025-11-23T03:29:57.747672851Z"
+    "generated_at": "2025-11-23T03:39:15.753522545Z"
   },
   "variables": [
     {
@@ -310,6 +310,19 @@
             {
               "type": "text",
               "content": "。"
+            }
+          ],
+          "events": [
+            {
+              "index": 8.0,
+              "actions": [
+                {
+                  "type": "set_color",
+                  "args": [
+                    "#AABBCC"
+                  ]
+                }
+              ]
             }
           ]
         }

@@ -69,11 +69,11 @@ impl Default for DialogueFiles {
     fn default() -> Self {
         Self {
             files: vec![
+                "branch_interpolation.mortar".to_string(),
                 "demo.mortar".to_string(),
                 "simple.mortar".to_string(),
                 "basic.mortar".to_string(),
                 "control_flow.mortar".to_string(),
-                "branch_interpolation.mortar".to_string(),
                 "performance_system.mortar".to_string(),
             ],
             current_index: 0,
@@ -132,7 +132,6 @@ fn main() {
                 handle_reload_button,
                 handle_switch_file_button,
                 manage_variable_state,
-                process_run_statements_before_text,
                 process_run_statements_after_text,
                 clear_runs_executing_flag,
                 update_dialogue_text_with_typewriter,
@@ -634,22 +633,6 @@ fn manage_variable_state(
     }
 }
 
-/// Process run statements before the current text
-///
-/// 处理当前文本之前的run语句
-fn process_run_statements_before_text(
-    mut commands: Commands,
-    mut runtime: ResMut<MortarRuntime>,
-    registry: Res<MortarRegistry>,
-    assets: Res<Assets<MortarAsset>>,
-    dialogue_query: Query<Entity, With<DialogueText>>,
-) {
-    // NOTE: In performance_system semantics, runs should execute AFTER the previous text,
-    // not before the current text. This function is kept for compatibility but doesn't
-    // execute runs at the "before text" position anymore.
-    // All runs are now handled by process_run_statements_after_text.
-}
-
 /// Process run statements after the current text (when user advances)
 ///
 /// 处理当前文本之后的run语句（当用户前进时）
@@ -939,6 +922,45 @@ fn update_dialogue_text_with_typewriter(
                             if let bevy_mortar_bond::MortarVariableValue::Number(n) = value {
                                 event.index = *n;
                                 info!("Example: Resolved index_variable '{}' to {}", var_name, n);
+                            }
+                        }
+                    }
+                }
+
+                // Add events from branch variables used in interpolation
+                if let Some(parts) = &text_data.interpolated_parts {
+                    if let Some(asset_data) = asset_data {
+                        let mut char_offset = 0.0;
+
+                        for part in parts {
+                            if part.part_type == "placeholder" {
+                                let var_name = part.content.trim_matches(|c| c == '{' || c == '}');
+
+                                // Check if this is a branch variable and get its events
+                                if let Some(branch_events) = variable_state
+                                    .get_branch_events(var_name, &asset_data.variables)
+                                {
+                                    for mut event in branch_events {
+                                        // Adjust event index by the character offset
+                                        let adjusted_index = event.index + char_offset;
+                                        event.index = adjusted_index;
+                                        info!(
+                                            "Example: Added branch event from '{}' at offset {} -> index {}",
+                                            var_name, char_offset, adjusted_index
+                                        );
+                                        all_events.push(event);
+                                    }
+                                }
+
+                                // Calculate the length of the replaced text
+                                if let Some(branch_text) = variable_state.get_branch_text(var_name)
+                                {
+                                    char_offset += branch_text.chars().count() as f64;
+                                } else if let Some(value) = variable_state.get(var_name) {
+                                    char_offset += value.to_display_string().chars().count() as f64;
+                                }
+                            } else if part.part_type == "text" {
+                                char_offset += part.content.chars().count() as f64;
                             }
                         }
                     }

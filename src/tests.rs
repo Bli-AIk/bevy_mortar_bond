@@ -388,8 +388,8 @@ mod core_tests {
     #[test]
     fn test_variable_value_to_display_string() {
         assert_eq!(
-            MortarVariableValue::Number(3.14).to_display_string(),
-            "3.14"
+            MortarVariableValue::Number(3.42).to_display_string(),
+            "3.42"
         );
         assert_eq!(
             MortarVariableValue::String("test".to_string()).to_display_string(),
@@ -497,14 +497,14 @@ mod core_tests {
     fn test_dialogue_flow_with_choices() {
         let mut node = create_test_node();
         node.choice = Some(vec![
-            mortar_compiler::Choice {
+            Choice {
                 text: "Option 1".to_string(),
                 condition: None,
                 next: Some("Node1".to_string()),
                 action: None,
                 choice: None,
             },
-            mortar_compiler::Choice {
+            Choice {
                 text: "Option 2".to_string(),
                 condition: None,
                 next: Some("Node2".to_string()),
@@ -523,7 +523,7 @@ mod core_tests {
     fn test_dialogue_state_with_choice_position() {
         let mut node = create_test_node();
         node.choice_position = Some(1);
-        node.choice = Some(vec![mortar_compiler::Choice {
+        node.choice = Some(vec![Choice {
             text: "Test".to_string(),
             condition: None,
             next: Some("Next".to_string()),
@@ -565,7 +565,7 @@ mod core_tests {
             if let Some(MortarValue::String(s)) = args.first() {
                 MortarValue::String(MortarString(format!("Result: {}", s.0)))
             } else {
-                MortarValue::Void(MortarVoid)
+                MortarValue::Void
             }
         });
 
@@ -611,14 +611,14 @@ mod core_tests {
     fn test_dialogue_state_get_runs_at_position() {
         let mut node = create_test_node();
         node.runs = vec![
-            mortar_compiler::RunStmt {
+            RunStmt {
                 event_name: "TestRun1".to_string(),
                 args: vec![],
                 index_override: None,
                 ignore_duration: false,
                 position: 0,
             },
-            mortar_compiler::RunStmt {
+            RunStmt {
                 event_name: "TestRun2".to_string(),
                 args: vec![],
                 index_override: None,
@@ -646,14 +646,20 @@ mod core_tests {
     // =============================================================================
 
     #[test]
-    fn test_variable_state_set_branch_text() {
+    fn test_variable_state_branch_text() {
         let mut state = MortarVariableState::default();
 
-        state.set_branch_text("branch1", "Option A");
-        state.set_branch_text("branch2", "Option B");
+        state.set_branch_text("branch1".to_string(), "Option A".to_string());
+        state.set_branch_text("branch2".to_string(), "Option B".to_string());
 
-        assert_eq!(state.get_branch_text("branch1"), Some("Option A"));
-        assert_eq!(state.get_branch_text("branch2"), Some("Option B"));
+        assert_eq!(
+            state.get_branch_text("branch1"),
+            Some("Option A".to_string())
+        );
+        assert_eq!(
+            state.get_branch_text("branch2"),
+            Some("Option B".to_string())
+        );
         assert_eq!(state.get_branch_text("nonexistent"), None);
     }
 
@@ -770,7 +776,7 @@ mod core_tests {
     #[test]
     fn test_dialogue_state_choices_broken() {
         let mut node = create_test_node();
-        node.choice = Some(vec![mortar_compiler::Choice {
+        node.choice = Some(vec![Choice {
             text: "Test".to_string(),
             condition: None,
             next: Some("Next".to_string()),
@@ -796,7 +802,7 @@ mod core_tests {
     #[test]
     fn test_full_dialogue_workflow() {
         // Create a node with multiple texts and choices
-        let mut node = Node {
+        let node = Node {
             name: "TestNode".to_string(),
             texts: vec![
                 mortar_compiler::Text {
@@ -825,7 +831,7 @@ mod core_tests {
             variables: vec![],
             runs: vec![],
             next: Some("NextNode".to_string()),
-            choice: Some(vec![mortar_compiler::Choice {
+            choice: Some(vec![Choice {
                 text: "Continue".to_string(),
                 condition: None,
                 next: Some("NextNode".to_string()),
