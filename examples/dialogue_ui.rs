@@ -913,40 +913,36 @@ fn update_dialogue_text_with_typewriter(
                 commands.entity(entity).insert(typewriter);
 
                 // Collect events from text_data.events and run statements with index_override
-                let mut all_events = text_data.events.clone().unwrap_or_default();
+                let mut all_events = Vec::new();
 
-                // Resolve index_variable for events that have it
-                for event in &mut all_events {
-                    if let Some(var_name) = &event.index_variable {
-                        if let Some(value) = variable_state.get(var_name) {
-                            if let bevy_mortar_bond::MortarVariableValue::Number(n) = value {
-                                event.index = *n;
-                                info!("Example: Resolved index_variable '{}' to {}", var_name, n);
-                            }
-                        }
-                    }
-                }
-
-                // Add events from branch variables used in interpolation
+                // If we have interpolated text, we need to map indices from the original text to the rendered text
                 if let Some(parts) = &text_data.interpolated_parts {
                     if let Some(asset_data) = asset_data {
-                        let mut char_offset = 0.0;
+                        // Build index mapping: original_index -> rendered_index
+                        let mut original_pos = 0.0;
+                        let mut rendered_pos = 0.0;
+                        let mut index_map = std::collections::HashMap::new();
 
                         for part in parts {
-                            if part.part_type == "placeholder" {
+                            if part.part_type == "text" {
+                                // For each character in the text part, map original to rendered position
+                                for _ in 0..part.content.chars().count() {
+                                    index_map.insert(original_pos as usize, rendered_pos);
+                                    original_pos += 1.0;
+                                    rendered_pos += 1.0;
+                                }
+                            } else if part.part_type == "placeholder" {
                                 let var_name = part.content.trim_matches(|c| c == '{' || c == '}');
 
-                                // Check if this is a branch variable and get its events
+                                // Add branch variable events at the current rendered position
                                 if let Some(branch_events) = variable_state
                                     .get_branch_events(var_name, &asset_data.variables)
                                 {
                                     for mut event in branch_events {
-                                        // Adjust event index by the character offset
-                                        let adjusted_index = event.index + char_offset;
-                                        event.index = adjusted_index;
+                                        event.index += rendered_pos;
                                         info!(
-                                            "Example: Added branch event from '{}' at offset {} -> index {}",
-                                            var_name, char_offset, adjusted_index
+                                            "Example: Added branch event from '{}' at rendered pos {} -> index {}",
+                                            var_name, rendered_pos, event.index
                                         );
                                         all_events.push(event);
                                     }
@@ -955,12 +951,66 @@ fn update_dialogue_text_with_typewriter(
                                 // Calculate the length of the replaced text
                                 if let Some(branch_text) = variable_state.get_branch_text(var_name)
                                 {
-                                    char_offset += branch_text.chars().count() as f64;
+                                    rendered_pos += branch_text.chars().count() as f64;
                                 } else if let Some(value) = variable_state.get(var_name) {
-                                    char_offset += value.to_display_string().chars().count() as f64;
+                                    rendered_pos +=
+                                        value.to_display_string().chars().count() as f64;
                                 }
-                            } else if part.part_type == "text" {
-                                char_offset += part.content.chars().count() as f64;
+                            }
+                        }
+
+                        // Map the final position (for events at the end of text)
+                        index_map.insert(original_pos as usize, rendered_pos);
+
+                        // Now adjust text_data.events using the index map
+                        if let Some(text_events) = &text_data.events {
+                            for event in text_events {
+                                let mut adjusted_event = event.clone();
+
+                                // Resolve index_variable if present
+                                if let Some(var_name) = &adjusted_event.index_variable {
+                                    if let Some(value) = variable_state.get(var_name) {
+                                        if let bevy_mortar_bond::MortarVariableValue::Number(n) =
+                                            value
+                                        {
+                                            adjusted_event.index = *n;
+                                            info!(
+                                                "Example: Resolved index_variable '{}' to {}",
+                                                var_name, n
+                                            );
+                                        }
+                                    }
+                                }
+
+                                // Map the index from original to rendered position
+                                let original_index = adjusted_event.index as usize;
+                                if let Some(&rendered_index) = index_map.get(&original_index) {
+                                    adjusted_event.index = rendered_index;
+                                    info!(
+                                        "Example: Mapped text event index {} -> {} (interpolated text)",
+                                        original_index, rendered_index
+                                    );
+                                }
+
+                                all_events.push(adjusted_event);
+                            }
+                        }
+                    }
+                } else {
+                    // No interpolation, just use events as-is
+                    all_events = text_data.events.clone().unwrap_or_default();
+
+                    // Resolve index_variable for events that have it
+                    for event in &mut all_events {
+                        if let Some(var_name) = &event.index_variable {
+                            if let Some(value) = variable_state.get(var_name) {
+                                if let bevy_mortar_bond::MortarVariableValue::Number(n) = value {
+                                    event.index = *n;
+                                    info!(
+                                        "Example: Resolved index_variable '{}' to {}",
+                                        var_name, n
+                                    );
+                                }
                             }
                         }
                     }
