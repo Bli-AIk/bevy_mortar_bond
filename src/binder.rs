@@ -139,6 +139,18 @@ impl MortarValue {
         }
     }
 
+    /// Evaluate MortarValue truthiness.
+    ///
+    /// 判断 MortarValue 的布尔语义。
+    pub fn is_truthy(&self) -> bool {
+        match self {
+            MortarValue::Boolean(b) => b.0,
+            MortarValue::Number(n) => n.0 != 0.0,
+            MortarValue::String(s) => !s.0.is_empty(),
+            MortarValue::Void => false,
+        }
+    }
+
     /// Parse a string argument into a MortarValue.
     ///
     /// 将字符串参数解析为 MortarValue。

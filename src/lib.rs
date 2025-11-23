@@ -234,6 +234,17 @@ pub struct DialogueRunItem {
     pub ignore_duration: bool,
 }
 
+/// Descriptor for run statements found at a specific content position.
+///
+/// run 语句描述元组：(内容索引, 名称, 参数, index_override, ignore_duration)。
+pub type DialogueRunDescriptor = (
+    usize,
+    String,
+    Vec<String>,
+    Option<mortar_compiler::IndexOverride>,
+    bool,
+);
+
 impl DialogueState {
     /// Creates a new dialogue state.
     ///
@@ -280,13 +291,12 @@ impl DialogueState {
                     }
                     "choice" => {
                         // Extract choices
-                        if let Some(options_value) = content_value.get("options") {
-                            if let Ok(parsed_choices) =
+                        if let Some(options_value) = content_value.get("options")
+                            && let Ok(parsed_choices) =
                                 serde_json::from_value::<Vec<Choice>>(options_value.clone())
-                            {
-                                choices = Some(parsed_choices);
-                                choice_content_index = Some(content_idx);
-                            }
+                        {
+                            choices = Some(parsed_choices);
+                            choice_content_index = Some(content_idx);
                         }
                     }
                     "run_event" | "run_timeline" => {
@@ -539,13 +549,7 @@ impl DialogueState {
     pub fn get_runs_at_content_position(
         &self,
         content_position: usize,
-    ) -> Vec<(
-        usize,
-        String,
-        Vec<String>,
-        Option<mortar_compiler::IndexOverride>,
-        bool,
-    )> {
+    ) -> Vec<DialogueRunDescriptor> {
         let mut runs = Vec::new();
 
         // Look for run_event and run_timeline items at the specified content position
@@ -688,12 +692,7 @@ pub fn evaluate_if_condition(
                 };
 
                 if let Some(value) = functions.call(&func_name, &args) {
-                    match value {
-                        MortarValue::Boolean(b) => b.0,
-                        MortarValue::Number(n) => n.0 != 0.0,
-                        MortarValue::String(s) => !s.0.is_empty(),
-                        MortarValue::Void => false,
-                    }
+                    value.is_truthy()
                 } else {
                     warn!(
                         "Condition function '{}' not bound, defaulting to false",
@@ -766,13 +765,7 @@ pub fn evaluate_condition(
 
     // Call the function
     if let Some(value) = functions.call(&condition.condition_type, &args) {
-        // Try to convert to boolean
-        match value {
-            MortarValue::Boolean(b) => b.0,
-            MortarValue::Number(n) => n.0 != 0.0,
-            MortarValue::String(s) => !s.0.is_empty(),
-            MortarValue::Void => false,
-        }
+        value.is_truthy()
     } else {
         // Function not found - default to false
         warn!(
