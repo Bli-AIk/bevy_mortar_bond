@@ -112,7 +112,7 @@ pub struct MortarRuntime {
     /// The function registry for calling Mortar functions.
     ///
     /// 调用 Mortar 函数的函数注册表。
-    pub functions: binder::MortarFunctionRegistry,
+    pub functions: MortarFunctionRegistry,
 }
 
 impl Default for MortarRuntime {
@@ -121,7 +121,7 @@ impl Default for MortarRuntime {
             active_dialogue: None,
             pending_start: None,
             pending_jump: None,
-            functions: binder::MortarFunctionRegistry::new(),
+            functions: MortarFunctionRegistry::new(),
         }
     }
 }
@@ -271,8 +271,8 @@ impl DialogueState {
     /// 获取当前文本数据，如有必要会评估条件。
     pub fn current_text_data_evaluated(
         &self,
-        variable_state: &crate::variable_state::MortarVariableState,
-        functions: &binder::MortarFunctionRegistry,
+        variable_state: &MortarVariableState,
+        functions: &MortarFunctionRegistry,
     ) -> Option<&mortar_compiler::Text> {
         // Find the appropriate text based on conditions
         let text_data = self.node_data.texts.get(self.text_index)?;
@@ -284,13 +284,13 @@ impl DialogueState {
 
         // If there's a condition, check it
         if let Some(condition) = &text_data.condition {
-            if crate::evaluate_if_condition(condition, functions, variable_state) {
-                return Some(text_data);
+            return if evaluate_if_condition(condition, functions, variable_state) {
+                Some(text_data)
             } else {
                 // Condition failed, try to find else branch
                 // The else branch should be the next text with no condition or matching structure
                 // For now, we'll return None to skip this text
-                return None;
+                None
             }
         }
 
@@ -422,27 +422,23 @@ fn get_default_return_value(return_type: &str) -> String {
 /// 评估 IfCondition，支持函数调用。
 pub fn evaluate_if_condition(
     condition: &mortar_compiler::IfCondition,
-    functions: &binder::MortarFunctionRegistry,
-    variable_state: &crate::variable_state::MortarVariableState,
+    functions: &MortarFunctionRegistry,
+    variable_state: &MortarVariableState,
 ) -> bool {
     match condition.cond_type.as_str() {
         "func_call" => {
             let func_name = if let Some(operand) = &condition.operand {
-                if let Some(val) = &operand.value {
-                    Some(val.clone())
-                } else {
-                    None
-                }
+                operand.value.clone()
             } else {
                 None
             };
 
             if let Some(func_name) = func_name {
-                let args: Vec<binder::MortarValue> = if let Some(right) = &condition.right {
+                let args: Vec<MortarValue> = if let Some(right) = &condition.right {
                     if let Some(value) = &right.value {
                         value
                             .split_whitespace()
-                            .map(binder::MortarValue::parse)
+                            .map(MortarValue::parse)
                             .collect()
                     } else {
                         vec![]
@@ -453,10 +449,10 @@ pub fn evaluate_if_condition(
 
                 if let Some(value) = functions.call(&func_name, &args) {
                     match value {
-                        binder::MortarValue::Boolean(b) => b.0,
-                        binder::MortarValue::Number(n) => n.0 != 0.0,
-                        binder::MortarValue::String(s) => !s.0.is_empty(),
-                        binder::MortarValue::Void => false,
+                        MortarValue::Boolean(b) => b.0,
+                        MortarValue::Number(n) => n.0 != 0.0,
+                        MortarValue::String(s) => !s.0.is_empty(),
+                        MortarValue::Void => false,
                     }
                 } else {
                     warn!(
@@ -518,24 +514,24 @@ pub fn evaluate_if_condition(
 /// 通过调用绑定函数来评估条件。
 pub fn evaluate_condition(
     condition: &mortar_compiler::Condition,
-    functions: &binder::MortarFunctionRegistry,
+    functions: &MortarFunctionRegistry,
     _function_decls: &[mortar_compiler::Function],
 ) -> bool {
     // Parse arguments
-    let args: Vec<binder::MortarValue> = condition
+    let args: Vec<MortarValue> = condition
         .args
         .iter()
-        .map(|arg| binder::MortarValue::parse(arg))
+        .map(|arg| MortarValue::parse(arg))
         .collect();
 
     // Call the function
     if let Some(value) = functions.call(&condition.condition_type, &args) {
         // Try to convert to boolean
         match value {
-            binder::MortarValue::Boolean(b) => b.0,
-            binder::MortarValue::Number(n) => n.0 != 0.0,
-            binder::MortarValue::String(s) => !s.0.is_empty(),
-            binder::MortarValue::Void => false,
+            MortarValue::Boolean(b) => b.0,
+            MortarValue::Number(n) => n.0 != 0.0,
+            MortarValue::String(s) => !s.0.is_empty(),
+            MortarValue::Void => false,
         }
     } else {
         // Function not found - default to false
@@ -552,9 +548,9 @@ pub fn evaluate_condition(
 /// 通过调用绑定函数和解析变量来处理插值文本。
 pub fn process_interpolated_text(
     text_data: &mortar_compiler::Text,
-    functions: &binder::MortarFunctionRegistry,
+    functions: &MortarFunctionRegistry,
     function_decls: &[mortar_compiler::Function],
-    variable_state: &crate::variable_state::MortarVariableState,
+    variable_state: &MortarVariableState,
 ) -> String {
     // If there are no interpolated parts, return the original text
     let Some(parts) = &text_data.interpolated_parts else {
@@ -571,10 +567,10 @@ pub fn process_interpolated_text(
                 // Extract function name and call it
                 if let Some(func_name) = &part.function_name {
                     // Parse arguments
-                    let args: Vec<binder::MortarValue> = part
+                    let args: Vec<MortarValue> = part
                         .args
                         .iter()
-                        .map(|arg| binder::MortarValue::parse(arg))
+                        .map(|arg| MortarValue::parse(arg))
                         .collect();
 
                     // Call the function

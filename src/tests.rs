@@ -370,8 +370,6 @@ mod core_tests {
             right: None,
             operand: None,
             value: Some("has_key".to_string()),
-            function_name: None,
-            args: vec![],
         };
         assert!(state.evaluate_condition(&condition));
 
@@ -383,8 +381,6 @@ mod core_tests {
             right: None,
             operand: None,
             value: Some("is_locked".to_string()),
-            function_name: None,
-            args: vec![],
         };
         assert!(!state.evaluate_condition(&condition));
     }

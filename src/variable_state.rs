@@ -83,11 +83,8 @@ impl MortarVariableState {
     }
 
     /// Initialize from a list of variable declarations.
-
     ///
-
     /// 从变量声明列表初始化。
-
     pub fn from_variables(variables: &[Variable], enums: &[Enum]) -> Self {
         let mut state = Self::new();
 
@@ -234,7 +231,7 @@ impl MortarVariableState {
     pub fn get_branch_events(
         &self,
         name: &str,
-        variables: &[mortar_compiler::Variable],
+        variables: &[Variable],
     ) -> Option<Vec<mortar_compiler::Event>> {
         // Find the branch variable definition
         let branch_var = variables
@@ -550,8 +547,6 @@ mod tests {
             right: None,
             operand: None,
             value: Some("is_winner".to_string()),
-            function_name: None,
-            args: vec![],
         };
 
         assert!(state.evaluate_condition(&condition));
@@ -573,8 +568,6 @@ mod tests {
                 right: None,
                 operand: None,
                 value: Some("score".to_string()),
-                function_name: None,
-                args: vec![],
             })),
             right: Some(Box::new(IfCondition {
                 cond_type: "literal".to_string(),
@@ -583,13 +576,9 @@ mod tests {
                 right: None,
                 operand: None,
                 value: Some("100".to_string()),
-                function_name: None,
-                args: vec![],
             })),
             operand: None,
             value: None,
-            function_name: None,
-            args: vec![],
         };
 
         assert!(state.evaluate_condition(&condition));
