@@ -1,7 +1,7 @@
 {
   "metadata": {
     "version": "0.4.0",
-    "generated_at": "2025-11-23T04:44:28.469419170Z"
+    "generated_at": "2025-11-23T11:27:31.674141590Z"
   },
   "variables": [
     {
@@ -160,12 +160,14 @@
   "nodes": [
     {
       "name": "Start",
-      "texts": [
+      "content": [
         {
-          "text": "1. Master test sequence initiated."
+          "type": "text",
+          "value": "1. Master test sequence initiated."
         },
         {
-          "text": "2. Initial values: string='{test_string}', number={test_number}, bool={test_bool}",
+          "type": "text",
+          "value": "2. Initial values: string='{test_string}', number={test_number}, bool={test_bool}",
           "interpolated_parts": [
             {
               "type": "text",
@@ -194,7 +196,8 @@
           ]
         },
         {
-          "text": "3. Uninitialized defaults: string='{uninitialized_string}', number={uninitialized_number}, bool={uninitialized_bool}",
+          "type": "text",
+          "value": "3. Uninitialized defaults: string='{uninitialized_string}', number={uninitialized_number}, bool={uninitialized_bool}",
           "interpolated_parts": [
             {
               "type": "text",
@@ -223,7 +226,8 @@
           ]
         },
         {
-          "text": "4. Hello, {get_name}{get_exclamation}",
+          "type": "text",
+          "value": "4. Hello, {get_name}{get_exclamation}",
           "interpolated_parts": [
             {
               "type": "text",
@@ -245,7 +249,8 @@
           ]
         },
         {
-          "text": "5. Let's {create_message}",
+          "type": "text",
+          "value": "5. Let's {create_message}",
           "interpolated_parts": [
             {
               "type": "text",
@@ -268,9 +273,10 @@
     },
     {
       "name": "BranchAndEnumTest",
-      "texts": [
+      "content": [
         {
-          "text": "1. Bool branch says: {bool_branch}",
+          "type": "text",
+          "value": "1. Bool branch says: {bool_branch}",
           "interpolated_parts": [
             {
               "type": "text",
@@ -283,7 +289,8 @@
           ]
         },
         {
-          "text": "2. Status branch (default): {status_branch}",
+          "type": "text",
+          "value": "2. Status branch (default): {status_branch}",
           "interpolated_parts": [
             {
               "type": "text",
@@ -296,7 +303,8 @@
           ]
         },
         {
-          "text": "3. Equipment branch: {equipment_branch}",
+          "type": "text",
+          "value": "3. Equipment branch: {equipment_branch}",
           "interpolated_parts": [
             {
               "type": "text",
@@ -306,17 +314,11 @@
               "type": "placeholder",
               "content": "{equipment_branch}"
             }
-          ],
-          "pre_statements": [
-            {
-              "type": "assignment",
-              "var_name": "current_status",
-              "value": "Status.Working"
-            }
           ]
         },
         {
-          "text": "4. Status branch (updated): {status_branch}",
+          "type": "text",
+          "value": "4. Status branch (updated): {status_branch}",
           "interpolated_parts": [
             {
               "type": "text",
@@ -326,6 +328,13 @@
               "type": "placeholder",
               "content": "{status_branch}"
             }
+          ],
+          "pre_statements": [
+            {
+              "type": "assignment",
+              "var_name": "current_status",
+              "value": "Status.Working"
+            }
           ]
         }
       ],
@@ -333,9 +342,10 @@
     },
     {
       "name": "EventSystemTest",
-      "texts": [
+      "content": [
         {
-          "text": "1. This text should trigger a color reset.",
+          "type": "text",
+          "value": "1. This text should trigger a color reset.",
           "events": [
             {
               "index": 0.0,
@@ -351,7 +361,12 @@
           ]
         },
         {
-          "text": "2. A wave animation should have just started. This text has inline sound.",
+          "type": "run_event",
+          "name": "WaveAnimation"
+        },
+        {
+          "type": "text",
+          "value": "2. A wave animation should have just started. This text has inline sound.",
           "events": [
             {
               "index": 0.0,
@@ -364,17 +379,18 @@
                 }
               ]
             }
-          ],
+          ]
+        },
+        {
+          "type": "text",
+          "value": "3. Sound should play at character 15.",
           "pre_statements": [
             {
               "type": "assignment",
               "var_name": "uninitialized_number",
               "value": "15"
             }
-          ]
-        },
-        {
-          "text": "3. Sound should play at character 15.",
+          ],
           "events": [
             {
               "index": 0.0,
@@ -391,39 +407,30 @@
           ]
         },
         {
-          "text": "4. Now, running a complex timeline..."
+          "type": "text",
+          "value": "4. Now, running a complex timeline..."
         },
         {
-          "text": "5. Timeline finished."
-        }
-      ],
-      "runs": [
-        {
-          "event_name": "WaveAnimation",
-          "position": 2
+          "type": "run_event",
+          "name": "TestTimeline"
         },
         {
-          "event_name": "TestTimeline",
-          "position": 9
+          "type": "text",
+          "value": "5. Timeline finished."
         }
       ],
       "next": "ControlFlowTest"
     },
     {
       "name": "ControlFlowTest",
-      "texts": [
+      "content": [
         {
-          "text": "1. Testing control flow...",
-          "pre_statements": [
-            {
-              "type": "assignment",
-              "var_name": "test_number",
-              "value": "50"
-            }
-          ]
+          "type": "text",
+          "value": "1. Testing control flow..."
         },
         {
-          "text": "2. Complex IF condition PASSED.",
+          "type": "text",
+          "value": "2. Complex IF condition PASSED.",
           "condition": {
             "type": "binary",
             "operator": "||",
@@ -453,29 +460,21 @@
             },
             "right": {
               "type": "binary",
-              "operator": "&&",
+              "operator": "==",
               "left": {
-                "type": "binary",
-                "operator": "==",
-                "left": {
-                  "type": "identifier",
-                  "value": "test_number"
-                },
-                "right": {
-                  "type": "identifier",
-                  "value": "50"
-                }
+                "type": "identifier",
+                "value": "test_number"
               },
               "right": {
-                "type": "func_call",
-                "function_name": "has_map",
-                "args": []
+                "type": "identifier",
+                "value": "50"
               }
             }
           }
         },
         {
-          "text": "2. Complex IF condition FAILED.",
+          "type": "text",
+          "value": "2. Complex IF condition FAILED.",
           "condition": {
             "type": "unary",
             "operator": "!",
@@ -508,30 +507,22 @@
               },
               "right": {
                 "type": "binary",
-                "operator": "&&",
+                "operator": "==",
                 "left": {
-                  "type": "binary",
-                  "operator": "==",
-                  "left": {
-                    "type": "identifier",
-                    "value": "test_number"
-                  },
-                  "right": {
-                    "type": "identifier",
-                    "value": "50"
-                  }
+                  "type": "identifier",
+                  "value": "test_number"
                 },
                 "right": {
-                  "type": "func_call",
-                  "function_name": "has_map",
-                  "args": []
+                  "type": "identifier",
+                  "value": "50"
                 }
               }
             }
           }
         },
         {
-          "text": "3. This should NOT appear.",
+          "type": "text",
+          "value": "3. This should NOT appear.",
           "condition": {
             "type": "binary",
             "operator": ">",
@@ -546,7 +537,8 @@
           }
         },
         {
-          "text": "4. This SHOULD appear (negation test).",
+          "type": "text",
+          "value": "4. This SHOULD appear (negation test).",
           "condition": {
             "type": "unary",
             "operator": "!",
@@ -569,82 +561,90 @@
     },
     {
       "name": "ChoiceSystemTest",
-      "texts": [
+      "content": [
         {
-          "text": "1. Choose your destiny."
+          "type": "text",
+          "value": "1. Choose your destiny."
         },
         {
-          "text": "2. You broke the choice block."
-        }
-      ],
-      "next": "ChoiceResult_Break",
-      "choice": [
-        {
-          "text": "Conditional (has_backpack -> false)",
-          "condition": {
-            "type": "has_backpack"
-          },
-          "next": "ChoiceResult_Backpack"
-        },
-        {
-          "text": "Conditional (has_map -> true)",
-          "condition": {
-            "type": "has_map"
-          },
-          "next": "ChoiceResult_Map"
-        },
-        {
-          "text": "Nested Choices",
-          "choice": [
+          "type": "choice",
+          "options": [
             {
-              "text": "Go to End",
-              "next": "FinalNode"
+              "text": "Conditional (has_backpack -> false)",
+              "condition": {
+                "type": "has_backpack"
+              },
+              "next": "ChoiceResult_Backpack"
             },
             {
-              "text": "Exit this node",
-              "action": "return"
+              "text": "Conditional (has_map -> true)",
+              "condition": {
+                "type": "has_map"
+              },
+              "next": "ChoiceResult_Map"
+            },
+            {
+              "text": "Nested Choices",
+              "choice": [
+                {
+                  "text": "Go to End",
+                  "next": "FinalNode"
+                },
+                {
+                  "text": "Exit this node",
+                  "action": "return"
+                }
+              ]
+            },
+            {
+              "text": "Break out of choices",
+              "action": "break"
             }
           ]
         },
         {
-          "text": "Break out of choices",
-          "action": "break"
+          "type": "text",
+          "value": "2. You broke the choice block."
         }
       ],
-      "choice_position": 1
+      "next": "ChoiceResult_Break"
     },
     {
       "name": "ChoiceResult_Map",
-      "texts": [
+      "content": [
         {
-          "text": "You chose the 'Map' path."
+          "type": "text",
+          "value": "You chose the 'Map' path."
         }
       ],
       "next": "FinalNode"
     },
     {
       "name": "ChoiceResult_Backpack",
-      "texts": [
+      "content": [
         {
-          "text": "This should not be reachable as has_backpack() is false."
+          "type": "text",
+          "value": "This should not be reachable as has_backpack() is false."
         }
       ],
       "next": "FinalNode"
     },
     {
       "name": "ChoiceResult_Break",
-      "texts": [
+      "content": [
         {
-          "text": "Continuing after the break."
+          "type": "text",
+          "value": "Continuing after the break."
         }
       ],
       "next": "FinalNode"
     },
     {
       "name": "FinalNode",
-      "texts": [
+      "content": [
         {
-          "text": "Master test completed."
+          "type": "text",
+          "value": "Master test completed."
         }
       ]
     }
@@ -724,7 +724,7 @@
       "action": {
         "type": "set_animation",
         "args": [
-          "wave"
+          "\"wave\""
         ]
       },
       "duration": 1.0
@@ -735,7 +735,7 @@
       "action": {
         "type": "set_color",
         "args": [
-          "#FFFFFF"
+          "\"#FFFFFF\""
         ]
       }
     },
@@ -744,7 +744,7 @@
       "action": {
         "type": "play_sound",
         "args": [
-          "random-sound-1-80941.wav"
+          "\"random-sound-1-80941.wav\""
         ]
       }
     }

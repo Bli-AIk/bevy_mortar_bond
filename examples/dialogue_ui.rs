@@ -16,7 +16,6 @@ use bevy_mortar_bond::{
     MortarAsset, MortarEvent, MortarEventAction, MortarEventTracker, MortarFunctions, MortarNumber,
     MortarPlugin, MortarRegistry, MortarRuntime, MortarString, MortarVariableState,
 };
-use mortar_compiler::deserializer::RunStmt;
 use std::time::Duration;
 use utils::ui::*;
 
@@ -363,14 +362,10 @@ fn manage_choice_buttons(
     if let Some(state) = &runtime.active_dialogue
         && let Some(choices) = state.get_choices()
     {
-        // Check if we should show choices based on choice_position
-        let should_show_choices = if let Some(choice_pos) = state.node_data().choice_position {
-            // Show choices if we've reached or passed the choice_position
-            state.text_index + 1 >= choice_pos && !state.has_next_text_before_choice()
-        } else {
-            // If no choice_position, use old behavior (show after all text)
-            !state.has_next_text()
-        };
+        // Check if we should show choices
+        // In the new architecture, choices appear at a specific position in the content array
+        // We show them when we've reached or passed that position
+        let should_show_choices = !state.has_next_text_before_choice();
 
         if !should_show_choices {
             return;
@@ -655,32 +650,57 @@ fn process_run_statements_after_text(
         return;
     };
 
-    // Get or determine the position to check
-    let position = if let Some(pos) = state.pending_run_position {
-        pos
-    } else {
-        // Also check if we should execute "after last text" runs when reaching end of node
-        // This handles the case where the user clicks continue on the last text
-        if !state.has_next_text() {
-            let after_last_text_position = state.text_index * 2 + 1;
-            let has_runs_at_position = state.node_data().runs.iter().any(|run| {
-                run.position == after_last_text_position
-                    && !state.executed_runs.contains(&run.position)
-            });
+    // In the new architecture, runs appear as content items between or after texts
+    // We need to find the content position after the current text and collect any consecutive runs
+    
+    // Get the current text's content position
+    let Some(current_text_content_idx) = state.current_text_content_index() else {
+        return; // No valid text position
+    };
 
-            if has_runs_at_position {
-                info!(
-                    "Example: Checking for runs at position {} (after last text)",
-                    after_last_text_position
-                );
-                after_last_text_position
-            } else {
-                return;
+    // Find consecutive run items after the current text position
+    let mut run_sequence = Vec::new();
+    let mut content_indices_to_mark = Vec::new();
+    let start_search_idx = current_text_content_idx + 1;
+
+    for (idx, content_value) in state.node_data().content.iter().enumerate().skip(start_search_idx) {
+        if state.executed_content_indices.contains(&idx) {
+            continue;
+        }
+
+        if let Some(type_str) = content_value.get("type").and_then(|v| v.as_str()) {
+            match type_str {
+                "run_event" => {
+                    if let Some(name) = content_value.get("name").and_then(|v| v.as_str()) {
+                        let ignore_duration = content_value
+                            .get("ignore_duration")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false);
+                        run_sequence.push((name.to_string(), None::<f64>, ignore_duration));
+                        content_indices_to_mark.push(idx);
+                    }
+                }
+                "run_timeline" => {
+                    if let Some(name) = content_value.get("name").and_then(|v| v.as_str()) {
+                        run_sequence.push((name.to_string(), None::<f64>, false));
+                        content_indices_to_mark.push(idx);
+                    }
+                }
+                _ => {
+                    // Stop at non-run items (text, choice, etc.)
+                    break;
+                }
             }
         } else {
-            return;
+            break;
         }
-    };
+    }
+
+    if run_sequence.is_empty() {
+        // Clear pending position even if no runs
+        state.pending_run_position = None;
+        return;
+    }
 
     // Get asset data
     let Some(handle) = registry.get(&state.mortar_path) else {
@@ -693,57 +713,21 @@ fn process_run_statements_after_text(
     let event_defs = &asset.data.events;
     let timeline_defs = &asset.data.timelines;
 
-    // Get all unexecuted runs
-    let all_unexecuted_runs: Vec<_> = state
-        .node_data()
-        .runs
+    // Fill in durations from event definitions
+    let run_sequence_with_durations: Vec<(String, Option<f64>, bool)> = run_sequence
         .iter()
-        .filter(|run| !state.executed_runs.contains(&run.position))
-        .collect();
-
-    if all_unexecuted_runs.is_empty() {
-        // Clear pending position even if no runs
-        state.pending_run_position = None;
-        return;
-    }
-
-    // Collect consecutive runs (runs with consecutive positions)
-    let first_run_pos = all_unexecuted_runs[0].position;
-    let mut consecutive_runs = vec![all_unexecuted_runs[0]];
-
-    for i in 1..all_unexecuted_runs.len() {
-        let run = all_unexecuted_runs[i];
-        let prev_run = consecutive_runs.last().unwrap();
-
-        // Check if this run's position is consecutive (prev_position + 1)
-        if run.position == prev_run.position + 1 {
-            consecutive_runs.push(run);
-        } else {
-            // Not consecutive, stop here
-            break;
-        }
-    }
-
-    // Build a sequence of (event_name, duration, ignore_duration) for the runs
-    let run_sequence: Vec<(String, Option<f64>, bool)> = consecutive_runs
-        .iter()
-        .map(|run| {
-            // Get duration from event definition
+        .map(|(name, _, ignore_duration)| {
             let duration = event_defs
                 .iter()
-                .find(|e| e.name == run.event_name)
+                .find(|e| e.name == *name)
                 .and_then(|e| e.duration);
-            (run.event_name.clone(), duration, false)
+            (name.clone(), duration, *ignore_duration)
         })
         .collect();
 
-    // Collect positions to mark as executed
-    let positions_to_mark: Vec<usize> = consecutive_runs.iter().map(|r| r.position).collect();
-
     info!(
-        "Example: Executing {} consecutive run(s) at position {}",
-        consecutive_runs.len(),
-        first_run_pos
+        "Example: Executing {} consecutive run(s) after current text",
+        run_sequence_with_durations.len()
     );
 
     // Set flag to indicate runs are executing
@@ -761,18 +745,18 @@ fn process_run_statements_after_text(
     };
 
     // If there are multiple consecutive runs, treat them like a timeline sequence with durations
-    if run_sequence.len() > 1 {
+    if run_sequence_with_durations.len() > 1 {
         start_timeline_execution(
-            run_sequence,
+            run_sequence_with_durations,
             event_defs.to_vec(),
             timeline_defs.to_vec(),
             dialogue_entity,
             &mut commands,
         );
-    } else if let Some(run) = consecutive_runs.first() {
+    } else if let Some((event_name, _, _)) = run_sequence_with_durations.first() {
         // Single run, execute immediately (no duration wait)
-        execute_run_statement(
-            run,
+        execute_run_by_name(
+            event_name,
             event_defs,
             timeline_defs,
             &mut commands,
@@ -782,10 +766,10 @@ fn process_run_statements_after_text(
         runs_executing.executing = false;
     }
 
-    // Mark runs as executed and clear pending position
+    // Mark content items as executed and clear pending position
     if let Some(state) = &mut runtime.active_dialogue {
-        for position in positions_to_mark {
-            state.mark_run_executed(position);
+        for idx in content_indices_to_mark {
+            state.mark_content_executed(idx);
         }
         state.pending_run_position = None;
     }
@@ -1024,48 +1008,58 @@ fn update_dialogue_text_with_typewriter(
                     }
                 }
 
-                // Add events from run statements with index_override
-                if let Some(asset_data) = asset_data {
-                    let current_position = state.text_index * 2;
-                    for run in &state.node_data().runs {
-                        if run.position == current_position {
-                            if let Some(index_override) = &run.index_override {
-                                // Get the index value
-                                let index = if index_override.override_type == "variable" {
-                                    // Get variable value
-                                    variable_state
-                                        .get(&index_override.value)
-                                        .and_then(|v| {
-                                            if let bevy_mortar_bond::MortarVariableValue::Number(
-                                                n,
-                                            ) = v
-                                            {
-                                                Some(*n)
-                                            } else {
-                                                None
-                                            }
-                                        })
-                                        .unwrap_or(0.0)
-                                } else {
-                                    // Direct value
-                                    index_override.value.parse::<f64>().unwrap_or(0.0)
-                                };
+                // Add events from run_event items with index_override at current text position
+                // In the new architecture, run events with index_override appear in the content array
+                // We need to check the content item at the current text's position
+                if let Some(asset_data) = asset_data
+                    && let Some(current_text_content_idx) = state.current_text_content_index() {
+                    
+                    // Look for run_event items at the same content position as current text
+                    if let Some(_content_value) = state.node_data().content.get(current_text_content_idx) {
+                        // Check if there's a run_event right before this text
+                        if current_text_content_idx > 0 {
+                            if let Some(prev_content) = state.node_data().content.get(current_text_content_idx - 1) {
+                                if let Some(type_str) = prev_content.get("type").and_then(|v| v.as_str()) {
+                                    if type_str == "run_event" {
+                                        if let Some(index_override) = prev_content.get("index_override")
+                                            .and_then(|v| serde_json::from_value::<mortar_compiler::IndexOverride>(v.clone()).ok()) {
+                                            
+                                            if let Some(event_name) = prev_content.get("name").and_then(|v| v.as_str()) {
+                                                // Get the index value
+                                                let index = if index_override.override_type == "variable" {
+                                                    // Get variable value
+                                                    variable_state
+                                                        .get(&index_override.value)
+                                                        .and_then(|v| {
+                                                            if let bevy_mortar_bond::MortarVariableValue::Number(n) = v {
+                                                                Some(*n)
+                                                            } else {
+                                                                None
+                                                            }
+                                                        })
+                                                        .unwrap_or(0.0)
+                                                } else {
+                                                    // Direct value
+                                                    index_override.value.parse::<f64>().unwrap_or(0.0)
+                                                };
 
-                                // Find the event definition
-                                if let Some(event_def) =
-                                    asset_data.events.iter().find(|e| e.name == run.event_name)
-                                {
-                                    // Create a text event from the event definition
-                                    let text_event = mortar_compiler::Event {
-                                        index,
-                                        index_variable: None,
-                                        actions: vec![event_def.action.clone()],
-                                    };
-                                    all_events.push(text_event);
-                                    info!(
-                                        "Example: Added run '{}' with index {} to text events",
-                                        run.event_name, index
-                                    );
+                                                // Find the event definition
+                                                if let Some(event_def) = asset_data.events.iter().find(|e| e.name == event_name) {
+                                                    // Create a text event from the event definition
+                                                    let text_event = mortar_compiler::Event {
+                                                        index,
+                                                        index_variable: None,
+                                                        actions: vec![event_def.action.clone()],
+                                                    };
+                                                    all_events.push(text_event);
+                                                    info!(
+                                                        "Example: Added run '{}' with index {} to text events",
+                                                        event_name, index
+                                                    );
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1375,26 +1369,26 @@ fn parse_hex_color(hex: &str) -> Option<Color> {
     ))
 }
 
-/// Execute a run statement - either an event or a timeline
+/// Execute a run statement by name - either an event or a timeline
 ///
-/// 执行run语句 - 事件或时间轴
-fn execute_run_statement(
-    run_stmt: &RunStmt,
+/// 通过名称执行run语句 - 事件或时间轴
+fn execute_run_by_name(
+    event_name: &str,
     event_defs: &[mortar_compiler::EventDef],
     timeline_defs: &[mortar_compiler::TimelineDef],
     commands: &mut Commands,
     entity: Entity,
 ) {
     // First try to find as an event
-    if let Some(event_def) = event_defs.iter().find(|e| e.name == run_stmt.event_name) {
-        info!("Example: Executing event: {}", run_stmt.event_name);
+    if let Some(event_def) = event_defs.iter().find(|e| e.name == event_name) {
+        info!("Example: Executing event: {}", event_name);
         execute_event_action(&event_def.action, commands, entity);
         return;
     }
 
     // Then try to find as a timeline
-    if let Some(timeline_def) = timeline_defs.iter().find(|t| t.name == run_stmt.event_name) {
-        info!("Example: Executing timeline: {}", run_stmt.event_name);
+    if let Some(timeline_def) = timeline_defs.iter().find(|t| t.name == event_name) {
+        info!("Example: Executing timeline: {}", event_name);
 
         // Build a list of (event_name, duration, ignore_duration) tuples from the timeline
         let mut timeline_sequence = Vec::new();
@@ -1438,10 +1432,7 @@ fn execute_run_statement(
         return;
     }
 
-    warn!(
-        "Example: Run statement target not found: {}",
-        run_stmt.event_name
-    );
+    warn!("Example: Run statement target not found: {}", event_name);
 }
 
 /// Start executing a timeline sequence with durations

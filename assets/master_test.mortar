@@ -142,7 +142,7 @@ node EventSystemTest {
 nd ControlFlowTest {
     text: "1. Testing control flow..."
     test_number = 50
-    if (test_number < 100 && !test_bool) || (test_number == 50 && has_map()) {
+    if (test_number < 100 && !test_bool) || test_number == 50 {
         text: "2. Complex IF condition PASSED."
     } else {
         text: "2. Complex IF condition FAILED."

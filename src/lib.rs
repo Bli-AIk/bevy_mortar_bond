@@ -18,7 +18,6 @@
 //!
 
 use bevy::prelude::*;
-use mortar_compiler::deserializer::RunStmt;
 use mortar_compiler::{Choice, Node};
 use std::collections::HashMap;
 
@@ -126,6 +125,18 @@ impl Default for MortarRuntime {
     }
 }
 
+/// Text data extracted from content item
+///
+/// 从内容项提取的文本数据
+#[derive(Debug, Clone)]
+pub struct TextData {
+    pub value: String,
+    pub interpolated_parts: Option<Vec<mortar_compiler::StringPart>>,
+    pub condition: Option<mortar_compiler::IfCondition>,
+    pub pre_statements: Vec<mortar_compiler::Statement>,
+    pub events: Option<Vec<mortar_compiler::Event>>,
+}
+
 /// The state of a dialogue.
 ///
 /// 对话状态。
@@ -155,10 +166,10 @@ pub struct DialogueState {
     ///
     /// 标志表示选项已被 break，不应再显示。
     pub choices_broken: bool,
-    /// Track which run statements have been executed (by index).
+    /// Track which content items have been executed (by content index).
     ///
-    /// 追踪哪些run语句已经被执行（通过索引）。
-    pub executed_runs: Vec<usize>,
+    /// 追踪哪些内容项已经被执行（通过内容索引）。
+    pub executed_content_indices: Vec<usize>,
     /// Position to execute runs at (set by NextText handler).
     ///
     /// 要执行run的位置（由NextText处理器设置）。
@@ -167,6 +178,22 @@ pub struct DialogueState {
     ///
     /// 节点数据的快照（避免重复查询）。
     node_data: Node,
+    /// Extracted text data from content for easier access
+    ///
+    /// 从 content 提取的文本数据，便于访问
+    text_items: Vec<TextData>,
+    /// Mapping from text index to content index
+    ///
+    /// 从文本索引到内容索引的映射
+    text_to_content_index: Vec<usize>,
+    /// Choice position (index in content array where choices appear)
+    ///
+    /// 选项位置（选项在 content 数组中出现的索引）
+    choice_content_index: Option<usize>,
+    /// Choices extracted from content
+    ///
+    /// 从 content 提取的选项
+    choices: Option<Vec<Choice>>,
 }
 
 impl DialogueState {
@@ -174,6 +201,64 @@ impl DialogueState {
     ///
     /// 创建一个新的对话状态。
     pub fn new(mortar_path: String, node_name: String, node_data: Node) -> Self {
+        // Parse content array to extract texts and choices
+        let mut text_items = Vec::new();
+        let mut text_to_content_index = Vec::new();
+        let mut choice_content_index = None;
+        let mut choices = None;
+
+        for (content_idx, content_value) in node_data.content.iter().enumerate() {
+            if let Some(type_str) = content_value.get("type").and_then(|v| v.as_str()) {
+                match type_str {
+                    "text" => {
+                        // Extract text data
+                        let value = content_value
+                            .get("value")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let interpolated_parts = content_value
+                            .get("interpolated_parts")
+                            .and_then(|v| serde_json::from_value(v.clone()).ok());
+                        let condition = content_value
+                            .get("condition")
+                            .and_then(|v| serde_json::from_value(v.clone()).ok());
+                        let pre_statements = content_value
+                            .get("pre_statements")
+                            .and_then(|v| serde_json::from_value(v.clone()).ok())
+                            .unwrap_or_default();
+                        let events = content_value
+                            .get("events")
+                            .and_then(|v| serde_json::from_value(v.clone()).ok());
+
+                        text_items.push(TextData {
+                            value,
+                            interpolated_parts,
+                            condition,
+                            pre_statements,
+                            events,
+                        });
+                        text_to_content_index.push(content_idx);
+                    }
+                    "choice" => {
+                        // Extract choices
+                        if let Some(options_value) = content_value.get("options") {
+                            if let Ok(parsed_choices) =
+                                serde_json::from_value::<Vec<Choice>>(options_value.clone())
+                            {
+                                choices = Some(parsed_choices);
+                                choice_content_index = Some(content_idx);
+                            }
+                        }
+                    }
+                    "run_event" | "run_timeline" => {
+                        // These will be processed directly from content when needed
+                    }
+                    _ => {}
+                }
+            }
+        }
+
         Self {
             mortar_path,
             current_node: node_name,
@@ -181,9 +266,13 @@ impl DialogueState {
             selected_choice: None,
             choice_stack: Vec::new(),
             choices_broken: false,
-            executed_runs: Vec::new(),
+            executed_content_indices: Vec::new(),
             pending_run_position: None,
             node_data,
+            text_items,
+            text_to_content_index,
+            choice_content_index,
+            choices,
         }
     }
 
@@ -191,7 +280,7 @@ impl DialogueState {
     ///
     /// 获取当前选择，考虑嵌套选择的堆栈。
     pub fn get_current_choices(&self) -> Option<&Vec<Choice>> {
-        let mut choices = self.node_data.choice.as_ref()?;
+        let mut choices = self.choices.as_ref()?;
 
         // Navigate through nested choices using the stack
         for &index in &self.choice_stack {
@@ -243,7 +332,7 @@ impl DialogueState {
         }
 
         if self.choice_stack.is_empty() {
-            self.node_data.choice.as_ref()
+            self.choices.as_ref()
         } else {
             self.get_current_choices()
         }
@@ -253,17 +342,16 @@ impl DialogueState {
     ///
     /// 获取当前显示的文本（不含插值的原始文本）。
     pub fn current_text(&self) -> Option<&str> {
-        self.node_data
-            .texts
+        self.text_items
             .get(self.text_index)
-            .map(|s| s.text.as_str())
+            .map(|t| t.value.as_str())
     }
 
     /// Gets the current text data with interpolation information.
     ///
     /// 获取包含插值信息的当前文本数据。
-    pub fn current_text_data(&self) -> Option<&mortar_compiler::Text> {
-        self.node_data.texts.get(self.text_index)
+    pub fn current_text_data(&self) -> Option<&TextData> {
+        self.text_items.get(self.text_index)
     }
 
     /// Gets the current text data, evaluating conditions if necessary.
@@ -273,9 +361,9 @@ impl DialogueState {
         &self,
         variable_state: &MortarVariableState,
         functions: &MortarFunctionRegistry,
-    ) -> Option<&mortar_compiler::Text> {
+    ) -> Option<&TextData> {
         // Find the appropriate text based on conditions
-        let text_data = self.node_data.texts.get(self.text_index)?;
+        let text_data = self.text_items.get(self.text_index)?;
 
         // If there's no condition, return the text as-is
         if text_data.condition.is_none() {
@@ -291,7 +379,7 @@ impl DialogueState {
                 // The else branch should be the next text with no condition or matching structure
                 // For now, we'll return None to skip this text
                 None
-            }
+            };
         }
 
         Some(text_data)
@@ -301,15 +389,21 @@ impl DialogueState {
     ///
     /// 检查是否还有更多文本。
     pub fn has_next_text(&self) -> bool {
-        self.text_index + 1 < self.node_data.texts.len()
+        self.text_index + 1 < self.text_items.len()
     }
 
     /// Checks if there is more text to display before the choice position.
     ///
     /// 检查在choice位置之前是否还有更多文本。
     pub fn has_next_text_before_choice(&self) -> bool {
-        if let Some(choice_pos) = self.node_data.choice_position {
-            self.text_index + 1 < choice_pos
+        if let Some(choice_content_idx) = self.choice_content_index {
+            // Check if the next text would be after the choice position
+            if self.text_index + 1 < self.text_items.len() {
+                let next_text_content_idx = self.text_to_content_index[self.text_index + 1];
+                next_text_content_idx < choice_content_idx
+            } else {
+                false
+            }
         } else {
             self.has_next_text()
         }
@@ -338,7 +432,7 @@ impl DialogueState {
     ///
     /// 检查当前节点是否有选项。
     pub fn has_choices(&self) -> bool {
-        self.node_data.choice.is_some()
+        self.choices.is_some()
     }
 
     /// Gets the next node name (for automatic jumps).
@@ -348,25 +442,71 @@ impl DialogueState {
         self.node_data.next.as_deref()
     }
 
-    /// Gets run statements that should execute at the current position.
-    /// Position is calculated as: text_index * 2 + (before text: 0, after text: 1)
+    /// Gets run statements that should execute at the current content position.
+    /// Returns (content_index, event_name, args, index_override, ignore_duration)
     ///
-    /// 获取应该在当前位置执行的run语句。
-    /// 位置计算为：text_index * 2 + (文本前: 0, 文本后: 1)
-    pub fn get_runs_at_position(&self, position: usize) -> Vec<&RunStmt> {
-        self.node_data
-            .runs
-            .iter()
-            .filter(|run| run.position == position && !self.executed_runs.contains(&run.position))
-            .collect()
+    /// 获取应该在当前内容位置执行的run语句。
+    /// 返回 (content_index, event_name, args, index_override, ignore_duration)
+    pub fn get_runs_at_content_position(
+        &self,
+        content_position: usize,
+    ) -> Vec<(
+        usize,
+        String,
+        Vec<String>,
+        Option<mortar_compiler::IndexOverride>,
+        bool,
+    )> {
+        let mut runs = Vec::new();
+
+        // Look for run_event and run_timeline items at the specified content position
+        for (idx, content_value) in self.node_data.content.iter().enumerate() {
+            if idx == content_position
+                && !self.executed_content_indices.contains(&idx)
+                && let Some(type_str) = content_value.get("type").and_then(|v| v.as_str())
+            {
+                match type_str {
+                    "run_event" => {
+                        if let Some(name) = content_value.get("name").and_then(|v| v.as_str()) {
+                            let args = content_value
+                                .get("args")
+                                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                                .unwrap_or_default();
+                            let index_override = content_value
+                                .get("index_override")
+                                .and_then(|v| serde_json::from_value(v.clone()).ok());
+                            let ignore_duration = content_value
+                                .get("ignore_duration")
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false);
+                            runs.push((
+                                idx,
+                                name.to_string(),
+                                args,
+                                index_override,
+                                ignore_duration,
+                            ));
+                        }
+                    }
+                    "run_timeline" => {
+                        if let Some(name) = content_value.get("name").and_then(|v| v.as_str()) {
+                            runs.push((idx, name.to_string(), vec![], None, false));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        runs
     }
 
-    /// Marks a run statement at the given position as executed.
+    /// Marks a content item at the given index as executed.
     ///
-    /// 标记给定位置的run语句为已执行。
-    pub fn mark_run_executed(&mut self, position: usize) {
-        if !self.executed_runs.contains(&position) {
-            self.executed_runs.push(position);
+    /// 标记给定索引的内容项为已执行。
+    pub fn mark_content_executed(&mut self, content_index: usize) {
+        if !self.executed_content_indices.contains(&content_index) {
+            self.executed_content_indices.push(content_index);
         }
     }
 
@@ -375,6 +515,20 @@ impl DialogueState {
     /// 获取节点数据引用。
     pub fn node_data(&self) -> &Node {
         &self.node_data
+    }
+
+    /// Gets the content index for the current text.
+    ///
+    /// 获取当前文本的内容索引。
+    pub fn current_text_content_index(&self) -> Option<usize> {
+        self.text_to_content_index.get(self.text_index).copied()
+    }
+
+    /// Gets all text to content index mappings.
+    ///
+    /// 获取所有文本到内容索引的映射。
+    pub fn text_to_content_indices(&self) -> &[usize] {
+        &self.text_to_content_index
     }
 }
 
@@ -436,10 +590,7 @@ pub fn evaluate_if_condition(
             if let Some(func_name) = func_name {
                 let args: Vec<MortarValue> = if let Some(right) = &condition.right {
                     if let Some(value) = &right.value {
-                        value
-                            .split_whitespace()
-                            .map(MortarValue::parse)
-                            .collect()
+                        value.split_whitespace().map(MortarValue::parse).collect()
                     } else {
                         vec![]
                     }
@@ -547,14 +698,14 @@ pub fn evaluate_condition(
 ///
 /// 通过调用绑定函数和解析变量来处理插值文本。
 pub fn process_interpolated_text(
-    text_data: &mortar_compiler::Text,
+    text_data: &TextData,
     functions: &MortarFunctionRegistry,
     function_decls: &[mortar_compiler::Function],
     variable_state: &MortarVariableState,
 ) -> String {
     // If there are no interpolated parts, return the original text
     let Some(parts) = &text_data.interpolated_parts else {
-        return text_data.text.clone();
+        return text_data.value.clone();
     };
 
     let mut result = String::new();
