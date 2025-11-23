@@ -1,7 +1,7 @@
 {
   "metadata": {
     "version": "0.4.0",
-    "generated_at": "2025-11-23T04:19:19.532845139Z"
+    "generated_at": "2025-11-23T04:44:28.469419170Z"
   },
   "variables": [
     {
@@ -724,7 +724,7 @@
       "action": {
         "type": "set_animation",
         "args": [
-          "\"wave\""
+          "wave"
         ]
       },
       "duration": 1.0
@@ -735,7 +735,7 @@
       "action": {
         "type": "set_color",
         "args": [
-          "\"#FFFFFF\""
+          "#FFFFFF"
         ]
       }
     },
@@ -744,7 +744,7 @@
       "action": {
         "type": "play_sound",
         "args": [
-          "\"random-sound-1-80941.wav\""
+          "random-sound-1-80941.wav"
         ]
       }
     }
