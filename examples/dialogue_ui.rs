@@ -99,11 +99,20 @@ struct RuntimeVariableState {
     state: Option<MortarVariableState>,
 }
 
+/// Resource to track if runs are currently executing
+///
+/// 追踪runs是否正在执行的资源
+#[derive(Resource, Default)]
+struct RunsExecuting {
+    executing: bool,
+}
+
 fn main() {
     App::new()
         .add_plugins((DefaultPlugins, MortarPlugin, TypewriterPlugin))
         .init_resource::<DialogueFiles>()
         .init_resource::<RuntimeVariableState>()
+        .init_resource::<RunsExecuting>()
         .add_systems(
             Startup,
             (
@@ -125,6 +134,7 @@ fn main() {
                 manage_variable_state,
                 process_run_statements_before_text,
                 process_run_statements_after_text,
+                clear_runs_executing_flag,
                 update_dialogue_text_with_typewriter,
                 manage_choice_buttons,
                 update_choice_button_styles,
@@ -460,12 +470,19 @@ fn update_choice_button_styles(
 fn update_button_states(
     runtime: Res<MortarRuntime>,
     mut continue_query: Query<(&mut Text, &mut Visibility), With<ContinueButton>>,
+    runs_executing: Res<RunsExecuting>,
 ) {
-    if !runtime.is_changed() {
+    if !runtime.is_changed() && !runs_executing.is_changed() {
         return;
     }
 
     for (mut text, mut visibility) in continue_query.iter_mut() {
+        // Hide continue button if runs are being executed
+        if runs_executing.executing {
+            *visibility = Visibility::Hidden;
+            continue;
+        }
+
         if let Some(state) = &runtime.active_dialogue {
             if state.has_choices() && !state.has_next_text() {
                 // Has choices - show continue button only if choice is selected
@@ -595,65 +612,10 @@ fn process_run_statements_before_text(
     assets: Res<Assets<MortarAsset>>,
     dialogue_query: Query<Entity, With<DialogueText>>,
 ) {
-    if !runtime.is_changed() {
-        return;
-    }
-
-    let Some(state) = &mut runtime.active_dialogue else {
-        return;
-    };
-
-    // Get asset data
-    let Some(handle) = registry.get(&state.mortar_path) else {
-        return;
-    };
-    let Some(asset) = assets.get(handle) else {
-        return;
-    };
-
-    let event_defs = &asset.data.events;
-    let timeline_defs = &asset.data.timelines;
-
-    // Position mapping:
-    // - Before text at index i: position = i * 2
-    // - After text at index i: position = i * 2 + 1
-    // We execute runs before the current text when it first displays
-    let before_text_position = state.text_index * 2;
-
-    // Get runs at this position that haven't been executed
-    let runs_to_execute: Vec<_> = state
-        .node_data()
-        .runs
-        .iter()
-        .filter(|run| {
-            run.position == before_text_position && !state.executed_runs.contains(&run.position)
-        })
-        .collect();
-
-    if runs_to_execute.is_empty() {
-        return;
-    }
-
-    // Get the dialogue entity to pass to execute functions
-    let Ok(dialogue_entity) = dialogue_query.single() else {
-        return;
-    };
-
-    // Execute all runs at this position
-    for run in runs_to_execute {
-        execute_run_statement(
-            run,
-            event_defs,
-            timeline_defs,
-            &mut commands,
-            dialogue_entity,
-        );
-    }
-
-    // Mark runs as executed
-    if let Some(state) = &mut runtime.active_dialogue {
-        state.mark_run_executed(before_text_position);
-    }
+    // NOTE: In performance_system semantics, runs should execute AFTER the previous text,
+    // not before the current text. This function is kept for compatibility but doesn't
+    // execute runs at the "before text" position anymore.
+    // All runs are now handled by process_run_statements_after_text.
 }
 
 /// Process run statements after the current text (when user advances)
@@ -665,6 +627,7 @@ fn process_run_statements_after_text(
     registry: Res<MortarRegistry>,
     assets: Res<Assets<MortarAsset>>,
     dialogue_query: Query<Entity, With<DialogueText>>,
+    mut runs_executing: ResMut<RunsExecuting>,
 ) {
     if !runtime.is_changed() {
         return;
@@ -712,19 +675,52 @@ fn process_run_statements_after_text(
     let event_defs = &asset.data.events;
     let timeline_defs = &asset.data.timelines;
 
-    // Get runs at this position that haven't been executed
-    let runs_to_execute: Vec<_> = state
+    // Get all unexecuted runs
+    let all_unexecuted_runs: Vec<_> = state
         .node_data()
         .runs
         .iter()
-        .filter(|run| run.position == position && !state.executed_runs.contains(&run.position))
+        .filter(|run| !state.executed_runs.contains(&run.position))
         .collect();
 
-    if runs_to_execute.is_empty() {
+    if all_unexecuted_runs.is_empty() {
         // Clear pending position even if no runs
         state.pending_run_position = None;
         return;
     }
+
+    // Collect consecutive runs (runs with consecutive positions)
+    let first_run_pos = all_unexecuted_runs[0].position;
+    let mut consecutive_runs = vec![all_unexecuted_runs[0]];
+
+    for i in 1..all_unexecuted_runs.len() {
+        let run = all_unexecuted_runs[i];
+        let prev_run = consecutive_runs.last().unwrap();
+
+        // Check if this run's position is consecutive (prev_position + 1)
+        if run.position == prev_run.position + 1 {
+            consecutive_runs.push(run);
+        } else {
+            // Not consecutive, stop here
+            break;
+        }
+    }
+
+    // Build a sequence of (event_name, duration, ignore_duration) for the runs
+    let run_sequence: Vec<(String, Option<f64>, bool)> = consecutive_runs
+        .iter()
+        .map(|run| {
+            // Get duration from event definition
+            let duration = event_defs
+                .iter()
+                .find(|e| e.name == run.event_name)
+                .and_then(|e| e.duration);
+            (run.event_name.clone(), duration, false)
+        })
+        .collect();
+
+    // Collect positions to mark as executed
+    let positions_to_mark: Vec<usize> = consecutive_runs.iter().map(|r| r.position).collect();
 
     // Get the dialogue entity to pass to execute functions
     let Ok(dialogue_entity) = dialogue_query.single() else {
@@ -732,13 +728,25 @@ fn process_run_statements_after_text(
     };
 
     info!(
-        "Example: Executing {} run(s) at position {}",
-        runs_to_execute.len(),
-        position
+        "Example: Executing {} consecutive run(s) at position {}",
+        consecutive_runs.len(),
+        first_run_pos
     );
 
-    // Execute all runs at this position
-    for run in runs_to_execute {
+    // Set flag to indicate runs are executing
+    runs_executing.executing = true;
+
+    // If there are multiple consecutive runs, treat them like a timeline sequence with durations
+    if run_sequence.len() > 1 {
+        start_timeline_execution(
+            run_sequence,
+            event_defs.to_vec(),
+            timeline_defs.to_vec(),
+            dialogue_entity,
+            &mut commands,
+        );
+    } else if let Some(run) = consecutive_runs.first() {
+        // Single run, execute immediately (no duration wait)
         execute_run_statement(
             run,
             event_defs,
@@ -746,11 +754,15 @@ fn process_run_statements_after_text(
             &mut commands,
             dialogue_entity,
         );
+        // No pending execution for single run without duration
+        runs_executing.executing = false;
     }
 
     // Mark runs as executed and clear pending position
     if let Some(state) = &mut runtime.active_dialogue {
-        state.mark_run_executed(position);
+        for position in positions_to_mark {
+            state.mark_run_executed(position);
+        }
         state.pending_run_position = None;
     }
 }
@@ -769,7 +781,13 @@ fn update_dialogue_text_with_typewriter(
     assets: Res<Assets<MortarAsset>>,
     mut events: MessageWriter<MortarEvent>,
     mut var_state_res: ResMut<RuntimeVariableState>,
+    runs_executing: Res<RunsExecuting>,
 ) {
+    // Don't update text if runs are being executed
+    if runs_executing.executing {
+        return;
+    }
+
     if !runtime.is_changed() {
         return;
     }
@@ -1115,6 +1133,7 @@ fn process_pending_run_executions(
     mut commands: Commands,
     time: Res<Time>,
     mut query: Query<(Entity, &mut PendingRunExecution)>,
+    mut runtime: ResMut<MortarRuntime>,
 ) {
     for (entity, mut pending) in &mut query {
         pending.timer.tick(time.delta());
@@ -1174,9 +1193,32 @@ fn process_pending_run_executions(
                     );
                 }
             } else {
-                // Timeline complete
+                // Timeline complete, trigger runtime change to show next text
                 commands.entity(entity).despawn();
+                info!("Example: Run sequence completed, ready to show next text");
+                // Touch the runtime to mark it as changed
+                if let Some(_state) = &runtime.active_dialogue {
+                    runtime.set_changed();
+                }
             }
+        }
+    }
+}
+
+/// System to clear runs executing flag when all pending runs are done
+///
+/// 当所有待执行runs完成时清除执行标志的系统
+fn clear_runs_executing_flag(
+    pending_runs_query: Query<&PendingRunExecution>,
+    mut runs_executing: ResMut<RunsExecuting>,
+    mut runtime: ResMut<MortarRuntime>,
+) {
+    if runs_executing.executing && pending_runs_query.is_empty() {
+        info!("Example: All runs completed, clearing flag");
+        runs_executing.executing = false;
+        // Touch runtime to trigger text update
+        if runtime.active_dialogue.is_some() {
+            runtime.set_changed();
         }
     }
 }

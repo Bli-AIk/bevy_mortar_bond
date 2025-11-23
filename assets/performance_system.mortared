@@ -1,7 +1,7 @@
 {
   "metadata": {
     "version": "0.4.0",
-    "generated_at": "2025-11-23T00:53:52.505272015Z"
+    "generated_at": "2025-11-23T00:58:38.831055199Z"
   },
   "nodes": [
     {
@@ -97,15 +97,6 @@
             "value": "custom_time"
           },
           "position": 2
-        }
-      ],
-      "next": "ReferenceExample"
-    },
-    {
-      "name": "ReferenceExample",
-      "texts": [
-        {
-          "text": "Dynamic event timing."
         }
       ],
       "next": "MixedExample"
