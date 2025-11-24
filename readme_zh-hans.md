@@ -2,9 +2,7 @@
 
 [![license](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue)](LICENSE-APACHE) <img src="https://img.shields.io/github/repo-size/Bli-AIk/souprune.svg"/> <img src="https://img.shields.io/github/last-commit/Bli-AIk/souprune.svg"/> <br> <img src="https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white" />
 
-> 当前状态：🚧 早期开发中（初始版本正在开发）
-
-**bevy_mortar_bond** — mortar 语言的 Bevy “绑钉” （绑定） 插件。
+**bevy_mortar_bond** — [mortar](https://github.com/Bli-AIk/mortar) 语言的 Bevy “绑钉” （绑定） 插件。
 
 | 英语                     | 简体中文 |
 |------------------------|------|
@@ -13,9 +11,11 @@
 ## 介绍
 
 `bevy_mortar_bond` 是一个 Bevy 插件，它将 Mortar 脚本语言集成到 Bevy 游戏引擎中。它提供了一个强大的框架，用于使用 Mortar 脚本创建动态对话系统、交互式事件和复杂的游戏逻辑。
-它解决了为内容创作者和游戏设计师集成灵活的外部脚本语言的问题，允许用户在无需重新编译游戏引擎的情况下定义游戏流程、角色交互和动态场景。
 
-使用 `bevy_mortar_bond`，你只需将游戏逻辑和对话编写在 `.mortar` 脚本文件中，并将其无缝集成到你的 Bevy 应用程序中。
+它解决了为内容创作者和游戏设计师集成灵活的外部脚本语言的问题，允许用户方便地定义游戏流程、角色交互和动态场景。
+
+你只需将游戏逻辑和对话编写在 `.mortar` 脚本文件中，并将其无缝集成到你的 Bevy 应用程序中。
+
 未来，它可能还会支持更高级的脚本功能和集成。
 
 ## 功能
@@ -27,61 +27,55 @@
 
 ## 使用方法
 
-1. **安装 Rust**（如果尚未安装）：
+1. **添加到 Cargo.toml**：
 
-   ```bash
-   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-   ```
+```toml
+[dependencies]
+bevy_mortar_bond = "0.1.0"
+```
 
-2. **添加到 Cargo.toml**：
+2. **基本使用**：
 
-   ```toml
-   [dependencies]
-   bevy_mortar_bond = "0.1.0"
-   ```
+```rust
+use bevy::prelude::*;
+use bevy_mortar_bond::MortarPlugin;
 
-3. **基本使用**：
-
-   ```rust
-   use bevy::prelude::*;
-   use bevy_mortar_bond::MortarPlugin;
-
-   fn main() {
-       App::new()
-           .add_plugins(DefaultPlugins)
-           .add_plugins(MortarPlugin)
-           .run();
-   }
-   ```
+fn main() {
+    App::new()
+        .add_plugins(DefaultPlugins)
+        .add_plugins(MortarPlugin)
+        .run();
+}
+```
 
 ## 示例
 
 ### 运行示例
 
-1. **对话UI示例** - 展示基本的对话框和可点击的选项按钮：
-   ```bash
-   cargo run --example dialogue_ui
-   ```
+**对话UI示例** - 展示基本的对话框和可点击的选项按钮：
+```bash
+cargo run --example dialogue_ui
+```
 
 
 ### 示例说明
 
--   **dialogue_ui**: 此示例展示了一个功能齐全的对话 UI，具有打字机文本效果、动态 Mortar 事件处理（例如动画、颜色变化、声音播放）、变量状态管理和条件文本，所有这些都集成到自定义 Bevy UI 中。
-  - 点击选项按钮会更新对话文本
-  - 按钮有鼠标悬停和点击的视觉反馈
+- **dialogue_ui**: 此示例展示了一个功能齐全的对话 UI，具有打字机文本效果、动态 Mortar 事件处理（例如动画、颜色变化、声音播放）、变量状态管理和条件文本，所有这些都集成到自定义 Bevy UI 中。
+- 点击选项按钮会更新对话文本
+- 按钮有鼠标悬停和点击的视觉反馈
   
 
 ## 依赖
 
 本项目使用以下 crate：
 
-| Crate                                                                                          | 版本     | 描述                 |
-|------------------------------------------------------------------------------------------------|--------|--------------------|
-| [bevy](https://crates.io/crates/bevy)                                                          | 0.17.2 | 游戏引擎               |
-| [mortar_compiler](https://github.com/Bli-AIk/souprune/tree/main/mortar/crates/mortar_compiler) | 本地     | Mortar 语言编译器       |
-| [serde_json](https://crates.io/crates/serde_json)                                              | 1.0    | JSON 序列化/反序列化      |
-| bevy_mortar_bond_macros                                                                        | 本地     | bevy_mortar_bond 宏 |
-| [bevy_ecs_typewriter](https://github.com/Bli-AIk/bevy_ecs_typewriter)                          | 本地     | Bevy ECS 打字机效果     |
+| Crate                                                                 | 版本     | 描述                 |
+|-----------------------------------------------------------------------|--------|--------------------|
+| [bevy](https://crates.io/crates/bevy)                                 | 0.17.2 | 游戏引擎               |
+| [mortar_compiler](https://github.com/Bli-AIk/mortar)                  | 本地     | Mortar 语言编译器       |
+| [serde_json](https://crates.io/crates/serde_json)                     | 1.0    | JSON 序列化/反序列化      |
+| bevy_mortar_bond_macros                                               | 本地     | bevy_mortar_bond 宏 |
+| [bevy_ecs_typewriter](https://github.com/Bli-AIk/bevy_ecs_typewriter) | 本地     | Bevy ECS 打字机效果     |
 
 ## 贡献指南
 
