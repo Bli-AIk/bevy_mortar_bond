@@ -18,7 +18,11 @@ jobs:
       uses: actions/checkout@v5
       with:
         repository: Bli-AIk/bevy_ecs_typewriter
-        path: ../bevy_ecs_typewriter
+        path: external/bevy_ecs_typewriter
+    - name: Prepare bevy_ecs_typewriter path
+      run: |
+        rm -rf ../bevy_ecs_typewriter
+        cp -R external/bevy_ecs_typewriter ../bevy_ecs_typewriter
         
     - name: Install dependencies
       run: |

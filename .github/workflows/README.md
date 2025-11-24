@@ -8,7 +8,7 @@
 
 - **触发条件**: 推送到 `main`/`develop` 分支和创建PR时
 - **功能**:
-  - 自动检出 `bevy_ecs_typewriter` 依赖，满足 `Cargo.toml` 中的本地路径依赖
+- 自动检出 `bevy_ecs_typewriter` 依赖并复制到 `../bevy_ecs_typewriter`，满足 `Cargo.toml` 中的本地路径依赖
   - 代码格式检查 (`cargo fmt`)
   - Clippy代码静态分析
   - 构建和测试crate
@@ -18,7 +18,7 @@
 
 - **触发条件**: 推送到 `main` 分支和创建PR时
 - **功能**:
-  - 自动检出 `bevy_ecs_typewriter` 依赖
+- 自动检出 `bevy_ecs_typewriter` 依赖并复制到 `../bevy_ecs_typewriter`
   - 生成代码覆盖率报告
   - 上传到Codecov
 
@@ -26,7 +26,7 @@
 
 - **触发条件**: 每周一自动运行 或 手动触发
 - **功能**:
-  - 自动检出 `bevy_ecs_typewriter` 依赖，确保 `cargo update` 可以解析本地路径
+- 自动检出 `bevy_ecs_typewriter` 依赖并复制到 `../bevy_ecs_typewriter`，确保 `cargo update` 可以解析本地路径
   - 更新依赖版本
   - 自动创建PR如果有更新
 
@@ -84,7 +84,7 @@ CI与覆盖率工作流仅依赖`GITHUB_TOKEN`，无需额外Secrets。
 
 ### 外部仓库
 
-`bevy_mortar_bond` 依赖于 `../bevy_ecs_typewriter` 本地路径。所有工作流都会自动检出 `Bli-AIk/bevy_ecs_typewriter` 到该路径，以保持与主仓库一致的目录结构。
+`bevy_mortar_bond` 依赖于 `../bevy_ecs_typewriter` 本地路径。所有工作流会先将 `Bli-AIk/bevy_ecs_typewriter` 检出到 `external/bevy_ecs_typewriter`，然后复制到 `../bevy_ecs_typewriter`，以保持与主仓库一致的目录结构。
 ### Actions版本
 
 - `actions/checkout@v4`: 仓库检出
