@@ -28,10 +28,17 @@ jobs:
         with:
           repository: Bli-AIk/bevy_ecs_typewriter
           path: external/bevy_ecs_typewriter
-      - name: Prepare bevy_ecs_typewriter path
+      - name: Checkout mortar dependency
+        uses: actions/checkout@v5
+        with:
+          repository: Bli-AIk/mortar
+          path: external/mortar
+      - name: Prepare path dependencies
         run: |
           rm -rf ../bevy_ecs_typewriter
           cp -R external/bevy_ecs_typewriter ../bevy_ecs_typewriter
+          rm -rf ../../../mortar
+          cp -R external/mortar ../../../mortar
 
       - name: Install Bevy Dependencies
         run: |
