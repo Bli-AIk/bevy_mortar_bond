@@ -1,0 +1,74 @@
+{
+  "metadata": {
+    "version": "0.4.0",
+    "generated_at": "2025-11-23T11:30:28.950087090Z"
+  },
+  "nodes": [
+    {
+      "name": "Start",
+      "content": [
+        {
+          "type": "text",
+          "value": "……咳咳，这里是 demo.mortar。别来无恙啊！"
+        },
+        {
+          "type": "text",
+          "value": "但你也看到了，我们的预算不够，只能先用几句 text 顶着……"
+        },
+        {
+          "type": "text",
+          "value": "总之，这里啥 event 都没有，就像一盘没有存档的老游戏一样干巴巴的。"
+        },
+        {
+          "type": "text",
+          "value": "好了好了，废话说完——按流程我们得去下一个节点。"
+        }
+      ],
+      "next": "NextNode"
+    },
+    {
+      "name": "NextNode",
+      "content": [
+        {
+          "type": "text",
+          "value": "『你·成·功·着·陆·啦』"
+        },
+        {
+          "type": "text",
+          "value": "……呃，真的吗？我不太确定这个示例能不能正确判断状态。"
+        },
+        {
+          "type": "text",
+          "value": "算了，你自己说吧，你着陆成功了吗？"
+        },
+        {
+          "type": "choice",
+          "options": [
+            {
+              "text": "是的！",
+              "next": "EndNode"
+            },
+            {
+              "text": "不，我刚才直接坠机了（大概吧），哎我怎么似了",
+              "action": "return"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "EndNode",
+      "content": [
+        {
+          "type": "text",
+          "value": "哦——那真是太好了。"
+        },
+        {
+          "type": "text",
+          "value": "好啦，本段剧情结束。你可以试试别的文件咯（如果有的话）。"
+        }
+      ]
+    }
+  ],
+  "functions": []
+}

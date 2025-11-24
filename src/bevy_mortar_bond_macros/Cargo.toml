@@ -1,0 +1,20 @@
+[package]
+name = "bevy_mortar_bond_macros"
+version = "0.1.0"
+edition = "2024"
+authors = ["Bli-AIk <haikun2333@gmail.com>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Bli-AIk/bevy_mortar_bond"
+description = "Proc macros for bevy_mortar_bond integration."
+exclude = [
+    "target/*",
+    ".github/*"
+]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "2.0", features = ["full"] }
+quote = "1.0"
+proc-macro2 = "1.0"

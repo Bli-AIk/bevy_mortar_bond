@@ -1,0 +1,772 @@
+{
+  "metadata": {
+    "version": "0.4.0",
+    "generated_at": "2025-11-23T11:27:31.674141590Z"
+  },
+  "variables": [
+    {
+      "name": "test_string",
+      "type": "String",
+      "value": "Initial String"
+    },
+    {
+      "name": "test_number",
+      "type": "Number",
+      "value": 100.0
+    },
+    {
+      "name": "test_bool",
+      "type": "Boolean",
+      "value": true
+    },
+    {
+      "name": "uninitialized_string",
+      "type": "String"
+    },
+    {
+      "name": "uninitialized_number",
+      "type": "Number"
+    },
+    {
+      "name": "uninitialized_bool",
+      "type": "Boolean"
+    },
+    {
+      "name": "current_status",
+      "type": "Status"
+    },
+    {
+      "name": "current_equipment",
+      "type": "Equipment",
+      "value": "Equipment.Basic"
+    },
+    {
+      "name": "bool_branch",
+      "type": "Branch",
+      "value": {
+        "cases": [
+          {
+            "condition": "test_bool",
+            "events": null,
+            "text": "Bool is True"
+          }
+        ],
+        "enum_type": null
+      }
+    },
+    {
+      "name": "status_branch",
+      "type": "Branch",
+      "value": {
+        "cases": [
+          {
+            "condition": "Idle",
+            "events": [
+              {
+                "actions": [
+                  {
+                    "args": [
+                      "#CCCCCC"
+                    ],
+                    "type": "set_color"
+                  }
+                ],
+                "index": 0.0
+              }
+            ],
+            "text": "Currently Idle"
+          },
+          {
+            "condition": "Working",
+            "events": [
+              {
+                "actions": [
+                  {
+                    "args": [
+                      "#00FF00"
+                    ],
+                    "type": "set_color"
+                  }
+                ],
+                "index": 0.0
+              }
+            ],
+            "text": "Currently Working"
+          },
+          {
+            "condition": "OnBreak",
+            "events": [
+              {
+                "actions": [
+                  {
+                    "args": [
+                      "#FFFF00"
+                    ],
+                    "type": "set_color"
+                  }
+                ],
+                "index": 0.0
+              }
+            ],
+            "text": "On a Break"
+          }
+        ],
+        "enum_type": "current_status"
+      }
+    },
+    {
+      "name": "equipment_branch",
+      "type": "Branch",
+      "value": {
+        "cases": [
+          {
+            "condition": "None",
+            "events": null,
+            "text": "Bare hands"
+          },
+          {
+            "condition": "Basic",
+            "events": null,
+            "text": "Basic Gear"
+          },
+          {
+            "condition": "Advanced",
+            "events": null,
+            "text": "Advanced Kit"
+          }
+        ],
+        "enum_type": "current_equipment"
+      }
+    }
+  ],
+  "enums": [
+    {
+      "name": "Status",
+      "variants": [
+        "Idle",
+        "Working",
+        "OnBreak"
+      ]
+    },
+    {
+      "name": "Equipment",
+      "variants": [
+        "None",
+        "Basic",
+        "Advanced"
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "Start",
+      "content": [
+        {
+          "type": "text",
+          "value": "1. Master test sequence initiated."
+        },
+        {
+          "type": "text",
+          "value": "2. Initial values: string='{test_string}', number={test_number}, bool={test_bool}",
+          "interpolated_parts": [
+            {
+              "type": "text",
+              "content": "2. Initial values: string='"
+            },
+            {
+              "type": "placeholder",
+              "content": "{test_string}"
+            },
+            {
+              "type": "text",
+              "content": "', number="
+            },
+            {
+              "type": "placeholder",
+              "content": "{test_number}"
+            },
+            {
+              "type": "text",
+              "content": ", bool="
+            },
+            {
+              "type": "placeholder",
+              "content": "{test_bool}"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "value": "3. Uninitialized defaults: string='{uninitialized_string}', number={uninitialized_number}, bool={uninitialized_bool}",
+          "interpolated_parts": [
+            {
+              "type": "text",
+              "content": "3. Uninitialized defaults: string='"
+            },
+            {
+              "type": "placeholder",
+              "content": "{uninitialized_string}"
+            },
+            {
+              "type": "text",
+              "content": "', number="
+            },
+            {
+              "type": "placeholder",
+              "content": "{uninitialized_number}"
+            },
+            {
+              "type": "text",
+              "content": ", bool="
+            },
+            {
+              "type": "placeholder",
+              "content": "{uninitialized_bool}"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "value": "4. Hello, {get_name}{get_exclamation}",
+          "interpolated_parts": [
+            {
+              "type": "text",
+              "content": "4. Hello, "
+            },
+            {
+              "type": "expression",
+              "content": "{get_name}",
+              "function_name": "get_name"
+            },
+            {
+              "type": "expression",
+              "content": "{get_exclamation}",
+              "function_name": "get_exclamation",
+              "args": [
+                "3"
+              ]
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "value": "5. Let's {create_message}",
+          "interpolated_parts": [
+            {
+              "type": "text",
+              "content": "5. Let's "
+            },
+            {
+              "type": "expression",
+              "content": "{create_message}",
+              "function_name": "create_message",
+              "args": [
+                "\"start\"",
+                "\"the test\"",
+                "5"
+              ]
+            }
+          ]
+        }
+      ],
+      "next": "BranchAndEnumTest"
+    },
+    {
+      "name": "BranchAndEnumTest",
+      "content": [
+        {
+          "type": "text",
+          "value": "1. Bool branch says: {bool_branch}",
+          "interpolated_parts": [
+            {
+              "type": "text",
+              "content": "1. Bool branch says: "
+            },
+            {
+              "type": "placeholder",
+              "content": "{bool_branch}"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "value": "2. Status branch (default): {status_branch}",
+          "interpolated_parts": [
+            {
+              "type": "text",
+              "content": "2. Status branch (default): "
+            },
+            {
+              "type": "placeholder",
+              "content": "{status_branch}"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "value": "3. Equipment branch: {equipment_branch}",
+          "interpolated_parts": [
+            {
+              "type": "text",
+              "content": "3. Equipment branch: "
+            },
+            {
+              "type": "placeholder",
+              "content": "{equipment_branch}"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "value": "4. Status branch (updated): {status_branch}",
+          "interpolated_parts": [
+            {
+              "type": "text",
+              "content": "4. Status branch (updated): "
+            },
+            {
+              "type": "placeholder",
+              "content": "{status_branch}"
+            }
+          ],
+          "pre_statements": [
+            {
+              "type": "assignment",
+              "var_name": "current_status",
+              "value": "Status.Working"
+            }
+          ]
+        }
+      ],
+      "next": "EventSystemTest"
+    },
+    {
+      "name": "EventSystemTest",
+      "content": [
+        {
+          "type": "text",
+          "value": "1. This text should trigger a color reset.",
+          "events": [
+            {
+              "index": 0.0,
+              "actions": [
+                {
+                  "type": "set_color",
+                  "args": [
+                    "#FFFFFF"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "run_event",
+          "name": "WaveAnimation"
+        },
+        {
+          "type": "text",
+          "value": "2. A wave animation should have just started. This text has inline sound.",
+          "events": [
+            {
+              "index": 0.0,
+              "actions": [
+                {
+                  "type": "play_sound",
+                  "args": [
+                    "vibrating-thud-39536.wav"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "value": "3. Sound should play at character 15.",
+          "pre_statements": [
+            {
+              "type": "assignment",
+              "var_name": "uninitialized_number",
+              "value": "15"
+            }
+          ],
+          "events": [
+            {
+              "index": 0.0,
+              "index_variable": "uninitialized_number",
+              "actions": [
+                {
+                  "type": "play_sound",
+                  "args": [
+                    "random-sound-1-80941.wav"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "value": "4. Now, running a complex timeline..."
+        },
+        {
+          "type": "run_event",
+          "name": "TestTimeline"
+        },
+        {
+          "type": "text",
+          "value": "5. Timeline finished."
+        }
+      ],
+      "next": "ControlFlowTest"
+    },
+    {
+      "name": "ControlFlowTest",
+      "content": [
+        {
+          "type": "text",
+          "value": "1. Testing control flow..."
+        },
+        {
+          "type": "text",
+          "value": "2. Complex IF condition PASSED.",
+          "condition": {
+            "type": "binary",
+            "operator": "||",
+            "left": {
+              "type": "binary",
+              "operator": "&&",
+              "left": {
+                "type": "binary",
+                "operator": "<",
+                "left": {
+                  "type": "identifier",
+                  "value": "test_number"
+                },
+                "right": {
+                  "type": "identifier",
+                  "value": "100"
+                }
+              },
+              "right": {
+                "type": "unary",
+                "operator": "!",
+                "operand": {
+                  "type": "identifier",
+                  "value": "test_bool"
+                }
+              }
+            },
+            "right": {
+              "type": "binary",
+              "operator": "==",
+              "left": {
+                "type": "identifier",
+                "value": "test_number"
+              },
+              "right": {
+                "type": "identifier",
+                "value": "50"
+              }
+            }
+          }
+        },
+        {
+          "type": "text",
+          "value": "2. Complex IF condition FAILED.",
+          "condition": {
+            "type": "unary",
+            "operator": "!",
+            "operand": {
+              "type": "binary",
+              "operator": "||",
+              "left": {
+                "type": "binary",
+                "operator": "&&",
+                "left": {
+                  "type": "binary",
+                  "operator": "<",
+                  "left": {
+                    "type": "identifier",
+                    "value": "test_number"
+                  },
+                  "right": {
+                    "type": "identifier",
+                    "value": "100"
+                  }
+                },
+                "right": {
+                  "type": "unary",
+                  "operator": "!",
+                  "operand": {
+                    "type": "identifier",
+                    "value": "test_bool"
+                  }
+                }
+              },
+              "right": {
+                "type": "binary",
+                "operator": "==",
+                "left": {
+                  "type": "identifier",
+                  "value": "test_number"
+                },
+                "right": {
+                  "type": "identifier",
+                  "value": "50"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "text",
+          "value": "3. This should NOT appear.",
+          "condition": {
+            "type": "binary",
+            "operator": ">",
+            "left": {
+              "type": "identifier",
+              "value": "test_number"
+            },
+            "right": {
+              "type": "identifier",
+              "value": "100"
+            }
+          }
+        },
+        {
+          "type": "text",
+          "value": "4. This SHOULD appear (negation test).",
+          "condition": {
+            "type": "unary",
+            "operator": "!",
+            "operand": {
+              "type": "binary",
+              "operator": ">",
+              "left": {
+                "type": "identifier",
+                "value": "test_number"
+              },
+              "right": {
+                "type": "identifier",
+                "value": "100"
+              }
+            }
+          }
+        }
+      ],
+      "next": "ChoiceSystemTest"
+    },
+    {
+      "name": "ChoiceSystemTest",
+      "content": [
+        {
+          "type": "text",
+          "value": "1. Choose your destiny."
+        },
+        {
+          "type": "choice",
+          "options": [
+            {
+              "text": "Conditional (has_backpack -> false)",
+              "condition": {
+                "type": "has_backpack"
+              },
+              "next": "ChoiceResult_Backpack"
+            },
+            {
+              "text": "Conditional (has_map -> true)",
+              "condition": {
+                "type": "has_map"
+              },
+              "next": "ChoiceResult_Map"
+            },
+            {
+              "text": "Nested Choices",
+              "choice": [
+                {
+                  "text": "Go to End",
+                  "next": "FinalNode"
+                },
+                {
+                  "text": "Exit this node",
+                  "action": "return"
+                }
+              ]
+            },
+            {
+              "text": "Break out of choices",
+              "action": "break"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "value": "2. You broke the choice block."
+        }
+      ],
+      "next": "ChoiceResult_Break"
+    },
+    {
+      "name": "ChoiceResult_Map",
+      "content": [
+        {
+          "type": "text",
+          "value": "You chose the 'Map' path."
+        }
+      ],
+      "next": "FinalNode"
+    },
+    {
+      "name": "ChoiceResult_Backpack",
+      "content": [
+        {
+          "type": "text",
+          "value": "This should not be reachable as has_backpack() is false."
+        }
+      ],
+      "next": "FinalNode"
+    },
+    {
+      "name": "ChoiceResult_Break",
+      "content": [
+        {
+          "type": "text",
+          "value": "Continuing after the break."
+        }
+      ],
+      "next": "FinalNode"
+    },
+    {
+      "name": "FinalNode",
+      "content": [
+        {
+          "type": "text",
+          "value": "Master test completed."
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "name": "get_name",
+      "return": "String"
+    },
+    {
+      "name": "get_exclamation",
+      "params": [
+        {
+          "name": "count",
+          "type": "Number"
+        }
+      ],
+      "return": "String"
+    },
+    {
+      "name": "create_message",
+      "params": [
+        {
+          "name": "verb",
+          "type": "String"
+        },
+        {
+          "name": "obj",
+          "type": "String"
+        },
+        {
+          "name": "level",
+          "type": "Number"
+        }
+      ],
+      "return": "String"
+    },
+    {
+      "name": "play_sound",
+      "params": [
+        {
+          "name": "file_name",
+          "type": "String"
+        }
+      ]
+    },
+    {
+      "name": "has_map",
+      "return": "Boolean"
+    },
+    {
+      "name": "has_backpack",
+      "return": "Boolean"
+    },
+    {
+      "name": "set_animation",
+      "params": [
+        {
+          "name": "anim_name",
+          "type": "String"
+        }
+      ]
+    },
+    {
+      "name": "set_color",
+      "params": [
+        {
+          "name": "color",
+          "type": "String"
+        }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "WaveAnimation",
+      "action": {
+        "type": "set_animation",
+        "args": [
+          "\"wave\""
+        ]
+      },
+      "duration": 1.0
+    },
+    {
+      "name": "ColorReset",
+      "index": 0.0,
+      "action": {
+        "type": "set_color",
+        "args": [
+          "\"#FFFFFF\""
+        ]
+      }
+    },
+    {
+      "name": "PlaySoundEvent",
+      "action": {
+        "type": "play_sound",
+        "args": [
+          "\"random-sound-1-80941.wav\""
+        ]
+      }
+    }
+  ],
+  "timelines": [
+    {
+      "name": "TestTimeline",
+      "statements": [
+        {
+          "type": "run",
+          "event_name": "WaveAnimation"
+        },
+        {
+          "type": "wait",
+          "duration": 0.5
+        },
+        {
+          "type": "run",
+          "event_name": "ColorReset",
+          "ignore_duration": true
+        }
+      ]
+    }
+  ]
+}
