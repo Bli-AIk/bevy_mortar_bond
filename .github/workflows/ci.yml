@@ -33,6 +33,9 @@ jobs:
         with:
           repository: Bli-AIk/mortar
           path: external/mortar
+      - name: Prefer develop branch for dependencies
+        shell: bash
+        run: ./scripts/prefer-develop.sh external/bevy_ecs_typewriter external/mortar
       - name: Prepare path dependencies
         run: |
           rm -rf ../bevy_ecs_typewriter
