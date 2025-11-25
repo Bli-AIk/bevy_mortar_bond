@@ -11,7 +11,7 @@ use bevy::ecs::system::{Local, SystemParam};
 use bevy::log::info;
 use bevy::prelude::*;
 use bevy::ui::FlexDirection;
-use bevy_ecs_typewriter::Typewriter;
+use bevy_ecs_typewriter::{Typewriter, TypewriterState};
 use bevy_mortar_bond::{
     MortarAsset, MortarDialogueSystemSet, MortarDialogueText, MortarEvent, MortarEventBinding,
     MortarRegistry, MortarRunsExecuting, MortarRuntime, MortarTextTarget,
@@ -20,6 +20,7 @@ use bevy_mortar_bond::{
 use crate::DialogueFiles;
 
 const TYPEWRITER_SPEED: f32 = 0.04;
+const FINISHED_TEXT: &str = "该对话已结束";
 
 /// UI plugin bundling layout + button logic for dialogue examples.
 ///
@@ -313,16 +314,16 @@ fn sync_typewriter_with_dialogue_texts(
     >,
 ) {
     for (dialogue_text, mut typewriter) in &mut query {
-        *typewriter = Typewriter::new(dialogue_text.full_text(), TYPEWRITER_SPEED);
+        *typewriter = Typewriter::new(dialogue_text.body.clone(), TYPEWRITER_SPEED);
         typewriter.play();
     }
 }
 
 fn apply_typewriter_output_to_texts(
-    mut query: Query<(&Typewriter, &mut Text), With<DialogueText>>,
+    mut query: Query<(&Typewriter, &MortarDialogueText, &mut Text), With<DialogueText>>,
 ) {
-    for (typewriter, mut text) in &mut query {
-        **text = typewriter.current_text.clone();
+    for (typewriter, dialogue_text, mut text) in &mut query {
+        **text = format!("{}{}", dialogue_text.header, typewriter.current_text);
     }
 }
 
@@ -333,6 +334,29 @@ fn update_event_binding_from_typewriter(
         if let Some(mut binding) = binding {
             binding.current_index = typewriter.current_char_index as f32;
         }
+    }
+}
+
+fn show_finished_message(
+    dialogue_text_query: &mut Query<&mut MortarDialogueText, With<DialogueText>>,
+    text_query: &mut Query<&mut Text, With<DialogueText>>,
+    typewriter_query: &mut Query<&mut Typewriter, With<DialogueText>>,
+) {
+    if let Ok(mut dialogue_text) = dialogue_text_query.single_mut() {
+        dialogue_text.header.clear();
+        dialogue_text.body = FINISHED_TEXT.to_string();
+    }
+
+    if let Ok(mut text) = text_query.single_mut() {
+        **text = FINISHED_TEXT.to_string();
+    }
+
+    if let Ok(mut typewriter) = typewriter_query.single_mut() {
+        typewriter.source_text = FINISHED_TEXT.to_string();
+        typewriter.current_text = FINISHED_TEXT.to_string();
+        typewriter.current_char_index = FINISHED_TEXT.chars().count();
+        typewriter.timer.reset();
+        typewriter.state = TypewriterState::Finished;
     }
 }
 
@@ -420,27 +444,45 @@ fn handle_continue_button(
     mut events: MessageWriter<MortarEvent>,
     runtime: Res<MortarRuntime>,
     runs_executing: Res<MortarRunsExecuting>,
+    mut dialogue_text_query: Query<&mut MortarDialogueText, With<DialogueText>>,
+    mut text_query: Query<&mut Text, With<DialogueText>>,
+    mut typewriter_query: Query<&mut Typewriter, With<DialogueText>>,
 ) {
     if runs_executing.executing {
         return;
     }
 
     for interaction in &interaction_query {
-        if *interaction == Interaction::Pressed
-            && let Some(state) = &runtime.active_dialogue
-        {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+
+        if let Some(state) = &runtime.active_dialogue {
             if state.selected_choice.is_some() {
                 info!("Example: Confirming choice selection");
                 events.write(MortarEvent::ConfirmChoice);
+                continue;
+            }
+
+            if state.has_next_text() {
+                events.write(MortarEvent::NextText);
+            } else if state.has_choices() && !state.choices_broken {
+                info!("Example: Waiting for choice resolution before finishing");
             } else {
                 events.write(MortarEvent::NextText);
-                if !state.has_next_text() {
-                    info!(
-                        "Example: Reached end of text in node '{}'",
-                        state.current_node
-                    );
-                }
+                info!("Example: Dialogue finished; showing end message");
+                show_finished_message(
+                    &mut dialogue_text_query,
+                    &mut text_query,
+                    &mut typewriter_query,
+                );
             }
+        } else {
+            show_finished_message(
+                &mut dialogue_text_query,
+                &mut text_query,
+                &mut typewriter_query,
+            );
         }
     }
 }
