@@ -89,8 +89,9 @@ impl MortarVariableState {
         let mut state = Self::new();
 
         for var in variables {
-            // Handle Branch type specially
-
+            // Handle Branch type specially.
+            //
+            // 针对 Branch 类型做特殊处理。
             if var.var_type == "Branch" {
                 if let Some(value) = &var.value
                     && let Some(obj) = value.as_object()
@@ -130,15 +131,17 @@ impl MortarVariableState {
                 continue;
             }
 
-            // Try to parse the value
-
+            // Try to parse the value.
+            //
+            // 尝试解析该值。
             if let Some(value) = &var.value {
                 if let Some(parsed_value) = MortarVariableValue::from_json(value) {
                     state.set(&var.name, parsed_value);
                 }
             } else {
-                // Set default value based on type
-
+                // Set default value based on type.
+                //
+                // 根据类型设置默认值。
                 let default_value = match var.var_type.as_str() {
                     "String" => MortarVariableValue::String(String::new()),
 
@@ -146,23 +149,28 @@ impl MortarVariableState {
 
                     "Boolean" | "Bool" => MortarVariableValue::Boolean(false),
 
-                    // Non-primitive type, check if it's a known enum
+                    // Non-primitive type, check if it's a known enum.
+                    //
+                    // 对非原始类型检查其是否为已知枚举。
                     enum_type_name => {
                         if let Some(enum_def) = enums.iter().find(|e| e.name == enum_type_name) {
                             if let Some(first_member) = enum_def.variants.first() {
-                                // Default to the first member of the enum
-
+                                // Default to the first member of the enum.
+                                //
+                                // 默认使用该枚举的首个成员。
                                 let enum_value = format!("{}.{}", enum_def.name, first_member);
 
                                 MortarVariableValue::String(enum_value)
                             } else {
-                                // Enum has no members, skip
-
+                                // Enum has no members, skip.
+                                //
+                                // 枚举没有成员则跳过。
                                 continue;
                             }
                         } else {
-                            // Unknown type, skip
-
+                            // Unknown type, skip.
+                            //
+                            // 类型未知则跳过。
                             continue;
                         }
                     }
@@ -193,9 +201,13 @@ impl MortarVariableState {
     ///
     /// 执行赋值语句。
     pub fn execute_assignment(&mut self, var_name: &str, value_str: &str) {
-        // Parse the value string
+        // Parse the value string.
+        //
+        // 解析值字符串。
         if value_str.contains('.') {
-            // Enum member: "EnumName.member"
+            // Enum member: "EnumName.member".
+            //
+            // 枚举成员格式："EnumName.member"。
             self.set(var_name, MortarVariableValue::String(value_str.to_string()));
         } else if value_str == "true" {
             self.set(var_name, MortarVariableValue::Boolean(true));
@@ -204,7 +216,9 @@ impl MortarVariableState {
         } else if let Ok(num) = value_str.parse::<f64>() {
             self.set(var_name, MortarVariableValue::Number(num));
         } else {
-            // String or identifier
+            // String or identifier.
+            //
+            // 字符串或标识符。
             self.set(var_name, MortarVariableValue::String(value_str.to_string()));
         }
     }
@@ -221,7 +235,9 @@ impl MortarVariableState {
             }],
         };
         self.branches.insert(name.clone(), branch_def);
-        // Also set a variable to make the condition true
+        // Also set a variable to make the condition true.
+        //
+        // 同时设置变量以确保条件为真。
         self.set("default", MortarVariableValue::Boolean(true));
     }
 
@@ -233,21 +249,31 @@ impl MortarVariableState {
         name: &str,
         variables: &[Variable],
     ) -> Option<Vec<mortar_compiler::Event>> {
-        // Find the branch variable definition
+        // Find the branch variable definition.
+        //
+        // 查找分支变量的定义。
         let branch_var = variables
             .iter()
             .find(|v| v.name == name && v.var_type == "Branch")?;
 
-        // Parse the branch definition
+        // Parse the branch definition.
+        //
+        // 解析分支定义。
         let value = branch_var.value.as_ref()?;
         let cases = value.get("cases")?.as_array()?;
 
-        // Get enum type if exists
+        // Get enum type if exists.
+        //
+        // 获取枚举类型（若存在）。
         let enum_type = value.get("enum_type").and_then(|v| v.as_str());
 
-        // Determine which case matches
+        // Determine which case matches.
+        //
+        // 确定匹配的分支。
         let matching_case = if let Some(enum_var_name) = enum_type {
-            // Enum-based branch
+            // Enum-based branch.
+            //
+            // 基于枚举的分支。
             if let Some(enum_value) = self.get(enum_var_name) {
                 let enum_member = enum_value.to_display_string();
                 let member_name = if let Some(dot_pos) = enum_member.rfind('.') {
@@ -266,7 +292,9 @@ impl MortarVariableState {
                 None
             }
         } else {
-            // Boolean-based branch
+            // Boolean-based branch.
+            //
+            // 基于布尔值的分支。
             cases.iter().find(|case| {
                 case.get("condition")
                     .and_then(|c| c.as_str())
@@ -276,7 +304,9 @@ impl MortarVariableState {
             })
         }?;
 
-        // Extract events from the matching case
+        // Extract events from the matching case.
+        //
+        // 从匹配的分支中提取事件。
         let events_array = matching_case.get("events")?.as_array()?;
         let mut result = Vec::new();
 
@@ -300,19 +330,27 @@ impl MortarVariableState {
     pub fn get_branch_text(&self, name: &str) -> Option<String> {
         let branch = self.branches.get(name)?;
 
-        // If enum-based branch, check the enum variable value
+        // If enum-based branch, check the enum variable value.
+        //
+        // 若为枚举分支，则检查对应的枚举变量值。
         if let Some(enum_var_name) = &branch.enum_type {
-            // Get the enum variable value (it's stored as "EnumName.member")
+            // Get the enum variable value (it's stored as "EnumName.member").
+            //
+            // 获取枚举变量值（格式为 "EnumName.member"）。
             if let Some(enum_value) = self.get(enum_var_name) {
                 let enum_member = enum_value.to_display_string();
-                // Extract the member name after the dot
+                // Extract the member name after the dot.
+                //
+                // 提取点号后的成员名称。
                 let member_name = if let Some(dot_pos) = enum_member.rfind('.') {
                     &enum_member[dot_pos + 1..]
                 } else {
                     &enum_member
                 };
 
-                // Find the case that matches the enum member
+                // Find the case that matches the enum member.
+                //
+                // 查找与该枚举成员匹配的分支。
                 for case in &branch.cases {
                     if case.condition == member_name {
                         return Some(case.text.clone());
@@ -320,7 +358,9 @@ impl MortarVariableState {
                 }
             }
         } else {
-            // Boolean-based branch: check each condition
+            // Boolean-based branch: check each condition.
+            //
+            // 布尔分支：依次检查条件。
             for case in &branch.cases {
                 if let Some(condition_value) = self.get(&case.condition)
                     && let MortarVariableValue::Boolean(true) = condition_value
@@ -357,7 +397,9 @@ impl MortarVariableState {
 
         match operator.as_str() {
             "&&" | "||" => {
-                // For logical operators, recursively evaluate both sides as boolean
+                // For logical operators, recursively evaluate both sides as boolean.
+                //
+                // 对逻辑运算符递归地计算两侧布尔值。
                 let left_value = self.evaluate_condition(left);
                 let right_value = self.evaluate_condition(right);
                 match operator.as_str() {
@@ -423,10 +465,15 @@ impl MortarVariableState {
     }
 
     fn evaluate_func_call_condition(&self, _condition: &IfCondition) -> bool {
-        // Function calls in conditions require access to MortarFunctionRegistry
+        // Function calls in conditions require access to MortarFunctionRegistry,
         // which is not available in MortarVariableState.
         // This should be handled at a higher level where both variable_state and functions are available.
         // For now, we return false and log an info message.
+        //
+        // 条件中的函数调用需要访问 MortarFunctionRegistry，
+        // 而 MortarVariableState 无法获取。
+        // 这部分应由同时拥有 variable_state 与函数注册表的上层逻辑处理。
+        // 当前返回 false 并输出提示日志。
         dev_info!("Function call in condition requires runtime function evaluation");
         false
     }
@@ -453,7 +500,9 @@ impl MortarVariableState {
         right: &IfCondition,
         expect_equal: bool,
     ) -> bool {
-        // Try numeric comparison first
+        // Try numeric comparison first.
+        //
+        // 优先进行数值比较。
         let left_num = self.get_numeric_value(left);
         let right_num = self.get_numeric_value(right);
 
@@ -462,7 +511,9 @@ impl MortarVariableState {
             return if expect_equal { is_equal } else { !is_equal };
         }
 
-        // Try string comparison (for enum members)
+        // Try string comparison (for enum members).
+        //
+        // 尝试执行字符串比较（适用于枚举成员）。
         let left_str = self.get_string_value(left);
         let right_str = self.get_string_value(right);
 
@@ -490,11 +541,15 @@ impl MortarVariableState {
         match condition.cond_type.as_str() {
             "identifier" => {
                 let identifier = condition.value.as_ref()?;
-                // First try to parse as a number literal (workaround for serializer issue)
+                // First try to parse as a number literal (workaround for serializer issue).
+                //
+                // 优先尝试解析为数值字面量（序列化器兼容处理）。
                 if let Ok(num) = identifier.parse::<f64>() {
                     return Some(num);
                 }
-                // Otherwise treat as a variable name
+                // Otherwise treat as a variable name.
+                //
+                // 否则视作变量名处理。
                 match self.get(identifier) {
                     Some(MortarVariableValue::Number(n)) => Some(*n),
                     _ => None,
@@ -539,7 +594,9 @@ mod tests {
         let mut state = MortarVariableState::new();
         state.set("is_winner", MortarVariableValue::Boolean(true));
 
-        // Test identifier condition
+        // Test identifier condition.
+        //
+        // 测试标识符条件。
         let condition = IfCondition {
             cond_type: "identifier".to_string(),
             operator: None,
@@ -557,7 +614,9 @@ mod tests {
         let mut state = MortarVariableState::new();
         state.set("score", MortarVariableValue::Number(150.0));
 
-        // Create condition: score > 100
+        // Create condition: score > 100.
+        //
+        // 创建条件：score > 100。
         let condition = IfCondition {
             cond_type: "binary".to_string(),
             operator: Some(">".to_string()),

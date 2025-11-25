@@ -3,6 +3,11 @@
 //! This example now focuses purely on UI + gameplay reactions. All Mortar runtime
 //! mechanics (text interpolation, timelines, waits, etc.) are handled by
 //! `MortarDialoguePlugin`, so we only configure assets and respond to events.
+//!
+//! `bevy_mortar_bond` 的高级 UI 演示示例。
+//!
+//! 该示例专注于 UI 与玩法响应，Mortar 运行时机制（文本插值、时间线、等待等）
+//! 均由 `MortarDialoguePlugin` 负责，我们只需配置资源并响应事件。
 
 mod utils;
 

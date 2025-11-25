@@ -168,7 +168,9 @@ pub fn setup_dialogue_ui(mut commands: Commands, asset_server: Res<AssetServer>)
             ..default()
         })
         .with_children(|parent| {
-            // Dialogue text area
+            // Dialogue text area.
+            //
+            // 对话文本区域。
             parent
                 .spawn((
                     Node {
@@ -197,7 +199,9 @@ pub fn setup_dialogue_ui(mut commands: Commands, asset_server: Res<AssetServer>)
                     ));
                 });
 
-            // Choice buttons container (initially empty, will be populated dynamically)
+            // Choice buttons container (initially empty, will be populated dynamically).
+            //
+            // 选项按钮容器（初始为空，将在运行时填充）。
             parent.spawn((
                 Node {
                     width: Val::Percent(80.0),
@@ -209,7 +213,9 @@ pub fn setup_dialogue_ui(mut commands: Commands, asset_server: Res<AssetServer>)
                 ChoiceContainer,
             ));
 
-            // Continue button
+            // Continue button.
+            //
+            // “继续”按钮。
             parent
                 .spawn((
                     Button,
@@ -237,7 +243,9 @@ pub fn setup_dialogue_ui(mut commands: Commands, asset_server: Res<AssetServer>)
                     ));
                 });
 
-            // Control buttons row
+            // Control buttons row.
+            //
+            // 控制按钮行。
             let font_clone = font.clone();
             parent
                 .spawn(Node {
@@ -248,7 +256,9 @@ pub fn setup_dialogue_ui(mut commands: Commands, asset_server: Res<AssetServer>)
                     ..default()
                 })
                 .with_children(move |parent| {
-                    // Reload button
+                    // Reload button.
+                    //
+                    // “重载”按钮。
                     parent
                         .spawn((
                             Button,
@@ -276,7 +286,9 @@ pub fn setup_dialogue_ui(mut commands: Commands, asset_server: Res<AssetServer>)
                             ));
                         });
 
-                    // Switch file button
+                    // Switch file button.
+                    //
+                    // “切换文件”按钮。
                     parent
                         .spawn((
                             Button,
@@ -369,7 +381,9 @@ pub fn button_interaction_system(
     mut reload_button_query: Query<InteractionColor<'_>, ReloadButtonFilter>,
     mut switch_button_query: Query<InteractionColor<'_>, SwitchButtonFilter>,
 ) {
-    // Continue button interaction
+    // Continue button interaction.
+    //
+    // 处理“继续”按钮交互。
     for (interaction, mut bg_color, mut border_color) in continue_button_query.iter_mut() {
         match *interaction {
             Interaction::Pressed => {
@@ -387,11 +401,17 @@ pub fn button_interaction_system(
         }
     }
 
-    // Choice button interaction - skip if already set by manage_choice_buttons
+    // Choice button interaction - skip if already set by manage_choice_buttons.
     // (don't override selected/disabled states)
+    //
+    // 选项按钮交互——若 manage_choice_buttons 已设置则跳过。
+    // （不要覆盖选中/禁用状态）
     for (interaction, _bg_color, _border_color) in choice_button_query.iter_mut() {
-        // Only respond to hover/press on normal (non-selected) buttons
-        // The actual color changes are handled by manage_choice_buttons
+        // Only respond to hover/press on normal (non-selected) buttons.
+        // The actual color changes are handled by manage_choice_buttons.
+        //
+        // 仅响应普通（未选中）按钮的悬停/按压。
+        // 颜色变化由 manage_choice_buttons 负责。
         match *interaction {
             Interaction::Pressed => {}
             Interaction::Hovered => {}
@@ -399,7 +419,9 @@ pub fn button_interaction_system(
         }
     }
 
-    // Reload button interaction
+    // Reload button interaction.
+    //
+    // 处理“重载”按钮交互。
     for (interaction, mut bg_color, mut border_color) in reload_button_query.iter_mut() {
         match *interaction {
             Interaction::Pressed => {
@@ -417,7 +439,9 @@ pub fn button_interaction_system(
         }
     }
 
-    // Switch file button interaction
+    // Switch file button interaction.
+    //
+    // 处理“切换文件”按钮交互。
     for (interaction, mut bg_color, mut border_color) in switch_button_query.iter_mut() {
         match *interaction {
             Interaction::Pressed => {

@@ -38,7 +38,9 @@ pub fn process_mortar_events_system(
                     continue;
                 };
 
-                // Mark the content slot right after the current text for run execution
+                // Mark the content slot right after the current text for run execution.
+                //
+                // 标记当前文本之后的内容槽位，以便执行 run 语句。
                 state.pending_run_position = state
                     .current_text_content_index()
                     .map(|content_idx| content_idx + 1);
@@ -49,7 +51,9 @@ pub fn process_mortar_events_system(
 
                 dev_info!("Reached end of node: {}", state.current_node);
 
-                // Check if has choices and choices are not broken
+                // Check if has choices and choices are not broken.
+                //
+                // 检查是否存在选项且未被 break。
                 if state.has_choices() && !state.choices_broken {
                     dev_info!("Node has choices, waiting for user selection");
                     continue;
@@ -119,11 +123,17 @@ pub fn process_mortar_events_system(
                         }
                         "break" => {
                             dev_info!("Choice action is break, continuing to next text");
-                            // Clear the choice stack and selection
+                            // Clear the choice stack and selection.
+                            //
+                            // 清空选择栈和当前选中项。
                             state.clear_choice_stack();
-                            // Mark choices as broken so they won't be shown anymore
+                            // Mark choices as broken so they won't be shown anymore.
+                            //
+                            // 标记选项为已破坏，使其不再显示。
                             state.choices_broken = true;
-                            // Advance to next text
+                            // Advance to next text.
+                            //
+                            // 前进到下一段文本。
                             state.next_text();
                             continue;
                         }
@@ -135,7 +145,9 @@ pub fn process_mortar_events_system(
                     }
                 }
 
-                // Check if this choice has nested choices
+                // Check if this choice has nested choices.
+                //
+                // 检查该选项是否包含嵌套的子选项。
                 if choice.choice.is_some() {
                     dev_info!("Choice has nested choices, entering nested level");
                     state.push_choice(choice_index);

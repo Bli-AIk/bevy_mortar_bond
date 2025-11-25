@@ -15,11 +15,17 @@ use std::time::Duration;
 pub struct MortarDialoguePlugin;
 
 /// System sets exposed by [`MortarDialoguePlugin`] for ordering customization.
+///
+/// [`MortarDialoguePlugin`] 暴露的系统集合，方便自定义执行顺序。
 #[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
 pub enum MortarDialogueSystemSet {
     /// Systems that update dialogue text output.
+    ///
+    /// 更新对话文本输出的系统。
     UpdateText,
     /// Systems that emit gameplay events based on bound indices.
+    ///
+    /// 基于绑定索引发出游戏事件的系统。
     TriggerEvents,
 }
 
@@ -58,16 +64,24 @@ impl Plugin for MortarDialoguePlugin {
 pub struct MortarTextTarget;
 
 /// Stores the current Mortar dialogue text so users can bind custom render effects.
+///
+/// 存储当前 Mortar 对话文本，便于绑定自定义渲染效果。
 #[derive(Component, Debug, Clone, Default)]
 pub struct MortarDialogueText {
     /// Prefix header string (`[file / node]`).
+    ///
+    /// 前缀头字符串（`[文件 / 节点]`）。
     pub header: String,
     /// Body text processed from Mortar.
+    ///
+    /// Mortar 处理后的正文文本。
     pub body: String,
 }
 
 impl MortarDialogueText {
     /// Returns the concatenated header + body string.
+    ///
+    /// 返回拼接后的头部与正文文本。
     pub fn full_text(&self) -> String {
         format!("{}{}", self.header, self.body)
     }
@@ -80,6 +94,8 @@ impl MortarDialogueText {
 #[derive(Component, Debug, Clone, Copy, Default)]
 pub struct MortarEventBinding {
     /// Progress index used by [`MortarEventTracker`].
+    ///
+    /// [`MortarEventTracker`] 使用的进度索引。
     pub current_index: f32,
 }
 
@@ -89,10 +105,16 @@ pub struct MortarEventBinding {
 #[derive(Message, Debug, Clone)]
 pub struct MortarGameEvent {
     /// The logical source entity (usually the dialogue text). `None` for timeline-only events.
+    ///
+    /// 逻辑来源实体（通常是对话文本）；仅时间线事件时为 `None`。
     pub source: Option<Entity>,
     /// Event name defined inside Mortar (e.g. "set_animation").
+    ///
+    /// Mortar 中定义的事件名称（如 "set_animation"）。
     pub name: String,
     /// Raw argument list from Mortar.
+    ///
+    /// 来自 Mortar 的原始参数列表。
     pub args: Vec<String>,
 }
 
@@ -141,12 +163,16 @@ pub struct MortarRunsExecuting {
 }
 
 /// Records which mortar files already printed their public constants.
+///
+/// 记录哪些 mortar 文件已经打印过其公共常量。
 #[derive(Resource, Default)]
 pub struct LoggedConstants {
     seen_paths: HashSet<String>,
 }
 
 /// Component that schedules pending run/timeline execution with timers.
+///
+/// 使用计时器安排待执行 run 或时间线的组件。
 #[derive(Component)]
 struct PendingRunExecution {
     timer: Timer,

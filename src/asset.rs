@@ -48,8 +48,9 @@ impl MortarAssetLoader {
     ///
     /// 查找 `assets` 目录的基本路径。
     fn find_asset_base_path() -> Option<PathBuf> {
-        // Try multiple possible locations for the assets directory
-        // 尝试多个 `assets` 目录的可能位置
+        // Try multiple possible locations for the assets directory.
+        //
+        // 尝试多个 `assets` 目录的可能位置。
         let candidates = [
             PathBuf::from("assets"),
             PathBuf::from("crates/bevy_mortar_bond/assets"),
@@ -128,8 +129,9 @@ impl MortarAssetLoader {
         let program = parse_result?;
         let json = Serializer::serialize_to_json(&program, true)?;
 
-        // Write the compiled file
-        // 写入编译后的文件
+        // Write the compiled file.
+        //
+        // 写入编译后的文件。
         let write_path = base_path.join(mortared_path);
         if let Err(e) = std::fs::write(&write_path, json.as_bytes()) {
             warn!("Failed to write .mortared file to {:?}: {}", write_path, e);
@@ -237,8 +239,9 @@ impl AssetLoader for MortarAssetLoader {
                 Some("mortar") => {
                     let mortared_path = path.with_extension("mortared");
 
-                    // Find the actual assets directory
-                    // 查找实际的 `assets` 目录
+                    // Find the actual assets directory.
+                    //
+                    // 查找实际的 `assets` 目录。
                     let base_path =
                         Self::find_asset_base_path().ok_or("Cannot find assets directory")?;
 
