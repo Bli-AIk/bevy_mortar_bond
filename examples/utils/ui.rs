@@ -13,8 +13,8 @@ use bevy::log::info;
 use bevy::prelude::*;
 use bevy::ui::FlexDirection;
 use bevy_mortar_bond::{
-    MortarAsset, MortarDialogueSystemSet, MortarDialogueText, MortarEvent, MortarEventBinding,
-    MortarRegistry, MortarRunsExecuting, MortarRuntime, MortarTextTarget,
+    DialogueState, MortarAsset, MortarDialogueSystemSet, MortarDialogueText, MortarEvent,
+    MortarEventBinding, MortarRegistry, MortarRunsExecuting, MortarRuntime, MortarTextTarget,
 };
 
 use crate::DialogueFiles;
@@ -372,6 +372,53 @@ fn show_finished_message(
     }
 }
 
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum ChoiceFinishKind {
+    None,
+    Immediate,
+    NeedsNextText,
+}
+
+fn determine_choice_finish_kind(state: &DialogueState, choice_index: usize) -> ChoiceFinishKind {
+    let Some(choices) = state.get_current_choices().or_else(|| state.get_choices()) else {
+        return ChoiceFinishKind::None;
+    };
+    let Some(choice) = choices.get(choice_index) else {
+        return ChoiceFinishKind::None;
+    };
+
+    if choice.choice.is_some() {
+        return ChoiceFinishKind::None;
+    }
+
+    if let Some(action) = choice.action.as_deref() {
+        return match action {
+            "return" => ChoiceFinishKind::Immediate,
+            "break" => {
+                let has_more_text = state.has_next_text();
+                let has_follow_up_node =
+                    matches!(state.get_next_node(), Some(next) if next != "return");
+                if !has_more_text && !has_follow_up_node {
+                    ChoiceFinishKind::NeedsNextText
+                } else {
+                    ChoiceFinishKind::None
+                }
+            }
+            _ => ChoiceFinishKind::Immediate,
+        };
+    }
+
+    if let Some(next_node) = choice.next.as_deref() {
+        if next_node == "return" {
+            ChoiceFinishKind::Immediate
+        } else {
+            ChoiceFinishKind::None
+        }
+    } else {
+        ChoiceFinishKind::Immediate
+    }
+}
+
 /// Handles the visual feedback for button interactions.
 ///
 /// 处理按钮交互的视觉反馈。
@@ -482,9 +529,30 @@ fn handle_continue_button(
         }
 
         if let Some(state) = &runtime.active_dialogue {
-            if state.selected_choice.is_some() {
+            if let Some(choice_index) = state.selected_choice {
                 info!("Example: Confirming choice selection");
+                let finish_kind = determine_choice_finish_kind(state, choice_index);
                 events.write(MortarEvent::ConfirmChoice);
+                match finish_kind {
+                    ChoiceFinishKind::Immediate => {
+                        info!("Example: Choice ends dialogue immediately");
+                        show_finished_message(
+                            &mut dialogue_text_query,
+                            &mut text_query,
+                            &mut typewriter_query,
+                        );
+                    }
+                    ChoiceFinishKind::NeedsNextText => {
+                        info!("Example: Choice ends dialogue after break; advancing");
+                        events.write(MortarEvent::NextText);
+                        show_finished_message(
+                            &mut dialogue_text_query,
+                            &mut text_query,
+                            &mut typewriter_query,
+                        );
+                    }
+                    ChoiceFinishKind::None => {}
+                }
                 continue;
             }
 
