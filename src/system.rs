@@ -20,7 +20,7 @@ pub fn process_mortar_events_system(
                     continue;
                 };
                 let Some(asset) = assets.get(handle) else {
-                    info!("Asset '{}' not loaded yet, waiting...", path);
+                    dev_info!("Asset '{}' not loaded yet, waiting...", path);
                     runtime.pending_start = Some((path.clone(), node.clone()));
                     continue;
                 };

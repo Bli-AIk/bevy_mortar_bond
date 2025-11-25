@@ -427,7 +427,7 @@ impl MortarVariableState {
         // which is not available in MortarVariableState.
         // This should be handled at a higher level where both variable_state and functions are available.
         // For now, we return false and log an info message.
-        info!("Function call in condition requires runtime function evaluation");
+        dev_info!("Function call in condition requires runtime function evaluation");
         false
     }
 

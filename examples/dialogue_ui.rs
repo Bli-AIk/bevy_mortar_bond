@@ -17,6 +17,7 @@ use bevy_mortar_bond::{
     MortarFunctions, MortarNumber, MortarPlugin, MortarRegistry, MortarRuntime, MortarString,
     MortarVariableState,
 };
+use std::collections::HashSet;
 use std::time::Duration;
 use utils::ui::*;
 
@@ -110,6 +111,14 @@ struct RunsExecuting {
     executing: bool,
 }
 
+/// Resource to ensure constants for each dialogue file are logged only once
+///
+/// 确保每个对话文件的常量只记录一次的资源
+#[derive(Resource, Default)]
+struct LoggedConstants {
+    seen_paths: HashSet<String>,
+}
+
 fn main() {
     // STEP 1: add Mortar + Typewriter + demo UI plugin so the app gets
     // runtime support, text typing, and ready-made panels.
@@ -126,6 +135,7 @@ fn main() {
         .init_resource::<DialogueFiles>()
         .init_resource::<RuntimeVariableState>()
         .init_resource::<RunsExecuting>()
+        .init_resource::<LoggedConstants>()
         // STEP 3: wire startup chain – spawn camera, hook demo visuals, register Mortar functions,
         // and load the first .mortar file.
         // 第三步：配置启动链——创建相机、示例图形、注册 Mortar 函数并加载首个脚本。
@@ -149,6 +159,7 @@ fn main() {
             Update,
             (
                 manage_variable_state,
+                log_public_constants_once,
                 process_run_statements_after_text,
                 update_dialogue_text_with_typewriter,
                 trigger_typewriter_events,
@@ -298,6 +309,54 @@ fn manage_variable_state(
         var_state_res.state = None;
         *last_mortar_path = None;
     }
+}
+
+/// Logs public constants exposed by the currently active Mortar file (once per file).
+///
+/// 为当前激活的 Mortar 文件记录一次公开常量。
+fn log_public_constants_once(
+    runtime: Res<MortarRuntime>,
+    registry: Res<MortarRegistry>,
+    assets: Res<Assets<MortarAsset>>,
+    mut logged: ResMut<LoggedConstants>,
+) {
+    let Some(state) = &runtime.active_dialogue else {
+        return;
+    };
+
+    if logged.seen_paths.contains(&state.mortar_path) {
+        return;
+    }
+
+    let Some(handle) = registry.get(&state.mortar_path) else {
+        return;
+    };
+    let Some(asset) = assets.get(handle) else {
+        return;
+    };
+
+    let public_consts: Vec<_> = asset.data.constants.iter().filter(|c| c.public).collect();
+    if public_consts.is_empty() {
+        logged.seen_paths.insert(state.mortar_path.clone());
+        return;
+    }
+
+    info!(
+        "Example: Public constants provided by {}:",
+        state.mortar_path
+    );
+    for constant in public_consts {
+        let value_repr = match &constant.value {
+            serde_json::Value::String(s) => s.clone(),
+            _ => constant.value.to_string(),
+        };
+        info!(
+            "Example: {} ({}): {}",
+            constant.name, constant.const_type, value_repr
+        );
+    }
+
+    logged.seen_paths.insert(state.mortar_path.clone());
 }
 
 /// Process run statements after the current text (when user advances)

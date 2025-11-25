@@ -5,3 +5,5 @@ node Start {
 pub const welcome_message: String = "欢迎来到冒险！"
 pub const continue_label: String = "继续"
 pub const exit_label: String = "退出"
+
+const nothing: String = "看不见我……"

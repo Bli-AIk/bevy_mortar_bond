@@ -1,7 +1,7 @@
 {
   "metadata": {
     "version": "0.4.0",
-    "generated_at": "2025-11-25T09:24:52.256188827Z"
+    "generated_at": "2025-11-25T09:26:29.907941179Z"
   },
   "constants": [
     {
@@ -21,6 +21,12 @@
       "type": "String",
       "value": "退出",
       "public": true
+    },
+    {
+      "name": "nothing",
+      "type": "String",
+      "value": "看不见我……",
+      "public": false
     }
   ],
   "nodes": [
