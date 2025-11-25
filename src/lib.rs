@@ -25,6 +25,7 @@ use std::collections::HashMap;
 mod debug;
 mod asset;
 mod binder;
+mod dialogue;
 mod system;
 mod variable_state;
 
@@ -35,6 +36,10 @@ pub use asset::{MortarAsset, MortarAssetLoader};
 pub use bevy_mortar_bond_macros::{MortarFunctions, mortar_functions};
 pub use binder::{
     MortarBoolean, MortarFunctionRegistry, MortarNumber, MortarString, MortarValue, MortarVoid,
+};
+pub use dialogue::{
+    MortarDialoguePlugin, MortarDialogueVariables, MortarGameEvent, MortarRunsExecuting,
+    MortarTextTarget,
 };
 pub use variable_state::{MortarVariableState, MortarVariableValue};
 

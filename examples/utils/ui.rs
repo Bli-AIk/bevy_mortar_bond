@@ -13,7 +13,8 @@ use bevy::prelude::*;
 use bevy::ui::FlexDirection;
 use bevy_mortar_bond::{MortarAsset, MortarEvent, MortarRegistry, MortarRuntime};
 
-use crate::{DialogueFiles, RunsExecuting};
+use crate::DialogueFiles;
+use bevy_mortar_bond::{MortarRunsExecuting, MortarTextTarget};
 
 /// UI plugin bundling layout + button logic for dialogue examples.
 ///
@@ -174,6 +175,7 @@ pub fn setup_dialogue_ui(mut commands: Commands, asset_server: Res<AssetServer>)
                         },
                         TextColor(Color::srgb(0.9, 0.9, 0.9)),
                         DialogueText,
+                        MortarTextTarget,
                     ));
                 });
 
@@ -370,7 +372,7 @@ fn handle_continue_button(
     interaction_query: Query<&Interaction, (Changed<Interaction>, With<ContinueButton>)>,
     mut events: MessageWriter<MortarEvent>,
     runtime: Res<MortarRuntime>,
-    runs_executing: Res<RunsExecuting>,
+    runs_executing: Res<MortarRunsExecuting>,
 ) {
     if runs_executing.executing {
         return;
@@ -572,7 +574,7 @@ fn update_button_states(
         ),
         With<ContinueButton>,
     >,
-    runs_executing: Res<RunsExecuting>,
+    runs_executing: Res<MortarRunsExecuting>,
 ) {
     if !runtime.is_changed() && !runs_executing.is_changed() {
         return;
