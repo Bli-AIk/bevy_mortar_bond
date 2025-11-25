@@ -7,7 +7,7 @@
 //! 这里集中处理布局和按钮交互，示例文件可专注于讲解绑定。
 
 use bevy::asset::Assets;
-use bevy::ecs::system::Local;
+use bevy::ecs::system::{Local, SystemParam};
 use bevy::log::info;
 use bevy::prelude::*;
 use bevy::ui::FlexDirection;
@@ -75,6 +75,64 @@ pub struct ReloadButton;
 /// "切换文件"按钮的组件。
 #[derive(Component)]
 pub struct SwitchFileButton;
+
+type InteractionColor<'a> = (
+    &'a Interaction,
+    &'a mut BackgroundColor,
+    &'a mut BorderColor,
+);
+
+type ContinueButtonFilter = (
+    Changed<Interaction>,
+    With<ContinueButton>,
+    Without<ChoiceButton>,
+    Without<ReloadButton>,
+    Without<SwitchFileButton>,
+);
+
+type ChoiceButtonFilter = (
+    Changed<Interaction>,
+    With<ChoiceButton>,
+    Without<ContinueButton>,
+    Without<ReloadButton>,
+    Without<SwitchFileButton>,
+);
+
+type ReloadButtonFilter = (
+    Changed<Interaction>,
+    With<ReloadButton>,
+    Without<ContinueButton>,
+    Without<ChoiceButton>,
+    Without<SwitchFileButton>,
+);
+
+type SwitchButtonFilter = (
+    Changed<Interaction>,
+    With<SwitchFileButton>,
+    Without<ContinueButton>,
+    Without<ChoiceButton>,
+    Without<ReloadButton>,
+);
+
+#[derive(SystemParam)]
+struct ChoiceButtonResources<'w> {
+    asset_server: Res<'w, AssetServer>,
+    registry: Res<'w, MortarRegistry>,
+    assets: Res<'w, Assets<MortarAsset>>,
+}
+
+/// Snapshot of choice selection state to detect changes.
+///
+/// 记录选项状态快照以便检测变化。
+#[derive(Clone, Default, PartialEq)]
+struct ChoiceUiSnapshot {
+    mortar_path: String,
+    node_name: String,
+    choice_stack: Vec<usize>,
+    choices_broken: bool,
+}
+
+type ChoiceUiState = Option<ChoiceUiSnapshot>;
 
 /// Creates the dialogue UI layout.
 ///
@@ -233,46 +291,10 @@ pub fn setup_dialogue_ui(mut commands: Commands, asset_server: Res<AssetServer>)
 ///
 /// 处理按钮交互的视觉反馈。
 pub fn button_interaction_system(
-    mut continue_button_query: Query<
-        (&Interaction, &mut BackgroundColor, &mut BorderColor),
-        (
-            Changed<Interaction>,
-            With<ContinueButton>,
-            Without<ChoiceButton>,
-            Without<ReloadButton>,
-            Without<SwitchFileButton>,
-        ),
-    >,
-    mut choice_button_query: Query<
-        (&Interaction, &mut BackgroundColor, &mut BorderColor),
-        (
-            Changed<Interaction>,
-            With<ChoiceButton>,
-            Without<ContinueButton>,
-            Without<ReloadButton>,
-            Without<SwitchFileButton>,
-        ),
-    >,
-    mut reload_button_query: Query<
-        (&Interaction, &mut BackgroundColor, &mut BorderColor),
-        (
-            Changed<Interaction>,
-            With<ReloadButton>,
-            Without<ContinueButton>,
-            Without<ChoiceButton>,
-            Without<SwitchFileButton>,
-        ),
-    >,
-    mut switch_button_query: Query<
-        (&Interaction, &mut BackgroundColor, &mut BorderColor),
-        (
-            Changed<Interaction>,
-            With<SwitchFileButton>,
-            Without<ContinueButton>,
-            Without<ChoiceButton>,
-            Without<ReloadButton>,
-        ),
-    >,
+    mut continue_button_query: Query<InteractionColor<'_>, ContinueButtonFilter>,
+    mut choice_button_query: Query<InteractionColor<'_>, ChoiceButtonFilter>,
+    mut reload_button_query: Query<InteractionColor<'_>, ReloadButtonFilter>,
+    mut switch_button_query: Query<InteractionColor<'_>, SwitchButtonFilter>,
 ) {
     // Continue button interaction
     for (interaction, mut bg_color, mut border_color) in continue_button_query.iter_mut() {
@@ -399,10 +421,8 @@ fn manage_choice_buttons(
     runtime: Res<MortarRuntime>,
     container_query: Query<Entity, With<ChoiceContainer>>,
     button_query: Query<Entity, With<ChoiceButton>>,
-    asset_server: Res<AssetServer>,
-    registry: Res<MortarRegistry>,
-    assets: Res<Assets<MortarAsset>>,
-    mut last_state: Local<Option<(String, String, Vec<usize>, bool)>>,
+    resources: ChoiceButtonResources,
+    mut last_state: Local<ChoiceUiState>,
 ) {
     if !runtime.is_changed() {
         return;
@@ -412,20 +432,21 @@ fn manage_choice_buttons(
         return;
     };
 
-    let current_state = runtime.active_dialogue.as_ref().map(|state| {
-        (
-            state.mortar_path.clone(),
-            state.current_node.clone(),
-            state.choice_stack.clone(),
-            state.choices_broken,
-        )
-    });
+    let current_state = runtime
+        .active_dialogue
+        .as_ref()
+        .map(|state| ChoiceUiSnapshot {
+            mortar_path: state.mortar_path.clone(),
+            node_name: state.current_node.clone(),
+            choice_stack: state.choice_stack.clone(),
+            choices_broken: state.choices_broken,
+        });
 
     if *last_state == current_state && !button_query.is_empty() {
         return;
     }
 
-    *last_state = current_state;
+    *last_state = current_state.clone();
 
     for entity in button_query.iter() {
         commands.entity(entity).despawn();
@@ -439,10 +460,11 @@ fn manage_choice_buttons(
             return;
         }
 
-        let font = asset_server.load("Unifont.otf");
-        let function_decls = registry
+        let font = resources.asset_server.load("Unifont.otf");
+        let function_decls = resources
+            .registry
             .get(&state.mortar_path)
-            .and_then(|handle| assets.get(handle))
+            .and_then(|handle| resources.assets.get(handle))
             .map(|asset| asset.data.functions.as_slice())
             .unwrap_or(&[]);
 

@@ -1,6 +1,6 @@
 use crate::{DialogueState, MortarAsset, MortarEvent, MortarRegistry, MortarRuntime};
 use bevy::asset::Assets;
-use bevy::log::{info, warn};
+use bevy::log::warn;
 use bevy::prelude::{MessageReader, MessageWriter, Res, ResMut};
 
 /// Processes Mortar events.

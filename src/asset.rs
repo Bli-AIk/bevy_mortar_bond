@@ -4,7 +4,7 @@
 
 use bevy::asset::io::Reader;
 use bevy::asset::{Asset, AssetLoader, LoadContext};
-use bevy::log::{info, warn};
+use bevy::log::warn;
 use bevy::prelude::TypePath;
 use bevy::tasks::ConditionalSendFuture;
 use mortar_compiler::{Deserializer, Language, MortaredData, ParseHandler, Serializer};

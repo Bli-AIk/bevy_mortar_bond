@@ -10,6 +10,7 @@
 
 mod utils;
 
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_ecs_typewriter::{Typewriter, TypewriterPlugin, TypewriterState};
 use bevy_mortar_bond::{
@@ -75,10 +76,10 @@ impl Default for DialogueFiles {
                 "simple.mortar".to_string(),
                 "basic.mortar".to_string(),
                 "control_flow.mortar".to_string(),
-                "master_test.mortar".to_string(),
                 "performance_system.mortar".to_string(),
                 "branch_interpolation.mortar".to_string(),
                 "enum_branch.mortar".to_string(),
+                "master_test.mortar".to_string(),
             ],
             current_index: 0,
         }
@@ -117,6 +118,22 @@ struct RunsExecuting {
 #[derive(Resource, Default)]
 struct LoggedConstants {
     seen_paths: HashSet<String>,
+}
+
+/// Bundles the frequently accessed parameters for updating dialogue text.
+///
+/// 汇总更新对话文本时常用的系统参数。
+#[derive(SystemParam)]
+struct DialogueTextParams<'w, 's> {
+    commands: Commands<'w, 's>,
+    runtime: Res<'w, MortarRuntime>,
+    dialogue_query: Query<'w, 's, (Entity, &'static mut Text), With<DialogueText>>,
+    typewriter_query: Query<'w, 's, &'static Typewriter, With<DialogueText>>,
+    registry: Res<'w, MortarRegistry>,
+    assets: Res<'w, Assets<MortarAsset>>,
+    events: MessageWriter<'w, MortarEvent>,
+    var_state_res: ResMut<'w, RuntimeVariableState>,
+    runs_executing: Res<'w, RunsExecuting>,
 }
 
 fn main() {
@@ -282,10 +299,6 @@ fn load_initial_dialogue(
         node: START_NODE.to_string(),
     });
 }
-
-/// Handles clicks on the "Continue" button.
-///
-/// 处理"继续"按钮的点击事件。
 
 /// Manages variable state lifecycle
 ///
@@ -496,18 +509,21 @@ fn process_run_statements_after_text(
 ///
 /// 使用打字机效果更新对话文本
 fn update_dialogue_text_with_typewriter(
-    mut commands: Commands,
-    runtime: Res<MortarRuntime>,
-    mut dialogue_query: Query<(Entity, &mut Text), With<DialogueText>>,
-    typewriter_query: Query<&Typewriter, With<DialogueText>>,
+    params: DialogueTextParams,
     mut last_key: Local<Option<(String, String, usize)>>,
     mut skip_next_conditional: Local<bool>,
-    registry: Res<MortarRegistry>,
-    assets: Res<Assets<MortarAsset>>,
-    mut events: MessageWriter<MortarEvent>,
-    mut var_state_res: ResMut<RuntimeVariableState>,
-    runs_executing: Res<RunsExecuting>,
 ) {
+    let DialogueTextParams {
+        mut commands,
+        runtime,
+        mut dialogue_query,
+        typewriter_query,
+        registry,
+        assets,
+        mut events,
+        mut var_state_res,
+        runs_executing,
+    } = params;
     // Don't update text if runs are being executed
     if runs_executing.executing {
         return;
@@ -564,7 +580,7 @@ fn update_dialogue_text_with_typewriter(
                     && !bevy_mortar_bond::evaluate_if_condition(
                         condition,
                         &runtime.functions,
-                        &variable_state,
+                        variable_state,
                     )
                 {
                     info!("Example: Condition not satisfied, auto-advancing to next text");
@@ -578,11 +594,11 @@ fn update_dialogue_text_with_typewriter(
                 // Execute pre_statements only if condition is satisfied (or no condition)
                 let has_statements = !text_data.pre_statements.is_empty();
                 for stmt in &text_data.pre_statements {
-                    if stmt.stmt_type == "assignment" {
-                        if let (Some(var_name), Some(value)) = (&stmt.var_name, &stmt.value) {
-                            info!("Example: Executing assignment: {} = {}", var_name, value);
-                            variable_state.execute_assignment(var_name, value);
-                        }
+                    if stmt.stmt_type == "assignment"
+                        && let (Some(var_name), Some(value)) = (&stmt.var_name, &stmt.value)
+                    {
+                        info!("Example: Executing assignment: {} = {}", var_name, value);
+                        variable_state.execute_assignment(var_name, value);
                     }
                 }
 
@@ -677,18 +693,15 @@ fn update_dialogue_text_with_typewriter(
                                 let mut adjusted_event = event.clone();
 
                                 // Resolve index_variable if present
-                                if let Some(var_name) = &adjusted_event.index_variable {
-                                    if let Some(value) = variable_state.get(var_name) {
-                                        if let bevy_mortar_bond::MortarVariableValue::Number(n) =
-                                            value
-                                        {
-                                            adjusted_event.index = *n;
-                                            info!(
-                                                "Example: Resolved index_variable '{}' to {}",
-                                                var_name, n
-                                            );
-                                        }
-                                    }
+                                if let Some(var_name) = &adjusted_event.index_variable
+                                    && let Some(bevy_mortar_bond::MortarVariableValue::Number(n)) =
+                                        variable_state.get(var_name)
+                                {
+                                    adjusted_event.index = *n;
+                                    info!(
+                                        "Example: Resolved index_variable '{}' to {}",
+                                        var_name, n
+                                    );
                                 }
 
                                 // Map the index from original to rendered position
@@ -711,16 +724,12 @@ fn update_dialogue_text_with_typewriter(
 
                     // Resolve index_variable for events that have it
                     for event in &mut all_events {
-                        if let Some(var_name) = &event.index_variable {
-                            if let Some(value) = variable_state.get(var_name) {
-                                if let bevy_mortar_bond::MortarVariableValue::Number(n) = value {
-                                    event.index = *n;
-                                    info!(
-                                        "Example: Resolved index_variable '{}' to {}",
-                                        var_name, n
-                                    );
-                                }
-                            }
+                        if let Some(var_name) = &event.index_variable
+                            && let Some(bevy_mortar_bond::MortarVariableValue::Number(n)) =
+                                variable_state.get(var_name)
+                        {
+                            event.index = *n;
+                            info!("Example: Resolved index_variable '{}' to {}", var_name, n);
                         }
                     }
                 }
@@ -736,72 +745,50 @@ fn update_dialogue_text_with_typewriter(
                         state.node_data().content.get(current_text_content_idx)
                     {
                         // Check if there's a run_event right before this text
-                        if current_text_content_idx > 0 {
-                            if let Some(prev_content) =
+                        if current_text_content_idx > 0
+                            && let Some(prev_content) =
                                 state.node_data().content.get(current_text_content_idx - 1)
-                            {
-                                if let Some(type_str) =
-                                    prev_content.get("type").and_then(|v| v.as_str())
-                                {
-                                    if type_str == "run_event" {
-                                        if let Some(index_override) =
-                                            prev_content.get("index_override").and_then(|v| {
-                                                serde_json::from_value::<
-                                                    mortar_compiler::IndexOverride,
-                                                >(
-                                                    v.clone()
-                                                )
-                                                .ok()
-                                            })
+                            && let Some("run_event") =
+                                prev_content.get("type").and_then(|v| v.as_str())
+                            && let Some(index_override) =
+                                prev_content.get("index_override").and_then(|v| {
+                                    serde_json::from_value::<mortar_compiler::IndexOverride>(
+                                        v.clone(),
+                                    )
+                                    .ok()
+                                })
+                            && let Some(event_name) =
+                                prev_content.get("name").and_then(|v| v.as_str())
+                        {
+                            let index = if index_override.override_type == "variable" {
+                                variable_state
+                                    .get(&index_override.value)
+                                    .and_then(|v| {
+                                        if let bevy_mortar_bond::MortarVariableValue::Number(n) = v
                                         {
-                                            if let Some(event_name) =
-                                                prev_content.get("name").and_then(|v| v.as_str())
-                                            {
-                                                // Get the index value
-                                                let index = if index_override.override_type
-                                                    == "variable"
-                                                {
-                                                    // Get variable value
-                                                    variable_state
-                                                        .get(&index_override.value)
-                                                        .and_then(|v| {
-                                                            if let bevy_mortar_bond::MortarVariableValue::Number(n) = v {
-                                                                Some(*n)
-                                                            } else {
-                                                                None
-                                                            }
-                                                        })
-                                                        .unwrap_or(0.0)
-                                                } else {
-                                                    // Direct value
-                                                    index_override
-                                                        .value
-                                                        .parse::<f64>()
-                                                        .unwrap_or(0.0)
-                                                };
-
-                                                // Find the event definition
-                                                if let Some(event_def) = asset_data
-                                                    .events
-                                                    .iter()
-                                                    .find(|e| e.name == event_name)
-                                                {
-                                                    // Create a text event from the event definition
-                                                    let text_event = mortar_compiler::Event {
-                                                        index,
-                                                        index_variable: None,
-                                                        actions: vec![event_def.action.clone()],
-                                                    };
-                                                    all_events.push(text_event);
-                                                    info!(
-                                                        "Example: Added run '{}' with index {} to text events",
-                                                        event_name, index
-                                                    );
-                                                }
-                                            }
+                                            Some(*n)
+                                        } else {
+                                            None
                                         }
-                                    }
-                                }
+                                    })
+                                    .unwrap_or(0.0)
+                            } else {
+                                index_override.value.parse::<f64>().unwrap_or(0.0)
+                            };
+
+                            if let Some(event_def) =
+                                asset_data.events.iter().find(|e| e.name == event_name)
+                            {
+                                let text_event = mortar_compiler::Event {
+                                    index,
+                                    index_variable: None,
+                                    actions: vec![event_def.action.clone()],
+                                };
+                                all_events.push(text_event);
+                                info!(
+                                    "Example: Added run '{}' with index {} to text events",
+                                    event_name, index
+                                );
                             }
                         }
                     }
@@ -1016,18 +1003,11 @@ fn process_pending_run_executions(
             }
 
             // Execute next event in sequence
-            if let Some((event_name, _, _)) = pending.remaining_runs.first() {
-                if event_name != "__WAIT__" {
-                    if let Some(event_def) =
-                        pending.event_defs.iter().find(|e| e.name == *event_name)
-                    {
-                        execute_event_action(
-                            &event_def.action,
-                            &mut commands,
-                            pending.dialogue_entity,
-                        );
-                    }
-                }
+            if let Some((event_name, _, _)) = pending.remaining_runs.first()
+                && event_name != "__WAIT__"
+                && let Some(event_def) = pending.event_defs.iter().find(|e| e.name == *event_name)
+            {
+                execute_event_action(&event_def.action, &mut commands, pending.dialogue_entity);
             }
 
             // Remove first event and continue
@@ -1203,10 +1183,10 @@ fn start_timeline_execution(
 
     // Execute the first event immediately
     if let Some((first_event, first_duration, ignore_duration)) = sequence.first() {
-        if first_event != "__WAIT__" {
-            if let Some(event_def) = event_defs.iter().find(|e| e.name == *first_event) {
-                execute_event_action(&event_def.action, commands, dialogue_entity);
-            }
+        if first_event != "__WAIT__"
+            && let Some(event_def) = event_defs.iter().find(|e| e.name == *first_event)
+        {
+            execute_event_action(&event_def.action, commands, dialogue_entity);
         }
 
         // If there are more events and the first has a duration, schedule them
