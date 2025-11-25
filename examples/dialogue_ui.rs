@@ -7,6 +7,7 @@
 mod utils;
 
 use bevy::prelude::*;
+use bevy_ecs_typewriter::TypewriterPlugin;
 use bevy_mortar_bond::{
     MortarDialoguePlugin, MortarEvent, MortarFunctions, MortarGameEvent, MortarNumber,
     MortarPlugin, MortarRegistry, MortarRuntime, MortarString, mortar_functions,
@@ -60,6 +61,7 @@ fn main() {
             DefaultPlugins,
             MortarPlugin,
             MortarDialoguePlugin,
+            TypewriterPlugin,
             DialogueUiPlugin,
         ))
         .init_resource::<DialogueFiles>()

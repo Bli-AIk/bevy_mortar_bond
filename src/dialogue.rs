@@ -3,9 +3,9 @@ use crate::{
     MortarVariableState, MortarVariableValue, evaluate_if_condition, process_interpolated_text,
 };
 use bevy::asset::Assets;
+use bevy::ecs::schedule::SystemSet;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use bevy_ecs_typewriter::{Typewriter, TypewriterPlugin, TypewriterState};
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
@@ -14,24 +14,40 @@ use std::time::Duration;
 /// 负责把 Mortar 运行时数据转换成可直接渲染的文本和可监听的游戏事件。
 pub struct MortarDialoguePlugin;
 
+/// System sets exposed by [`MortarDialoguePlugin`] for ordering customization.
+#[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
+pub enum MortarDialogueSystemSet {
+    /// Systems that update dialogue text output.
+    UpdateText,
+    /// Systems that emit gameplay events based on bound indices.
+    TriggerEvents,
+}
+
 impl Plugin for MortarDialoguePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(TypewriterPlugin)
-            .init_resource::<MortarDialogueVariables>()
-            .init_resource::<MortarRunsExecuting>()
-            .init_resource::<LoggedConstants>()
-            .add_message::<MortarGameEvent>()
-            .add_systems(
-                Update,
-                (
-                    log_public_constants_once,
-                    process_run_statements_after_text,
-                    update_mortar_text_targets,
-                    trigger_typewriter_events,
-                    process_pending_run_executions,
-                ),
+        app.configure_sets(
+            Update,
+            (
+                MortarDialogueSystemSet::UpdateText,
+                MortarDialogueSystemSet::TriggerEvents,
             )
-            .add_systems(PostUpdate, clear_runs_executing_flag);
+                .chain(),
+        )
+        .init_resource::<MortarDialogueVariables>()
+        .init_resource::<MortarRunsExecuting>()
+        .init_resource::<LoggedConstants>()
+        .add_message::<MortarGameEvent>()
+        .add_systems(
+            Update,
+            (
+                log_public_constants_once,
+                process_run_statements_after_text,
+                update_mortar_text_targets.in_set(MortarDialogueSystemSet::UpdateText),
+                trigger_bound_events.in_set(MortarDialogueSystemSet::TriggerEvents),
+                process_pending_run_executions,
+            ),
+        )
+        .add_systems(PostUpdate, clear_runs_executing_flag);
     }
 }
 
@@ -40,6 +56,32 @@ impl Plugin for MortarDialoguePlugin {
 /// 标记需要显示 Mortar 对话文本的 UI 实体。
 #[derive(Component)]
 pub struct MortarTextTarget;
+
+/// Stores the current Mortar dialogue text so users can bind custom render effects.
+#[derive(Component, Debug, Clone, Default)]
+pub struct MortarDialogueText {
+    /// Prefix header string (`[file / node]`).
+    pub header: String,
+    /// Body text processed from Mortar.
+    pub body: String,
+}
+
+impl MortarDialogueText {
+    /// Returns the concatenated header + body string.
+    pub fn full_text(&self) -> String {
+        format!("{}{}", self.header, self.body)
+    }
+}
+
+/// Component that exposes the current playback index for Mortar events.
+///
+/// 用户可以将 `current_index` 绑定到任意系统（打字机、
+/// 音频时间线等），由 [`MortarDialoguePlugin`] 自动触发事件。
+#[derive(Component, Debug, Clone, Copy, Default)]
+pub struct MortarEventBinding {
+    /// Progress index used by [`MortarEventTracker`].
+    pub current_index: f32,
+}
 
 /// Event emitted whenever Mortar timelines or text events ask the game to do something.
 ///
@@ -119,7 +161,6 @@ struct TextUpdateParams<'w, 's> {
     runtime: Res<'w, MortarRuntime>,
     registry: Res<'w, MortarRegistry>,
     assets: Res<'w, Assets<MortarAsset>>,
-    typewriters: Query<'w, 's, &'static Typewriter, With<MortarTextTarget>>,
     texts: Query<'w, 's, (Entity, &'static mut Text), With<MortarTextTarget>>,
     variable_cache: ResMut<'w, MortarDialogueVariables>,
     runs_executing: Res<'w, MortarRunsExecuting>,
@@ -178,7 +219,6 @@ fn update_mortar_text_targets(
         runtime,
         registry,
         assets,
-        typewriters,
         mut texts,
         mut variable_cache,
         runs_executing,
@@ -221,10 +261,6 @@ fn update_mortar_text_targets(
         );
 
         if last_key.as_ref() == Some(&current_key) {
-            if let Ok(typewriter) = typewriters.get(entity) {
-                let header = format!("[{} / {}]\n\n", state.mortar_path, state.current_node);
-                **text = format!("{}{}", header, typewriter.current_text);
-            }
             continue;
         }
 
@@ -286,14 +322,8 @@ fn update_mortar_text_targets(
 
         *skip_next_conditional = false;
 
-        if typewriters.get(entity).is_ok() {
-            commands.entity(entity).remove::<Typewriter>();
-            commands.entity(entity).remove::<MortarEventTracker>();
-        }
-
-        let mut typewriter = Typewriter::new(&processed_text, 0.05);
-        typewriter.play();
-        commands.entity(entity).insert(typewriter);
+        commands.entity(entity).remove::<MortarEventTracker>();
+        commands.entity(entity).remove::<MortarEventBinding>();
 
         let all_events = collect_text_events(
             text_data,
@@ -306,15 +336,19 @@ fn update_mortar_text_targets(
         if !all_events.is_empty() {
             commands
                 .entity(entity)
-                .insert(MortarEventTracker::new(all_events));
+                .insert(MortarEventTracker::new(all_events))
+                .insert(MortarEventBinding::default());
         }
 
         *last_key = Some(current_key);
 
-        if let Ok(typewriter) = typewriters.get(entity) {
-            let header = format!("[{} / {}]\n\n", state.mortar_path, state.current_node);
-            **text = format!("{}{}", header, typewriter.current_text);
-        }
+        let header = format!("[{} / {}]\n\n", state.mortar_path, state.current_node);
+        let final_text = format!("{}{}", header, processed_text);
+        **text = final_text.clone();
+        commands.entity(entity).insert(MortarDialogueText {
+            header,
+            body: processed_text,
+        });
     }
 }
 
@@ -430,17 +464,13 @@ fn collect_text_events(
     all_events
 }
 
-fn trigger_typewriter_events(
-    mut query: Query<(Entity, &Typewriter, &mut MortarEventTracker)>,
+fn trigger_bound_events(
+    mut query: Query<(Entity, &MortarEventBinding, &mut MortarEventTracker)>,
     runtime: Res<MortarRuntime>,
     mut writer: MessageWriter<MortarGameEvent>,
 ) {
-    for (entity, typewriter, mut tracker) in &mut query {
-        if typewriter.state != TypewriterState::Playing {
-            continue;
-        }
-
-        let actions = tracker.trigger_at_index(typewriter.current_char_index, &runtime);
+    for (entity, binding, mut tracker) in &mut query {
+        let actions = tracker.trigger_at_index(binding.current_index, &runtime);
         for action in actions {
             writer.write(MortarGameEvent {
                 source: Some(entity),

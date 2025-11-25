@@ -11,10 +11,15 @@ use bevy::ecs::system::{Local, SystemParam};
 use bevy::log::info;
 use bevy::prelude::*;
 use bevy::ui::FlexDirection;
-use bevy_mortar_bond::{MortarAsset, MortarEvent, MortarRegistry, MortarRuntime};
+use bevy_ecs_typewriter::Typewriter;
+use bevy_mortar_bond::{
+    MortarAsset, MortarDialogueSystemSet, MortarDialogueText, MortarEvent, MortarEventBinding,
+    MortarRegistry, MortarRunsExecuting, MortarRuntime, MortarTextTarget,
+};
 
 use crate::DialogueFiles;
-use bevy_mortar_bond::{MortarRunsExecuting, MortarTextTarget};
+
+const TYPEWRITER_SPEED: f32 = 0.04;
 
 /// UI plugin bundling layout + button logic for dialogue examples.
 ///
@@ -23,19 +28,30 @@ pub struct DialogueUiPlugin;
 
 impl Plugin for DialogueUiPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_dialogue_ui).add_systems(
-            Update,
-            (
-                button_interaction_system,
-                handle_continue_button,
-                handle_choice_buttons,
-                handle_reload_button,
-                handle_switch_file_button,
-                manage_choice_buttons,
-                update_choice_button_styles,
-                update_button_states,
-            ),
-        );
+        app.add_systems(Startup, setup_dialogue_ui)
+            .add_systems(
+                Update,
+                (
+                    button_interaction_system,
+                    handle_continue_button,
+                    handle_choice_buttons,
+                    handle_reload_button,
+                    handle_switch_file_button,
+                    manage_choice_buttons,
+                    update_choice_button_styles,
+                    update_button_states,
+                ),
+            )
+            .add_systems(
+                Update,
+                (
+                    sync_typewriter_with_dialogue_texts.after(MortarDialogueSystemSet::UpdateText),
+                    update_event_binding_from_typewriter
+                        .after(sync_typewriter_with_dialogue_texts)
+                        .before(MortarDialogueSystemSet::TriggerEvents),
+                ),
+            )
+            .add_systems(PostUpdate, apply_typewriter_output_to_texts);
     }
 }
 
@@ -176,6 +192,7 @@ pub fn setup_dialogue_ui(mut commands: Commands, asset_server: Res<AssetServer>)
                         TextColor(Color::srgb(0.9, 0.9, 0.9)),
                         DialogueText,
                         MortarTextTarget,
+                        Typewriter::new("", TYPEWRITER_SPEED),
                     ));
                 });
 
@@ -287,6 +304,36 @@ pub fn setup_dialogue_ui(mut commands: Commands, asset_server: Res<AssetServer>)
                         });
                 });
         });
+}
+
+fn sync_typewriter_with_dialogue_texts(
+    mut query: Query<
+        (&MortarDialogueText, &mut Typewriter),
+        (Changed<MortarDialogueText>, With<DialogueText>),
+    >,
+) {
+    for (dialogue_text, mut typewriter) in &mut query {
+        *typewriter = Typewriter::new(dialogue_text.full_text(), TYPEWRITER_SPEED);
+        typewriter.play();
+    }
+}
+
+fn apply_typewriter_output_to_texts(
+    mut query: Query<(&Typewriter, &mut Text), With<DialogueText>>,
+) {
+    for (typewriter, mut text) in &mut query {
+        **text = typewriter.current_text.clone();
+    }
+}
+
+fn update_event_binding_from_typewriter(
+    mut query: Query<(&Typewriter, Option<&mut MortarEventBinding>), With<DialogueText>>,
+) {
+    for (typewriter, binding) in &mut query {
+        if let Some(mut binding) = binding {
+            binding.current_index = typewriter.current_char_index as f32;
+        }
+    }
 }
 
 /// Handles the visual feedback for button interactions.

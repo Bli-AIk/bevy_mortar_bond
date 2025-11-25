@@ -51,23 +51,23 @@ mod core_tests {
         let runtime = MortarRuntime::default();
 
         // Before reaching first event
-        let actions = tracker.trigger_at_index(4, &runtime);
+        let actions = tracker.trigger_at_index(4.0, &runtime);
         assert_eq!(actions.len(), 0);
         assert_eq!(tracker.fired_count(), 0);
 
         // Reach first event
-        let actions = tracker.trigger_at_index(5, &runtime);
+        let actions = tracker.trigger_at_index(5.0, &runtime);
         assert_eq!(actions.len(), 1);
         assert_eq!(actions[0].action_name, "play_sound");
         assert_eq!(tracker.fired_count(), 1);
 
         // Don't re-trigger first event
-        let actions = tracker.trigger_at_index(6, &runtime);
+        let actions = tracker.trigger_at_index(6.0, &runtime);
         assert_eq!(actions.len(), 0);
         assert_eq!(tracker.fired_count(), 1);
 
         // Trigger second event
-        let actions = tracker.trigger_at_index(10, &runtime);
+        let actions = tracker.trigger_at_index(10.0, &runtime);
         assert_eq!(actions.len(), 1);
         assert_eq!(actions[0].action_name, "set_color");
         assert_eq!(tracker.fired_count(), 2);
@@ -88,7 +88,7 @@ mod core_tests {
         let runtime = MortarRuntime::default();
 
         // Trigger event
-        let _ = tracker.trigger_at_index(5, &runtime);
+        let _ = tracker.trigger_at_index(5.0, &runtime);
         assert_eq!(tracker.fired_count(), 1);
 
         // Reset
@@ -96,7 +96,7 @@ mod core_tests {
         assert_eq!(tracker.fired_count(), 0);
 
         // Can trigger again after reset
-        let actions = tracker.trigger_at_index(5, &runtime);
+        let actions = tracker.trigger_at_index(5.0, &runtime);
         assert_eq!(actions.len(), 1);
         assert_eq!(tracker.fired_count(), 1);
     }

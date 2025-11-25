@@ -38,8 +38,8 @@ pub use binder::{
     MortarBoolean, MortarFunctionRegistry, MortarNumber, MortarString, MortarValue, MortarVoid,
 };
 pub use dialogue::{
-    MortarDialoguePlugin, MortarDialogueVariables, MortarGameEvent, MortarRunsExecuting,
-    MortarTextTarget,
+    MortarDialoguePlugin, MortarDialogueSystemSet, MortarDialogueText, MortarDialogueVariables,
+    MortarEventBinding, MortarGameEvent, MortarRunsExecuting, MortarTextTarget,
 };
 pub use variable_state::{MortarVariableState, MortarVariableValue};
 
@@ -892,15 +892,14 @@ impl MortarEventTracker {
     /// 检查并触发给定索引处的事件，返回需要处理的动作。
     pub fn trigger_at_index(
         &mut self,
-        current_index: usize,
+        current_index: f32,
         runtime: &MortarRuntime,
     ) -> Vec<MortarEventAction> {
         let mut actions_to_process = Vec::new();
+        let current_index = current_index as f64;
 
         for (event_idx, event) in self.events.iter().enumerate() {
-            let event_index = event.index as usize;
-
-            if current_index >= event_index && !self.fired_events.contains(&event_idx) {
+            if current_index >= event.index && !self.fired_events.contains(&event_idx) {
                 self.fired_events.push(event_idx);
 
                 debug!(
