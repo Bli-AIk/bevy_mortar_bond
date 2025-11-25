@@ -69,12 +69,12 @@ cargo run --example dialogue_ui
 
 This project uses the following crates:
 
-| Crate                                                                 | Version | Description                        |
-|-----------------------------------------------------------------------|---------|------------------------------------|
-| [bevy](https://crates.io/crates/bevy)                                 | 0.17.2  | Game Engine                        |
-| [mortar_compiler](https://github.com/Bli-AIk/mortar)                  | Local   | Mortar Language Compiler           |
-| [serde_json](https://crates.io/crates/serde_json)                     | 1.0     | JSON Serialization/Deserialization |
-| bevy_mortar_bond_macros                                               | Local   | bevy_mortar_bond Macros            |
+| Crate                                                                 | Version | Description                                |
+|-----------------------------------------------------------------------|---------|--------------------------------------------|
+| [bevy](https://crates.io/crates/bevy)                                 | 0.17.2  | Game Engine                                |
+| [mortar_compiler](https://github.com/Bli-AIk/mortar)                  | Local   | Mortar Language Compiler                   |
+| [serde_json](https://crates.io/crates/serde_json)                     | 1.0     | JSON Serialization/Deserialization         |
+| bevy_mortar_bond_macros                                               | Local   | bevy_mortar_bond Macros                    |
 | [bevy_ecs_typewriter](https://github.com/Bli-AIk/bevy_ecs_typewriter) | Local   | Bevy ECS Typewriter Effect (examples only) |
 
 ## Contribution Guide

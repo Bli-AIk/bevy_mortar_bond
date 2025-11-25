@@ -70,13 +70,13 @@ cargo run --example dialogue_ui
 
 本项目使用以下 crate：
 
-| Crate                                                                 | 版本     | 描述                 |
-|-----------------------------------------------------------------------|--------|--------------------|
-| [bevy](https://crates.io/crates/bevy)                                 | 0.17.2 | 游戏引擎               |
-| [mortar_compiler](https://github.com/Bli-AIk/mortar)                  | 本地     | Mortar 语言编译器       |
-| [serde_json](https://crates.io/crates/serde_json)                     | 1.0    | JSON 序列化/反序列化      |
-| bevy_mortar_bond_macros                                               | 本地     | bevy_mortar_bond 宏 |
-| [bevy_ecs_typewriter](https://github.com/Bli-AIk/bevy_ecs_typewriter) | 本地     | Bevy ECS 打字机效果（仅示例）     |
+| Crate                                                                 | 版本     | 描述                  |
+|-----------------------------------------------------------------------|--------|---------------------|
+| [bevy](https://crates.io/crates/bevy)                                 | 0.17.2 | 游戏引擎                |
+| [mortar_compiler](https://github.com/Bli-AIk/mortar)                  | 本地     | Mortar 语言编译器        |
+| [serde_json](https://crates.io/crates/serde_json)                     | 1.0    | JSON 序列化/反序列化       |
+| bevy_mortar_bond_macros                                               | 本地     | bevy_mortar_bond 宏  |
+| [bevy_ecs_typewriter](https://github.com/Bli-AIk/bevy_ecs_typewriter) | 本地     | Bevy ECS 打字机效果（仅示例） |
 
 ## 贡献指南
 
