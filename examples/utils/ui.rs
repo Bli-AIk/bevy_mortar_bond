@@ -6,12 +6,12 @@
 //!
 //! 这里集中处理布局和按钮交互，示例文件可专注于讲解绑定。
 
+use super::typewriter::{Typewriter, TypewriterState};
 use bevy::asset::Assets;
 use bevy::ecs::system::{Local, SystemParam};
 use bevy::log::info;
 use bevy::prelude::*;
 use bevy::ui::FlexDirection;
-use bevy_ecs_typewriter::{Typewriter, TypewriterState};
 use bevy_mortar_bond::{
     MortarAsset, MortarDialogueSystemSet, MortarDialogueText, MortarEvent, MortarEventBinding,
     MortarRegistry, MortarRunsExecuting, MortarRuntime, MortarTextTarget,

@@ -21,9 +21,6 @@ serde_json = "1.0"
 
 bevy_mortar_bond_macros = { path = "./src/bevy_mortar_bond_macros" , version = "0.1.0" }
 
-[dev-dependencies]
-bevy_ecs_typewriter = { path = "../bevy_ecs_typewriter" , version = "0.1.0" }
-
 [features]
 
 dev-logs = []

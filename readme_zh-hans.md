@@ -24,7 +24,7 @@
 *   **Bevy ECS 兼容性**: 旨在与 Bevy 的实体组件系统 (ECS) 惯用地工作，允许脚本与游戏实体和组件交互。
 *   **资源加载**: 为 `.mortar` 文件提供 Bevy 资源加载器，实现脚本资源的轻松管理和热重载。
 *   **对话系统基础**: 提供核心实用程序和示例，用于构建动态和分支对话系统。
-*   **可绑定事件索引**：通过 `MortarEventBinding` 将事件索引绑定到任意驱动（打字机效果、音频时间线等），示例演示了如何使用 `bevy_ecs_typewriter`。
+*   **可绑定事件索引**：通过 `MortarEventBinding` 将事件索引绑定到任意驱动（打字机效果、音频时间线等），示例内置了一个 ECS 打字机工具，无需额外依赖。
 
 ## 使用方法
 
@@ -76,7 +76,6 @@ cargo run --example dialogue_ui
 | [mortar_compiler](https://github.com/Bli-AIk/mortar)                  | 本地     | Mortar 语言编译器        |
 | [serde_json](https://crates.io/crates/serde_json)                     | 1.0    | JSON 序列化/反序列化       |
 | bevy_mortar_bond_macros                                               | 本地     | bevy_mortar_bond 宏  |
-| [bevy_ecs_typewriter](https://github.com/Bli-AIk/bevy_ecs_typewriter) | 本地     | Bevy ECS 打字机效果（仅示例） |
 
 ## 贡献指南
 

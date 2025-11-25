@@ -24,7 +24,7 @@ In the future, it may also support more advanced scripting features and integrat
 *   **Bevy ECS Compatibility**: Designed to work idiomatically with Bevy's Entity Component System (ECS), allowing scripts to interact with game entities and components.
 *   **Resource Loading**: Provides a Bevy resource loader for `.mortar` files, enabling easy management and hot-reloading of script resources.
 *   **Dialogue System Foundation**: Offers core utilities and examples for building dynamic and branching dialogue systems.
-*   **Bindable Event Indexes**: The `MortarEventBinding` component lets you drive events from any index source (typewriter effects, audio cues, etc.), and the examples demonstrate a `bevy_ecs_typewriter` integration.
+*   **Bindable Event Indexes**: The `MortarEventBinding` component lets you drive events from any index source (typewriter effects, audio cues, etc.), and the examples include a built-in ECS typewriter utility so you can keep everything self-contained.
 
 ## Usage
 
@@ -75,7 +75,6 @@ This project uses the following crates:
 | [mortar_compiler](https://github.com/Bli-AIk/mortar)                  | Local   | Mortar Language Compiler                   |
 | [serde_json](https://crates.io/crates/serde_json)                     | 1.0     | JSON Serialization/Deserialization         |
 | bevy_mortar_bond_macros                                               | Local   | bevy_mortar_bond Macros                    |
-| [bevy_ecs_typewriter](https://github.com/Bli-AIk/bevy_ecs_typewriter) | Local   | Bevy ECS Typewriter Effect (examples only) |
 
 ## Contribution Guide
 
