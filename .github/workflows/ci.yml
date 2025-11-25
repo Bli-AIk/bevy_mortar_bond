@@ -20,16 +20,16 @@ jobs:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
       - name: Checkout bevy_ecs_typewriter dependency
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           repository: Bli-AIk/bevy_ecs_typewriter
           path: external/bevy_ecs_typewriter
       - name: Checkout mortar dependency
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           repository: Bli-AIk/mortar
           path: external/mortar
@@ -90,16 +90,16 @@ jobs:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
       - name: Checkout bevy_ecs_typewriter dependency
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           repository: Bli-AIk/bevy_ecs_typewriter
           path: external/bevy_ecs_typewriter
       - name: Checkout mortar dependency
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           repository: Bli-AIk/mortar
           path: external/mortar
