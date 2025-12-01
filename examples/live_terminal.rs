@@ -20,6 +20,7 @@ use std::{fs, path::Path};
 const LIVE_EXAMPLE_NAME: &str = "live_example.mortar";
 const LIVE_EXAMPLE_TEXT: &str = include_str!("../assets/live_example.mortar");
 const OUTPUT_DIR: &str = "tmp_dir";
+const SHELL_COMMANDS: [&str; 2] = ["bevim live_example", "clear"];
 
 fn main() {
     App::new()
@@ -55,6 +56,9 @@ struct GamePanel;
 #[derive(Component)]
 struct TerminalDisplay;
 
+#[derive(Component, Clone)]
+struct TerminalFont(Handle<Font>);
+
 fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn(Camera2d);
     let font = asset_server.load("Unifont.otf");
@@ -83,14 +87,17 @@ fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                 ))
                 .with_children(|terminal| {
                     terminal.spawn((
-                        Text::new("booting terminal"),
-                        TextFont {
-                            font: font.clone(),
-                            font_size: 18.0,
+                        Node {
+                            width: Val::Percent(100.0),
+                            height: Val::Percent(100.0),
+                            flex_direction: FlexDirection::Column,
+                            align_items: AlignItems::FlexStart,
+                            justify_content: JustifyContent::FlexStart,
+                            row_gap: Val::Px(6.0),
                             ..default()
                         },
-                        TextColor(Color::srgb(0.8, 0.9, 0.8)),
                         TerminalDisplay,
+                        TerminalFont(font.clone()),
                     ));
                 });
 
@@ -165,6 +172,7 @@ fn handle_keyboard_controls(
             KeyCode::Enter => machine.handle_enter(),
             KeyCode::Backspace => machine.handle_backspace(),
             KeyCode::Escape => machine.handle_escape(),
+            KeyCode::Tab => machine.handle_tab(),
             KeyCode::ArrowLeft => machine.move_cursor_left(),
             KeyCode::ArrowRight => machine.move_cursor_right(),
             KeyCode::ArrowUp => machine.move_cursor_up(),
@@ -175,18 +183,58 @@ fn handle_keyboard_controls(
 }
 
 fn refresh_terminal_display(
+    mut commands: Commands,
     mut machine: ResMut<TerminalMachine>,
-    mut texts: Query<&mut Text, With<TerminalDisplay>>,
+    display: Query<(Entity, &TerminalFont), With<TerminalDisplay>>,
+    children: Query<&Children>,
 ) {
     if !machine.dirty {
         return;
     }
 
-    let rendered = machine.render();
-    for mut text in &mut texts {
-        text.0 = rendered.clone();
+    let render = machine.render();
+    if let Ok((entity, font)) = display.single() {
+        if let Ok(existing_children) = children.get(entity) {
+            for child in existing_children.iter() {
+                despawn_recursive(child, &mut commands, &children);
+            }
+        }
+        commands.entity(entity).with_children(|parent| {
+            for line in render.lines {
+                parent
+                    .spawn(Node {
+                        width: Val::Percent(100.0),
+                        flex_direction: FlexDirection::Row,
+                        column_gap: Val::Px(2.0),
+                        ..default()
+                    })
+                    .with_children(|line_parent| {
+                        for segment in line.segments {
+                            line_parent.spawn((
+                                Text::new(segment.text),
+                                TextFont {
+                                    font: font.0.clone(),
+                                    font_size: 18.0,
+                                    ..default()
+                                },
+                                TextColor(segment.color),
+                            ));
+                        }
+                    });
+            }
+        });
     }
+
     machine.dirty = false;
+}
+
+fn despawn_recursive(entity: Entity, commands: &mut Commands, children: &Query<&Children>) {
+    if let Ok(child_entities) = children.get(entity) {
+        for child in child_entities.iter() {
+            despawn_recursive(child, commands, children);
+        }
+    }
+    commands.entity(entity).despawn();
 }
 
 fn update_focus_visuals(
@@ -218,6 +266,49 @@ struct TerminalMachine {
     view: TerminalView,
     shell: ShellState,
     dirty: bool,
+}
+
+#[derive(Default)]
+struct TerminalRender {
+    lines: Vec<StyledLine>,
+}
+
+impl TerminalRender {
+    fn push_plain_line(&mut self, text: impl Into<String>, color: Color) {
+        let mut line = StyledLine::default();
+        line.push_segment(text.into(), color);
+        self.lines.push(line);
+    }
+
+    fn push_line(&mut self, line: StyledLine) {
+        self.lines.push(line);
+    }
+}
+
+#[derive(Default)]
+struct StyledLine {
+    segments: Vec<StyledSegment>,
+}
+
+impl StyledLine {
+    fn push_segment(&mut self, text: impl Into<String>, color: Color) {
+        let text = text.into();
+        if text.is_empty() {
+            return;
+        }
+        if let Some(last) = self.segments.last_mut() {
+            if last.color == color {
+                last.text.push_str(&text);
+                return;
+            }
+        }
+        self.segments.push(StyledSegment { text, color });
+    }
+}
+
+struct StyledSegment {
+    text: String,
+    color: Color,
 }
 
 impl Default for TerminalMachine {
@@ -359,6 +450,14 @@ impl TerminalMachine {
         }
     }
 
+    fn handle_tab(&mut self) {
+        if let TerminalView::Shell = self.view {
+            if self.shell.autocomplete(&SHELL_COMMANDS) {
+                self.dirty = true;
+            }
+        }
+    }
+
     fn move_cursor_left(&mut self) {
         if let TerminalView::Vim(editor) = &mut self.view {
             editor.move_left();
@@ -374,16 +473,30 @@ impl TerminalMachine {
     }
 
     fn move_cursor_up(&mut self) {
-        if let TerminalView::Vim(editor) = &mut self.view {
-            editor.move_up();
-            self.dirty = true;
+        match &mut self.view {
+            TerminalView::Vim(editor) => {
+                editor.move_up();
+                self.dirty = true;
+            }
+            TerminalView::Shell => {
+                if self.shell.history_previous() {
+                    self.dirty = true;
+                }
+            }
         }
     }
 
     fn move_cursor_down(&mut self) {
-        if let TerminalView::Vim(editor) = &mut self.view {
-            editor.move_down();
-            self.dirty = true;
+        match &mut self.view {
+            TerminalView::Vim(editor) => {
+                editor.move_down();
+                self.dirty = true;
+            }
+            TerminalView::Shell => {
+                if self.shell.history_next() {
+                    self.dirty = true;
+                }
+            }
         }
     }
 
@@ -422,7 +535,7 @@ impl TerminalMachine {
         self.dirty = true;
     }
 
-    fn render(&self) -> String {
+    fn render(&self) -> TerminalRender {
         match &self.view {
             TerminalView::Shell => self.shell.render(self.focused),
             TerminalView::Vim(editor) => editor.render(),
@@ -442,35 +555,42 @@ fn save_buffer(editor: &VimEditorState) -> std::io::Result<std::path::PathBuf> {
 struct ShellState {
     lines: Vec<String>,
     current_input: String,
+    history: Vec<String>,
+    history_index: Option<usize>,
+    saved_input: Option<String>,
 }
 
 impl ShellState {
     fn new() -> Self {
         let mut state = Self::default();
-        state.lines.push("souprune dev shell".into());
-        state
-            .lines
-            .push("Click the terminal to capture keyboard input.".into());
-        state
-            .lines
-            .push("Type `bevim live_example` to edit the Mortar script.".into());
-        state.lines.push("Use `clear` to reset the prompt.".into());
+        state.reset_lines();
         state
     }
 
-    fn render(&self, focused: bool) -> String {
-        let mut output = self.lines.join("\n");
-        if !output.is_empty() {
-            output.push('\n');
+    fn reset_lines(&mut self) {
+        self.lines.push("souprune dev shell".into());
+        self.lines
+            .push("Click the terminal to capture keyboard input.".into());
+        self.lines
+            .push("Type `bevim live_example` to edit the Mortar script.".into());
+        self.lines.push("Use `clear` to reset the prompt.".into());
+    }
+
+    fn render(&self, focused: bool) -> TerminalRender {
+        let mut render = TerminalRender::default();
+        for line in &self.lines {
+            render.push_plain_line(line, Color::srgb(0.8, 0.9, 0.8));
         }
-        output.push_str("> ");
-        output.push_str(&self.current_input);
+        let mut prompt = StyledLine::default();
+        prompt.push_segment("> ", Color::srgb(0.6, 0.9, 0.7));
+        prompt.push_segment(&self.current_input, Color::srgb(0.9, 0.9, 0.9));
         if focused {
-            output.push('|');
+            prompt.push_segment("|", Color::srgb(1.0, 1.0, 0.6));
         } else {
-            output.push_str("  [click left pane to focus]");
+            prompt.push_segment("  [click left pane to focus]", Color::srgb(0.5, 0.7, 1.0));
         }
-        output
+        render.push_line(prompt);
+        render
     }
 
     fn push_char(&mut self, ch: char) {
@@ -486,6 +606,11 @@ impl ShellState {
         if !command.is_empty() {
             self.lines.push(format!("> {}", command));
         }
+        if !command.trim().is_empty() {
+            self.history.push(command.clone());
+            self.history_index = None;
+            self.saved_input = None;
+        }
         self.current_input.clear();
         command
     }
@@ -496,7 +621,73 @@ impl ShellState {
 
     fn clear_history(&mut self) {
         self.lines.clear();
-        *self = ShellState::new();
+        self.reset_lines();
+        self.current_input.clear();
+        self.history_index = None;
+        self.saved_input = None;
+    }
+
+    fn history_previous(&mut self) -> bool {
+        if self.history.is_empty() {
+            return false;
+        }
+        let next_index = match self.history_index {
+            None => {
+                self.saved_input = Some(self.current_input.clone());
+                Some(self.history.len().saturating_sub(1))
+            }
+            Some(idx) if idx > 0 => Some(idx - 1),
+            Some(idx) => Some(idx),
+        };
+        if let Some(idx) = next_index {
+            self.history_index = Some(idx);
+            self.current_input = self.history[idx].clone();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn history_next(&mut self) -> bool {
+        let Some(idx) = self.history_index else {
+            return false;
+        };
+        if idx + 1 < self.history.len() {
+            let new_index = idx + 1;
+            self.history_index = Some(new_index);
+            self.current_input = self.history[new_index].clone();
+            true
+        } else {
+            self.history_index = None;
+            if let Some(saved) = self.saved_input.take() {
+                self.current_input = saved;
+            } else {
+                self.current_input.clear();
+            }
+            true
+        }
+    }
+
+    fn autocomplete(&mut self, commands: &[&str]) -> bool {
+        if self.current_input.trim().is_empty() {
+            if let Some(first) = commands.first() {
+                self.current_input = (*first).to_string();
+                self.history_index = None;
+                self.saved_input = None;
+                return true;
+            }
+            return false;
+        }
+        if let Some(matched) = commands
+            .iter()
+            .find(|candidate| candidate.starts_with(&self.current_input))
+        {
+            self.current_input = (**matched).to_string();
+            self.history_index = None;
+            self.saved_input = None;
+            return true;
+        }
+        false
     }
 }
 
@@ -546,43 +737,118 @@ impl VimEditorState {
         }
     }
 
-    fn render(&self) -> String {
-        let mut output = format!("-- bevim: {} --\n", self.file_name);
-        for (idx, line) in self.buffer.iter().enumerate() {
-            output.push_str(&format!("{:>4} ", idx + 1));
-            if idx == self.cursor_row {
-                output.push_str(&self.with_cursor_marker(line));
-            } else {
-                for ch in line {
-                    output.push(*ch);
-                }
+    fn render(&self) -> TerminalRender {
+        let mut render = TerminalRender::default();
+        render.push_plain_line(
+            format!("-- bevim: {} --", self.file_name),
+            Color::srgb(0.9, 0.85, 0.5),
+        );
+
+        for (idx, _) in self.buffer.iter().enumerate() {
+            let mut line = StyledLine::default();
+            line.push_segment(format!("{:>4} ", idx + 1), Color::srgb(0.6, 0.6, 0.9));
+            let highlighted = self.highlight_line(idx);
+            for segment in highlighted.segments {
+                line.push_segment(segment.text, segment.color);
             }
-            output.push('\n');
+            render.push_line(line);
         }
-        output.push_str(&format!("-- {} -- {}\n", self.mode.label(), self.status));
-        if matches!(self.mode, VimMode::Command) {
-            output.push(':');
-            output.push_str(&self.command_buffer);
-        } else if matches!(self.mode, VimMode::Insert) {
-            output.push_str("-- INSERT -- Esc to leave");
-        } else {
-            output.push_str("Commands: i=insert, :w=save, :wq=save+quit, :q=quit");
+
+        let mut status_line = StyledLine::default();
+        status_line.push_segment(
+            format!("-- {} -- {}", self.mode.label(), self.status),
+            Color::srgb(0.8, 0.8, 0.5),
+        );
+        render.push_line(status_line);
+
+        match self.mode {
+            VimMode::Command => {
+                let mut command_line = StyledLine::default();
+                command_line.push_segment(":", Color::srgb(0.7, 0.9, 1.0));
+                command_line.push_segment(&self.command_buffer, Color::srgb(0.9, 0.9, 0.9));
+                render.push_line(command_line);
+            }
+            VimMode::Insert => {
+                render.push_plain_line("-- INSERT -- Esc to leave", Color::srgb(0.7, 1.0, 0.8));
+            }
+            VimMode::Normal => {
+                render.push_plain_line(
+                    "Commands: i=insert, :w=save, :wq=save+quit, :q=quit",
+                    Color::srgb(0.6, 0.8, 1.0),
+                );
+            }
         }
-        output
+
+        render
     }
 
-    fn with_cursor_marker(&self, line: &[char]) -> String {
-        let mut rendered = String::new();
-        for (idx, ch) in line.iter().enumerate() {
-            if idx == self.cursor_col {
-                rendered.push('|');
+    fn highlight_line(&self, row: usize) -> StyledLine {
+        let mut line = StyledLine::default();
+        let Some(chars) = self.buffer.get(row) else {
+            return line;
+        };
+        let mut idx = 0;
+        while idx < chars.len() {
+            if row == self.cursor_row && idx == self.cursor_col {
+                line.push_segment("|", Color::srgb(1.0, 1.0, 0.6));
             }
-            rendered.push(*ch);
+
+            let ch = chars[idx];
+            if ch == '/' && idx + 1 < chars.len() && chars[idx + 1] == '/' {
+                let text: String = chars[idx..].iter().collect();
+                line.push_segment(text, Color::srgb(0.6, 0.8, 0.6));
+                return line;
+            }
+
+            if ch == '"' {
+                let mut text = String::from("\"");
+                idx += 1;
+                while idx < chars.len() {
+                    let c = chars[idx];
+                    text.push(c);
+                    idx += 1;
+                    if c == '"' {
+                        break;
+                    }
+                }
+                line.push_segment(text, Color::srgb(0.7, 1.0, 0.7));
+                continue;
+            }
+
+            if ch.is_ascii_alphabetic() || ch == '_' {
+                let start = idx;
+                while idx < chars.len() && (chars[idx].is_alphanumeric() || chars[idx] == '_') {
+                    idx += 1;
+                }
+                let word: String = chars[start..idx].iter().collect();
+                let color = match word.as_str() {
+                    "node" | "text" | "choice" | "return" => Color::srgb(0.6, 0.8, 1.0),
+                    _ => Color::srgb(0.9, 0.9, 0.9),
+                };
+                line.push_segment(word, color);
+                continue;
+            }
+
+            if ch == '-' && idx + 1 < chars.len() && chars[idx + 1] == '>' {
+                line.push_segment("->", Color::srgb(0.9, 0.7, 0.5));
+                idx += 2;
+                continue;
+            }
+
+            let color = match ch {
+                '{' | '}' | '[' | ']' => Color::srgb(1.0, 0.7, 0.5),
+                ':' | ',' => Color::srgb(0.8, 0.6, 0.9),
+                _ => Color::srgb(0.9, 0.9, 0.9),
+            };
+            line.push_segment(ch.to_string(), color);
+            idx += 1;
         }
-        if self.cursor_col == line.len() {
-            rendered.push('|');
+
+        if row == self.cursor_row && self.cursor_col == chars.len() {
+            line.push_segment("|", Color::srgb(1.0, 1.0, 0.6));
         }
-        rendered
+
+        line
     }
 
     fn insert_char(&mut self, ch: char) {
