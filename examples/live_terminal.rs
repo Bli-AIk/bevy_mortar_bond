@@ -15,7 +15,7 @@ use bevy::{
     prelude::*,
     window::{PresentMode, WindowResolution},
 };
-use std::{fs, path::Path};
+use std::{fs, path::Path, time::Duration};
 
 const LIVE_EXAMPLE_NAME: &str = "live_example.mortar";
 const LIVE_EXAMPLE_TEXT: &str = include_str!("../assets/live_example.mortar");
@@ -25,6 +25,7 @@ const SHELL_COMMANDS: [&str; 2] = ["bevim live_example", "clear"];
 fn main() {
     App::new()
         .init_resource::<TerminalMachine>()
+        .init_resource::<CursorBlink>()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Live Mortar Editor".into(),
@@ -38,6 +39,7 @@ fn main() {
         .add_systems(
             Update,
             (
+                tick_cursor_blink,
                 handle_panel_focus,
                 handle_keyboard_controls,
                 refresh_terminal_display,
@@ -136,10 +138,12 @@ fn handle_panel_focus(
     mut terminal_query: Query<&Interaction, (Changed<Interaction>, With<TerminalPanel>)>,
     mut game_query: Query<&Interaction, (Changed<Interaction>, With<GamePanel>)>,
     mut machine: ResMut<TerminalMachine>,
+    mut blink: ResMut<CursorBlink>,
 ) {
     for interaction in &mut terminal_query {
         if *interaction == Interaction::Pressed {
             machine.set_focus(true);
+            blink.reset();
         }
     }
     for interaction in &mut game_query {
@@ -152,6 +156,7 @@ fn handle_panel_focus(
 fn handle_keyboard_controls(
     mut inputs: MessageReader<KeyboardInput>,
     mut machine: ResMut<TerminalMachine>,
+    mut blink: ResMut<CursorBlink>,
 ) {
     if !machine.focused {
         return;
@@ -161,6 +166,7 @@ fn handle_keyboard_controls(
         if input.state != ButtonState::Pressed {
             continue;
         }
+        blink.reset();
         if let Some(text) = &input.text {
             for ch in text.chars() {
                 if !ch.is_control() {
@@ -187,12 +193,14 @@ fn refresh_terminal_display(
     mut machine: ResMut<TerminalMachine>,
     display: Query<(Entity, &TerminalFont), With<TerminalDisplay>>,
     children: Query<&Children>,
+    cursor: Res<CursorBlink>,
 ) {
     if !machine.dirty {
         return;
     }
 
-    let render = machine.render();
+    let cursor_visible = machine.focused && cursor.visible;
+    let render = machine.render(cursor_visible);
     if let Ok((entity, font)) = display.single() {
         if let Ok(existing_children) = children.get(entity) {
             for child in existing_children.iter() {
@@ -210,7 +218,7 @@ fn refresh_terminal_display(
                     })
                     .with_children(|line_parent| {
                         for segment in line.segments {
-                            line_parent.spawn((
+                            let mut child = line_parent.spawn((
                                 Text::new(segment.text),
                                 TextFont {
                                     font: font.0.clone(),
@@ -219,6 +227,9 @@ fn refresh_terminal_display(
                                 },
                                 TextColor(segment.color),
                             ));
+                            if let Some(bg) = segment.background {
+                                child.insert(TextBackgroundColor(bg));
+                            }
                         }
                     });
             }
@@ -235,6 +246,16 @@ fn despawn_recursive(entity: Entity, commands: &mut Commands, children: &Query<&
         }
     }
     commands.entity(entity).despawn();
+}
+
+fn tick_cursor_blink(
+    time: Res<Time>,
+    mut blink: ResMut<CursorBlink>,
+    mut machine: ResMut<TerminalMachine>,
+) {
+    if blink.tick(time.delta()) && machine.focused {
+        machine.dirty = true;
+    }
 }
 
 fn update_focus_visuals(
@@ -268,6 +289,41 @@ struct TerminalMachine {
     dirty: bool,
 }
 
+#[derive(Resource)]
+struct CursorBlink {
+    timer: Timer,
+    visible: bool,
+}
+
+impl Default for CursorBlink {
+    fn default() -> Self {
+        Self {
+            timer: Timer::from_seconds(0.5, TimerMode::Repeating),
+            visible: true,
+        }
+    }
+}
+
+impl CursorBlink {
+    fn tick(&mut self, delta: Duration) -> bool {
+        if self.timer.tick(delta).just_finished() {
+            self.visible = !self.visible;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn reset(&mut self) {
+        self.timer.reset();
+        self.visible = true;
+    }
+}
+
+fn cursor_highlight_color() -> Color {
+    Color::srgb(0.25, 0.4, 0.9)
+}
+
 #[derive(Default)]
 struct TerminalRender {
     lines: Vec<StyledLine>,
@@ -292,23 +348,39 @@ struct StyledLine {
 
 impl StyledLine {
     fn push_segment(&mut self, text: impl Into<String>, color: Color) {
+        self.push_segment_with_bg(text, color, None);
+    }
+
+    fn push_segment_with_bg(
+        &mut self,
+        text: impl Into<String>,
+        color: Color,
+        background: Option<Color>,
+    ) {
         let text = text.into();
         if text.is_empty() {
             return;
         }
-        if let Some(last) = self.segments.last_mut() {
-            if last.color == color {
-                last.text.push_str(&text);
-                return;
+        if background.is_none() {
+            if let Some(last) = self.segments.last_mut() {
+                if last.color == color && last.background.is_none() {
+                    last.text.push_str(&text);
+                    return;
+                }
             }
         }
-        self.segments.push(StyledSegment { text, color });
+        self.segments.push(StyledSegment {
+            text,
+            color,
+            background,
+        });
     }
 }
 
 struct StyledSegment {
     text: String,
     color: Color,
+    background: Option<Color>,
 }
 
 impl Default for TerminalMachine {
@@ -535,10 +607,10 @@ impl TerminalMachine {
         self.dirty = true;
     }
 
-    fn render(&self) -> TerminalRender {
+    fn render(&self, cursor_visible: bool) -> TerminalRender {
         match &self.view {
-            TerminalView::Shell => self.shell.render(self.focused),
-            TerminalView::Vim(editor) => editor.render(),
+            TerminalView::Shell => self.shell.render(self.focused, cursor_visible),
+            TerminalView::Vim(editor) => editor.render(cursor_visible),
         }
     }
 }
@@ -576,7 +648,7 @@ impl ShellState {
         self.lines.push("Use `clear` to reset the prompt.".into());
     }
 
-    fn render(&self, focused: bool) -> TerminalRender {
+    fn render(&self, focused: bool, cursor_visible: bool) -> TerminalRender {
         let mut render = TerminalRender::default();
         for line in &self.lines {
             render.push_plain_line(line, Color::srgb(0.8, 0.9, 0.8));
@@ -585,7 +657,13 @@ impl ShellState {
         prompt.push_segment("> ", Color::srgb(0.6, 0.9, 0.7));
         prompt.push_segment(&self.current_input, Color::srgb(0.9, 0.9, 0.9));
         if focused {
-            prompt.push_segment("|", Color::srgb(1.0, 1.0, 0.6));
+            if cursor_visible {
+                prompt.push_segment_with_bg(
+                    " ".to_string(),
+                    Color::srgb(0.9, 0.9, 0.9),
+                    Some(cursor_highlight_color()),
+                );
+            }
         } else {
             prompt.push_segment("  [click left pane to focus]", Color::srgb(0.5, 0.7, 1.0));
         }
@@ -737,7 +815,7 @@ impl VimEditorState {
         }
     }
 
-    fn render(&self) -> TerminalRender {
+    fn render(&self, cursor_visible: bool) -> TerminalRender {
         let mut render = TerminalRender::default();
         render.push_plain_line(
             format!("-- bevim: {} --", self.file_name),
@@ -747,9 +825,9 @@ impl VimEditorState {
         for (idx, _) in self.buffer.iter().enumerate() {
             let mut line = StyledLine::default();
             line.push_segment(format!("{:>4} ", idx + 1), Color::srgb(0.6, 0.6, 0.9));
-            let highlighted = self.highlight_line(idx);
+            let highlighted = self.highlight_line(idx, cursor_visible);
             for segment in highlighted.segments {
-                line.push_segment(segment.text, segment.color);
+                line.push_segment_with_bg(segment.text, segment.color, segment.background);
             }
             render.push_line(line);
         }
@@ -766,6 +844,13 @@ impl VimEditorState {
                 let mut command_line = StyledLine::default();
                 command_line.push_segment(":", Color::srgb(0.7, 0.9, 1.0));
                 command_line.push_segment(&self.command_buffer, Color::srgb(0.9, 0.9, 0.9));
+                if cursor_visible {
+                    command_line.push_segment_with_bg(
+                        " ",
+                        Color::srgb(0.9, 0.9, 0.9),
+                        Some(cursor_highlight_color()),
+                    );
+                }
                 render.push_line(command_line);
             }
             VimMode::Insert => {
@@ -782,36 +867,53 @@ impl VimEditorState {
         render
     }
 
-    fn highlight_line(&self, row: usize) -> StyledLine {
+    fn highlight_line(&self, row: usize, cursor_visible: bool) -> StyledLine {
         let mut line = StyledLine::default();
         let Some(chars) = self.buffer.get(row) else {
             return line;
         };
+        let cursor_col = if cursor_visible && row == self.cursor_row {
+            Some(self.cursor_col.min(chars.len()))
+        } else {
+            None
+        };
+        let cursor_bg = cursor_highlight_color();
+
         let mut idx = 0;
         while idx < chars.len() {
-            if row == self.cursor_row && idx == self.cursor_col {
-                line.push_segment("|", Color::srgb(1.0, 1.0, 0.6));
-            }
-
             let ch = chars[idx];
             if ch == '/' && idx + 1 < chars.len() && chars[idx + 1] == '/' {
-                let text: String = chars[idx..].iter().collect();
-                line.push_segment(text, Color::srgb(0.6, 0.8, 0.6));
+                self.push_token_with_cursor(
+                    &mut line,
+                    chars,
+                    idx,
+                    chars.len(),
+                    Color::srgb(0.6, 0.8, 0.6),
+                    cursor_col,
+                    cursor_bg,
+                );
                 return line;
             }
 
             if ch == '"' {
-                let mut text = String::from("\"");
+                let start = idx;
                 idx += 1;
                 while idx < chars.len() {
                     let c = chars[idx];
-                    text.push(c);
                     idx += 1;
                     if c == '"' {
                         break;
                     }
                 }
-                line.push_segment(text, Color::srgb(0.7, 1.0, 0.7));
+                self.push_token_with_cursor(
+                    &mut line,
+                    chars,
+                    start,
+                    idx,
+                    Color::srgb(0.7, 1.0, 0.7),
+                    cursor_col,
+                    cursor_bg,
+                );
                 continue;
             }
 
@@ -820,17 +922,26 @@ impl VimEditorState {
                 while idx < chars.len() && (chars[idx].is_alphanumeric() || chars[idx] == '_') {
                     idx += 1;
                 }
-                let word: String = chars[start..idx].iter().collect();
-                let color = match word.as_str() {
+                let word_color = match chars[start..idx].iter().collect::<String>().as_str() {
                     "node" | "text" | "choice" | "return" => Color::srgb(0.6, 0.8, 1.0),
                     _ => Color::srgb(0.9, 0.9, 0.9),
                 };
-                line.push_segment(word, color);
+                self.push_token_with_cursor(
+                    &mut line, chars, start, idx, word_color, cursor_col, cursor_bg,
+                );
                 continue;
             }
 
             if ch == '-' && idx + 1 < chars.len() && chars[idx + 1] == '>' {
-                line.push_segment("->", Color::srgb(0.9, 0.7, 0.5));
+                self.push_token_with_cursor(
+                    &mut line,
+                    chars,
+                    idx,
+                    idx + 2,
+                    Color::srgb(0.9, 0.7, 0.5),
+                    cursor_col,
+                    cursor_bg,
+                );
                 idx += 2;
                 continue;
             }
@@ -840,15 +951,53 @@ impl VimEditorState {
                 ':' | ',' => Color::srgb(0.8, 0.6, 0.9),
                 _ => Color::srgb(0.9, 0.9, 0.9),
             };
-            line.push_segment(ch.to_string(), color);
+            self.push_token_with_cursor(
+                &mut line,
+                chars,
+                idx,
+                idx + 1,
+                color,
+                cursor_col,
+                cursor_bg,
+            );
             idx += 1;
         }
 
-        if row == self.cursor_row && self.cursor_col == chars.len() {
-            line.push_segment("|", Color::srgb(1.0, 1.0, 0.6));
+        if matches!(cursor_col, Some(col) if col == chars.len()) {
+            line.push_segment_with_bg(" ", Color::srgb(0.9, 0.9, 0.9), Some(cursor_bg));
         }
 
         line
+    }
+
+    fn push_token_with_cursor(
+        &self,
+        line: &mut StyledLine,
+        chars: &[char],
+        start: usize,
+        end: usize,
+        color: Color,
+        cursor_col: Option<usize>,
+        cursor_bg: Color,
+    ) {
+        if start >= end {
+            return;
+        }
+        if let Some(cursor) = cursor_col {
+            if cursor >= start && cursor < end {
+                if cursor > start {
+                    line.push_segment(chars[start..cursor].iter().collect::<String>(), color);
+                }
+                let mut cursor_char = String::new();
+                cursor_char.push(chars[cursor]);
+                line.push_segment_with_bg(cursor_char, color, Some(cursor_bg));
+                if cursor + 1 < end {
+                    line.push_segment(chars[cursor + 1..end].iter().collect::<String>(), color);
+                }
+                return;
+            }
+        }
+        line.push_segment(chars[start..end].iter().collect::<String>(), color);
     }
 
     fn insert_char(&mut self, ch: char) {
