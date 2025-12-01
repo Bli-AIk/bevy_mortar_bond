@@ -7,6 +7,7 @@
 //! real gameplay rendering.
 
 use bevy::{
+    asset::AssetPlugin,
     ecs::message::MessageReader,
     input::{
         ButtonState,
@@ -15,26 +16,39 @@ use bevy::{
     prelude::*,
     window::{PresentMode, WindowResolution},
 };
-use std::{fs, path::Path, time::Duration};
+use std::{
+    fs,
+    io::ErrorKind,
+    path::{Component, Path, PathBuf},
+    time::Duration,
+};
 
-const LIVE_EXAMPLE_NAME: &str = "live_example.mortar";
-const LIVE_EXAMPLE_TEXT: &str = include_str!("../assets/live_example.mortar");
-const OUTPUT_DIR: &str = "tmp_dir";
+const DEFAULT_FILE: &str = "live_example.mortar";
+const ASSET_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets");
+const LIVE_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/live");
+const FONT_PATH: &str = "font/Unifont.otf";
 const SHELL_COMMANDS: [&str; 2] = ["bevim live_example", "clear"];
 
 fn main() {
     App::new()
         .init_resource::<TerminalMachine>()
         .init_resource::<CursorBlink>()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "Live Mortar Editor".into(),
-                resolution: WindowResolution::new(1200, 720),
-                present_mode: PresentMode::AutoVsync,
-                ..default()
-            }),
-            ..default()
-        }))
+        .add_plugins(
+            DefaultPlugins
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: "Live Mortar Editor".into(),
+                        resolution: WindowResolution::new(1200, 720),
+                        present_mode: PresentMode::AutoVsync,
+                        ..default()
+                    }),
+                    ..default()
+                })
+                .set(AssetPlugin {
+                    file_path: ASSET_DIR.into(),
+                    ..default()
+                }),
+        )
         .add_systems(Startup, setup_ui)
         .add_systems(
             Update,
@@ -63,7 +77,7 @@ struct TerminalFont(Handle<Font>);
 
 fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn(Camera2d);
-    let font = asset_server.load("Unifont.otf");
+    let font = asset_server.load(FONT_PATH);
 
     commands
         .spawn(Node {
@@ -464,13 +478,8 @@ impl TerminalMachine {
                 if trimmed.is_empty() {
                     return;
                 }
-                if trimmed == "bevim live_example" {
-                    self.shell
-                        .push_history("Opening live_example.mortar inside bevim...");
-                    self.view = TerminalView::Vim(VimEditorState::from_source(
-                        LIVE_EXAMPLE_NAME,
-                        LIVE_EXAMPLE_TEXT,
-                    ));
+                if let Some(rest) = trimmed.strip_prefix("bevim") {
+                    self.launch_bevim(rest.trim());
                 } else if trimmed == "clear" {
                     self.shell.clear_history();
                 } else {
@@ -520,6 +529,22 @@ impl TerminalMachine {
                 self.dirty = true;
             }
         }
+    }
+
+    fn launch_bevim(&mut self, target: &str) {
+        let result = build_editor_for_target(target);
+        match result {
+            Ok(editor) => {
+                let name = editor.display_name().to_string();
+                self.shell
+                    .push_history(format!("Opening {} inside bevim...", name));
+                self.view = TerminalView::Vim(editor);
+            }
+            Err(err) => {
+                self.shell.push_history(format!("bevim: {}", err));
+            }
+        }
+        self.dirty = true;
     }
 
     fn handle_tab(&mut self) {
@@ -616,11 +641,55 @@ impl TerminalMachine {
 }
 
 fn save_buffer(editor: &VimEditorState) -> std::io::Result<std::path::PathBuf> {
-    let out_dir = Path::new(OUTPUT_DIR);
-    fs::create_dir_all(out_dir)?;
-    let path = out_dir.join(&editor.file_name);
+    let path = live_root_path().join(&editor.relative_path);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
     fs::write(&path, editor.to_string())?;
     Ok(path)
+}
+
+fn build_editor_for_target(target: &str) -> Result<VimEditorState, String> {
+    let relative = sanitize_live_target(target)?;
+    let path = live_root_path().join(&relative);
+    let highlight = path
+        .extension()
+        .map(|ext| ext.eq_ignore_ascii_case("mortar"))
+        .unwrap_or(false);
+    let contents = match fs::read_to_string(&path) {
+        Ok(data) => data,
+        Err(err) if err.kind() == ErrorKind::NotFound => String::new(),
+        Err(err) => return Err(err.to_string()),
+    };
+    Ok(VimEditorState::from_source(relative, contents, highlight))
+}
+
+fn live_root_path() -> &'static Path {
+    Path::new(LIVE_ROOT)
+}
+
+fn sanitize_live_target(target: &str) -> Result<PathBuf, String> {
+    let trimmed = target.trim();
+    let fallback = if trimmed.is_empty() {
+        DEFAULT_FILE
+    } else {
+        trimmed
+    };
+    let mut relative = PathBuf::new();
+    for component in Path::new(fallback).components() {
+        match component {
+            Component::Normal(part) => relative.push(part),
+            Component::CurDir => continue,
+            _ => return Err("path must stay within assets/live/".into()),
+        }
+    }
+    if relative.as_os_str().is_empty() {
+        relative.push(DEFAULT_FILE);
+    }
+    if relative.extension().is_none() {
+        relative.set_extension("mortar");
+    }
+    Ok(relative)
 }
 
 #[derive(Default)]
@@ -644,8 +713,10 @@ impl ShellState {
         self.lines
             .push("Click the terminal to capture keyboard input.".into());
         self.lines
-            .push("Type `bevim live_example` to edit the Mortar script.".into());
+            .push("Type `bevim live_example` to edit files under assets/live/.".into());
         self.lines.push("Use `clear` to reset the prompt.".into());
+        self.lines
+            .push("Paths stay inside assets/live/ and default to `.mortar`.".into());
     }
 
     fn render(&self, focused: bool, cursor_visible: bool) -> TerminalRender {
@@ -784,7 +855,9 @@ impl TerminalView {
 }
 
 struct VimEditorState {
-    file_name: String,
+    relative_path: PathBuf,
+    display_name: String,
+    highlight: bool,
     buffer: Vec<Vec<char>>,
     cursor_row: usize,
     cursor_col: usize,
@@ -794,7 +867,7 @@ struct VimEditorState {
 }
 
 impl VimEditorState {
-    fn from_source(name: &str, contents: &str) -> Self {
+    fn from_source(relative_path: PathBuf, contents: String, highlight: bool) -> Self {
         let lines: Vec<Vec<char>> = if contents.is_empty() {
             vec![Vec::new()]
         } else {
@@ -804,8 +877,12 @@ impl VimEditorState {
                 .collect()
         };
 
+        let display_name = relative_path.to_string_lossy().into_owned();
+
         Self {
-            file_name: name.into(),
+            relative_path,
+            display_name,
+            highlight,
             buffer: lines,
             cursor_row: 0,
             cursor_col: 0,
@@ -818,15 +895,19 @@ impl VimEditorState {
     fn render(&self, cursor_visible: bool) -> TerminalRender {
         let mut render = TerminalRender::default();
         render.push_plain_line(
-            format!("-- bevim: {} --", self.file_name),
+            format!("-- bevim: {} --", self.display_name),
             Color::srgb(0.9, 0.85, 0.5),
         );
 
         for (idx, _) in self.buffer.iter().enumerate() {
             let mut line = StyledLine::default();
             line.push_segment(format!("{:>4} ", idx + 1), Color::srgb(0.6, 0.6, 0.9));
-            let highlighted = self.highlight_line(idx, cursor_visible);
-            for segment in highlighted.segments {
+            let segments_line = if self.highlight {
+                self.highlight_line(idx, cursor_visible)
+            } else {
+                self.plain_line(idx, cursor_visible)
+            };
+            for segment in segments_line.segments {
                 line.push_segment_with_bg(segment.text, segment.color, segment.background);
             }
             render.push_line(line);
@@ -846,7 +927,7 @@ impl VimEditorState {
                 command_line.push_segment(&self.command_buffer, Color::srgb(0.9, 0.9, 0.9));
                 if cursor_visible {
                     command_line.push_segment_with_bg(
-                        " ",
+                        " ".to_string(),
                         Color::srgb(0.9, 0.9, 0.9),
                         Some(cursor_highlight_color()),
                     );
@@ -865,6 +946,39 @@ impl VimEditorState {
         }
 
         render
+    }
+
+    fn display_name(&self) -> &str {
+        &self.display_name
+    }
+
+    fn plain_line(&self, row: usize, cursor_visible: bool) -> StyledLine {
+        let mut line = StyledLine::default();
+        let Some(chars) = self.buffer.get(row) else {
+            return line;
+        };
+        let cursor_col = if cursor_visible && row == self.cursor_row {
+            Some(self.cursor_col.min(chars.len()))
+        } else {
+            None
+        };
+        self.push_token_with_cursor(
+            &mut line,
+            chars,
+            0,
+            chars.len(),
+            Color::srgb(0.9, 0.9, 0.9),
+            cursor_col,
+            cursor_highlight_color(),
+        );
+        if matches!(cursor_col, Some(col) if col == chars.len()) {
+            line.push_segment_with_bg(
+                " ".to_string(),
+                Color::srgb(0.9, 0.9, 0.9),
+                Some(cursor_highlight_color()),
+            );
+        }
+        line
     }
 
     fn highlight_line(&self, row: usize, cursor_visible: bool) -> StyledLine {

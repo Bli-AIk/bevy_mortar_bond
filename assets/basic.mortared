@@ -34,7 +34,7 @@
                 {
                   "type": "play_sound",
                   "args": [
-                    "random-sound-1-80941.wav"
+                    "audio/random-sound-1-80941.wav"
                   ]
                 }
               ]

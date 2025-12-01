@@ -79,7 +79,7 @@
                 {
                   "type": "play_sound",
                   "args": [
-                    "random-sound-1-80941.wav"
+                    "audio/random-sound-1-80941.wav"
                   ]
                 }
               ]
@@ -122,7 +122,7 @@
                 {
                   "type": "play_sound",
                   "args": [
-                    "random-sound-1-80941.wav"
+                    "audio/random-sound-1-80941.wav"
                   ]
                 }
               ]
@@ -167,7 +167,7 @@
                 {
                   "type": "play_sound",
                   "args": [
-                    "random-sound-1-80941.wav"
+                    "audio/random-sound-1-80941.wav"
                   ]
                 }
               ]
@@ -314,7 +314,7 @@
       "action": {
         "type": "play_sound",
         "args": [
-          "\"random-sound-1-80941.wav\""
+          "\"audio/random-sound-1-80941.wav\""
         ]
       },
       "duration": 0.0
