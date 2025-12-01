@@ -1,0 +1,16 @@
+node Start {
+    text: "这也许是个生动形象的 demo。"
+} -> NextNode
+
+node NextNode {
+    text: "看到我说话了么？"
+    choice: [
+        "是的！" -> EndNode,
+        "不" -> return,
+    ],
+}
+
+node EndNode {
+    text: "哦——那真是太好了。"
+    text: "好啦，本段剧情结束。"
+}
