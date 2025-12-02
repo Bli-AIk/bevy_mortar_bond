@@ -4,6 +4,10 @@
 
 **bevy_mortar_bond** — [mortar](https://github.com/Bli-AIk/mortar) 语言的 Bevy “绑钉” （绑定） 插件。
 
+https://github.com/user-attachments/assets/a132d6ba-43b9-4367-9369-19dc83bdcb5f
+
+<h4 align="center">想亲自试试吗？<br>克隆仓库后运行 `cargo run --example live_terminal`.</h3>
+
 | 英语                     | 简体中文 |
 |------------------------|------|
 | [English](./readme.md) | 简体中文 |
