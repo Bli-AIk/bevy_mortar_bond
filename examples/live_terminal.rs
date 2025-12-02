@@ -6,15 +6,23 @@
 //! a tiny vim-inspired editor. The right-hand view is left as a TODO hook for
 //! real gameplay rendering.
 
+#[path = "utils/rogue_sprite.rs"]
+mod rogue_sprite;
+
 use bevy::{
     asset::AssetPlugin,
     ecs::message::MessageReader,
     input::{
-        ButtonState,
+        ButtonInput, ButtonState,
         keyboard::{KeyCode, KeyboardInput},
     },
     prelude::*,
+    ui::widget::NodeImageMode,
     window::{PresentMode, WindowResolution},
+};
+use rogue_sprite::{
+    RogueAnimation, RogueAnimationState, RogueGender, RogueSprite, RogueSpritePlugin,
+    RogueSpritesheet,
 };
 use std::fmt::Display;
 use std::{
@@ -36,6 +44,7 @@ fn main() {
         .init_resource::<CursorBlink>()
         .add_plugins(
             DefaultPlugins
+                .set(ImagePlugin::default_nearest())
                 .set(WindowPlugin {
                     primary_window: Some(Window {
                         title: "Live Mortar Editor".into(),
@@ -57,10 +66,14 @@ fn main() {
                 tick_cursor_blink,
                 handle_panel_focus,
                 handle_keyboard_controls,
+                handle_gender_buttons,
+                update_gender_button_colors,
+                control_preview_animation,
                 refresh_terminal_display,
                 update_focus_visuals,
             ),
         )
+        .add_plugins(RogueSpritePlugin)
         .run();
 }
 
@@ -76,7 +89,19 @@ struct TerminalDisplay;
 #[derive(Component, Clone)]
 struct TerminalFont(Handle<Font>);
 
-fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
+#[derive(Component)]
+struct RoguePreviewImage;
+
+#[derive(Component)]
+struct GenderButton {
+    gender: RogueGender,
+}
+
+fn setup_ui(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    rogue_sheet: Res<RogueSpritesheet>,
+) {
     commands.spawn(Camera2d);
     let font = asset_server.load(FONT_PATH);
 
@@ -127,23 +152,125 @@ fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                         height: Val::Percent(100.0),
                         padding: UiRect::all(Val::Px(16.0)),
                         border: UiRect::all(Val::Px(2.0)),
+                        flex_direction: FlexDirection::Column,
+                        row_gap: Val::Px(12.0),
                         ..default()
                     },
                     BackgroundColor(Color::srgb(0.1, 0.1, 0.15)),
                     BorderColor::all(Color::srgb(0.6, 0.6, 0.6)),
                 ))
                 .with_children(|game_panel| {
+                    game_panel
+                        .spawn(Node {
+                            width: Val::Percent(100.0),
+                            flex_direction: FlexDirection::Column,
+                            row_gap: Val::Px(8.0),
+                            ..default()
+                        })
+                        .with_children(|setup| {
+                            setup.spawn((
+                                Text::new("SetUp"),
+                                TextFont {
+                                    font: font.clone(),
+                                    font_size: 22.0,
+                                    ..default()
+                                },
+                                TextColor(Color::srgb(0.9, 0.9, 1.0)),
+                            ));
+
+                            setup
+                                .spawn(Node {
+                                    width: Val::Percent(100.0),
+                                    flex_direction: FlexDirection::Row,
+                                    column_gap: Val::Px(12.0),
+                                    ..default()
+                                })
+                                .with_children(|row| {
+                                    for (gender, label) in [
+                                        (RogueGender::Male, "Male (rows 1-5)"),
+                                        (RogueGender::Female, "Female (rows 6-10)"),
+                                    ] {
+                                        row.spawn((
+                                            Button,
+                                            GenderButton { gender },
+                                            Node {
+                                                padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
+                                                border: UiRect::all(Val::Px(1.0)),
+                                                ..default()
+                                            },
+                                            BackgroundColor(Color::srgb(0.15, 0.18, 0.25)),
+                                            BorderColor::all(Color::srgb(0.4, 0.6, 0.9)),
+                                        ))
+                                        .with_children(
+                                            |button| {
+                                                button.spawn((
+                                                    Text::new(label),
+                                                    TextFont {
+                                                        font: font.clone(),
+                                                        font_size: 18.0,
+                                                        ..default()
+                                                    },
+                                                    TextColor(Color::srgb(0.9, 0.9, 1.0)),
+                                                ));
+                                            },
+                                        );
+                                    }
+                                });
+                        });
+
+                    game_panel
+                        .spawn(Node {
+                            width: Val::Percent(100.0),
+                            flex_grow: 1.0,
+                            align_items: AlignItems::Stretch,
+                            justify_content: JustifyContent::Center,
+                            ..default()
+                        })
+                        .with_children(|preview_area| {
+                            preview_area
+                                .spawn((
+                                    Node {
+                                        width: Val::Percent(100.0),
+                                        height: Val::Percent(100.0),
+                                        align_items: AlignItems::Center,
+                                        justify_content: JustifyContent::Center,
+                                        border: UiRect::all(Val::Px(2.0)),
+                                        ..default()
+                                    },
+                                    BackgroundColor(Color::srgb(0.06, 0.06, 0.09)),
+                                    BorderColor::all(Color::srgb(0.3, 0.3, 0.4)),
+                                ))
+                                .with_children(|preview_box| {
+                                    let sprite =
+                                        RogueSprite::new(RogueGender::Male, RogueAnimation::Idle);
+                                    let mut image = rogue_sheet.image_node(&sprite);
+                                    image.image_mode = NodeImageMode::Stretch;
+                                    preview_box.spawn((
+                                        RoguePreviewImage,
+                                        sprite,
+                                        RogueAnimationState::default(),
+                                        image,
+                                        Node {
+                                            width: Val::Px(192.0),
+                                            height: Val::Px(192.0),
+                                            ..default()
+                                        },
+                                    ));
+                                });
+                        });
+
                     game_panel.spawn((
                         Text::new(
-                            "Gameplay viewport placeholder\n\
-                             TODO: swap this area with actual Bevy world rendering.",
+                            "The character plays Idle by default.\n\
+                             Press and hold the P key to preview the Walk animation, release to resume.\n\
+                             Click this panel to capture this input.",
                         ),
                         TextFont {
                             font,
-                            font_size: 20.0,
+                            font_size: 16.0,
                             ..default()
                         },
-                        TextColor(Color::srgb(0.9, 0.85, 0.7)),
+                        TextColor(Color::srgb(0.8, 0.85, 1.0)),
                     ));
                 });
         });
@@ -165,6 +292,54 @@ fn handle_panel_focus(
         if *interaction == Interaction::Pressed {
             machine.set_focus(false);
         }
+    }
+}
+
+fn handle_gender_buttons(
+    mut buttons: Query<(&Interaction, &GenderButton), (Changed<Interaction>, With<Button>)>,
+    mut preview: Query<&mut RogueSprite, With<RoguePreviewImage>>,
+) {
+    let Ok(mut sprite) = preview.single_mut() else {
+        return;
+    };
+    for (interaction, gender_button) in &mut buttons {
+        if *interaction == Interaction::Pressed && sprite.gender != gender_button.gender {
+            sprite.gender = gender_button.gender;
+        }
+    }
+}
+
+fn update_gender_button_colors(
+    preview: Query<&RogueSprite, With<RoguePreviewImage>>,
+    mut buttons: Query<(&GenderButton, &mut BackgroundColor)>,
+) {
+    let Ok(sprite) = preview.single() else {
+        return;
+    };
+    for (button, mut color) in &mut buttons {
+        let selected = button.gender == sprite.gender;
+        color.0 = if selected {
+            Color::srgb(0.25, 0.32, 0.55)
+        } else {
+            Color::srgb(0.15, 0.18, 0.25)
+        };
+    }
+}
+
+fn control_preview_animation(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut preview: Query<&mut RogueSprite, With<RoguePreviewImage>>,
+) {
+    let Ok(mut sprite) = preview.single_mut() else {
+        return;
+    };
+    let target = if keys.pressed(KeyCode::KeyP) {
+        RogueAnimation::Walk
+    } else {
+        RogueAnimation::Idle
+    };
+    if sprite.animation != target {
+        sprite.animation = target;
     }
 }
 

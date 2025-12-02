@@ -2,5 +2,6 @@
 //!
 //! 示例的通用工具。
 
+pub mod rogue_sprite;
 pub mod typewriter;
 pub mod ui;

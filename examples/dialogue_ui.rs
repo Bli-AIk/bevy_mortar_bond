@@ -63,7 +63,7 @@ impl DialogueFiles {
 fn main() {
     App::new()
         .add_plugins((
-            DefaultPlugins,
+            DefaultPlugins.set(ImagePlugin::default_nearest()),
             MortarPlugin,
             MortarDialoguePlugin,
             TypewriterPlugin,
