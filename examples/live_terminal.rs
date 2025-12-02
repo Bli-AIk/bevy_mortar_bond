@@ -16,6 +16,7 @@ use bevy::{
     prelude::*,
     window::{PresentMode, WindowResolution},
 };
+use std::fmt::Display;
 use std::{
     fs,
     io::ErrorKind,
@@ -375,14 +376,15 @@ impl StyledLine {
         if text.is_empty() {
             return;
         }
-        if background.is_none() {
-            if let Some(last) = self.segments.last_mut() {
-                if last.color == color && last.background.is_none() {
-                    last.text.push_str(&text);
-                    return;
-                }
-            }
+        if background.is_none()
+            && let Some(last) = self.segments.last_mut()
+            && last.color == color
+            && last.background.is_none()
+        {
+            last.text.push_str(&text);
+            return;
         }
+
         self.segments.push(StyledSegment {
             text,
             color,
@@ -523,11 +525,11 @@ impl TerminalMachine {
     }
 
     fn handle_escape(&mut self) {
-        if let TerminalView::Vim(editor) = &mut self.view {
-            if !matches!(editor.mode, VimMode::Normal) {
-                editor.enter_normal_mode("Exited to NORMAL mode");
-                self.dirty = true;
-            }
+        if let TerminalView::Vim(editor) = &mut self.view
+            && !matches!(editor.mode, VimMode::Normal)
+        {
+            editor.enter_normal_mode("Exited to NORMAL mode");
+            self.dirty = true;
         }
     }
 
@@ -548,10 +550,10 @@ impl TerminalMachine {
     }
 
     fn handle_tab(&mut self) {
-        if let TerminalView::Shell = self.view {
-            if self.shell.autocomplete(&SHELL_COMMANDS) {
-                self.dirty = true;
-            }
+        if let TerminalView::Shell = self.view
+            && self.shell.autocomplete(&SHELL_COMMANDS)
+        {
+            self.dirty = true;
         }
     }
 
@@ -640,7 +642,7 @@ impl TerminalMachine {
     }
 }
 
-fn save_buffer(editor: &VimEditorState) -> std::io::Result<std::path::PathBuf> {
+fn save_buffer(editor: &VimEditorState) -> std::io::Result<PathBuf> {
     let path = live_root_path().join(&editor.relative_path);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -1097,19 +1099,20 @@ impl VimEditorState {
         if start >= end {
             return;
         }
-        if let Some(cursor) = cursor_col {
-            if cursor >= start && cursor < end {
-                if cursor > start {
-                    line.push_segment(chars[start..cursor].iter().collect::<String>(), color);
-                }
-                let mut cursor_char = String::new();
-                cursor_char.push(chars[cursor]);
-                line.push_segment_with_bg(cursor_char, color, Some(cursor_bg));
-                if cursor + 1 < end {
-                    line.push_segment(chars[cursor + 1..end].iter().collect::<String>(), color);
-                }
-                return;
+        if let Some(cursor) = cursor_col
+            && cursor >= start
+            && cursor < end
+        {
+            if cursor > start {
+                line.push_segment(chars[start..cursor].iter().collect::<String>(), color);
             }
+            let mut cursor_char = String::new();
+            cursor_char.push(chars[cursor]);
+            line.push_segment_with_bg(cursor_char, color, Some(cursor_bg));
+            if cursor + 1 < end {
+                line.push_segment(chars[cursor + 1..end].iter().collect::<String>(), color);
+            }
+            return;
         }
         line.push_segment(chars[start..end].iter().collect::<String>(), color);
     }
@@ -1130,8 +1133,7 @@ impl VimEditorState {
         }
         let tail = {
             let line = &mut self.buffer[self.cursor_row];
-            let split_off = line.split_off(self.cursor_col);
-            split_off
+            line.split_off(self.cursor_col)
         };
         self.cursor_row += 1;
         self.buffer.insert(self.cursor_row, tail);
@@ -1249,13 +1251,15 @@ impl VimEditorState {
     }
 }
 
-impl ToString for VimEditorState {
-    fn to_string(&self) -> String {
-        self.buffer
+impl Display for VimEditorState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let str = self
+            .buffer
             .iter()
             .map(|line| line.iter().collect::<String>())
             .collect::<Vec<_>>()
-            .join("\n")
+            .join("\n");
+        write!(f, "{}", str)
     }
 }
 
