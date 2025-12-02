@@ -396,13 +396,14 @@ fn refresh_terminal_display(
     display: Query<(Entity, &TerminalFont), With<TerminalDisplay>>,
     children: Query<&Children>,
     cursor: Res<CursorBlink>,
+    dialogue: Res<LiveDialogueData>,
 ) {
     if !machine.dirty {
         return;
     }
 
     let cursor_visible = machine.focused && cursor.visible;
-    let render = machine.render(cursor_visible);
+    let render = machine.render(cursor_visible, dialogue.highlight_line());
     if let Ok((entity, font)) = display.single() {
         if let Ok(existing_children) = children.get(entity) {
             for child in existing_children.iter() {
@@ -506,6 +507,7 @@ fn apply_pending_dialogue_text(
     mut commands: Commands,
     mut dialogue: ResMut<LiveDialogueData>,
     mut text_query: Query<(Entity, &mut Typewriter), With<GameDialogueText>>,
+    mut machine: ResMut<TerminalMachine>,
 ) {
     if !dialogue.needs_text_update {
         return;
@@ -517,7 +519,11 @@ fn apply_pending_dialogue_text(
     let Ok((entity, mut typewriter)) = text_query.single_mut() else {
         return;
     };
-    let DialogueLine { text, events } = line;
+    let DialogueLine {
+        text,
+        events,
+        line_number: _,
+    } = line;
     let instant =
         events.is_empty() && (text == DIALOGUE_PLACEHOLDER || text == DIALOGUE_FINISHED_LINE);
     *typewriter = Typewriter::new(text.clone(), DIALOGUE_CHAR_SPEED);
@@ -534,6 +540,9 @@ fn apply_pending_dialogue_text(
         commands
             .entity(entity)
             .insert(ActiveLineEvents::from_events(events));
+    }
+    if dialogue.take_highlight_dirty() && matches!(machine.view, TerminalView::Vim(_)) {
+        machine.dirty = true;
     }
     dialogue.needs_text_update = false;
 }
@@ -659,6 +668,7 @@ impl Default for LiveDialogueWatcher {
 struct DialogueLine {
     text: String,
     events: Vec<LineEvent>,
+    line_number: usize,
 }
 
 #[derive(Clone)]
@@ -690,6 +700,8 @@ struct LiveDialogueData {
     entries: Vec<DialogueLine>,
     current_index: usize,
     pending_line: Option<DialogueLine>,
+    current_line: Option<usize>,
+    highlight_dirty: bool,
     needs_text_update: bool,
     needs_gender_sync: bool,
     finished: bool,
@@ -705,7 +717,10 @@ impl Default for LiveDialogueData {
             pending_line: Some(DialogueLine {
                 text: DIALOGUE_PLACEHOLDER.to_string(),
                 events: Vec::new(),
+                line_number: 0,
             }),
+            current_line: None,
+            highlight_dirty: true,
             needs_text_update: true,
             needs_gender_sync: true,
             finished: false,
@@ -730,6 +745,8 @@ impl LiveDialogueData {
         self.entries = parsed.entries;
         self.current_index = 0;
         self.pending_line = None;
+        self.current_line = None;
+        self.highlight_dirty = true;
         self.finished = false;
         self.needs_gender_sync = true;
         self.last_modified = modified;
@@ -738,12 +755,17 @@ impl LiveDialogueData {
 
     fn queue_next_line(&mut self) {
         if let Some(next) = self.pull_next_line() {
+            self.current_line = (next.line_number > 0).then_some(next.line_number);
+            self.highlight_dirty = true;
             self.pending_line = Some(next);
         } else {
             self.pending_line = Some(DialogueLine {
                 text: DIALOGUE_PLACEHOLDER.to_string(),
                 events: Vec::new(),
+                line_number: 0,
             });
+            self.current_line = None;
+            self.highlight_dirty = true;
             self.finished = true;
         }
         self.needs_text_update = true;
@@ -758,11 +780,16 @@ impl LiveDialogueData {
             self.pending_line = Some(DialogueLine {
                 text: DIALOGUE_FINISHED_LINE.to_string(),
                 events: Vec::new(),
+                line_number: 0,
             });
+            self.current_line = None;
+            self.highlight_dirty = true;
             self.needs_text_update = true;
             return true;
         }
         if let Some(next) = self.pull_next_line() {
+            self.current_line = (next.line_number > 0).then_some(next.line_number);
+            self.highlight_dirty = true;
             self.pending_line = Some(next);
             self.needs_text_update = true;
             return true;
@@ -777,6 +804,14 @@ impl LiveDialogueData {
         let line = self.entries[self.current_index].clone();
         self.current_index += 1;
         Some(line)
+    }
+
+    fn highlight_line(&self) -> Option<usize> {
+        self.current_line
+    }
+
+    fn take_highlight_dirty(&mut self) -> bool {
+        std::mem::take(&mut self.highlight_dirty)
     }
 }
 
@@ -801,9 +836,9 @@ fn extract_is_female(contents: &str) -> bool {
 fn collect_entries(contents: &str, is_female: bool) -> Vec<DialogueLine> {
     let mut entries = Vec::new();
     let mut contexts: Vec<ConditionalContext> = Vec::new();
-    let mut lines = contents.lines().peekable();
+    let mut lines = contents.lines().enumerate().peekable();
 
-    while let Some(line) = lines.next() {
+    while let Some((line_number, line)) = lines.next() {
         let trimmed = line.trim();
         if trimmed.starts_with("if (isFemale") {
             contexts.push(ConditionalContext::new(is_female));
@@ -831,6 +866,7 @@ fn collect_entries(contents: &str, is_female: bool) -> Vec<DialogueLine> {
             entries.push(DialogueLine {
                 text,
                 events: Vec::new(),
+                line_number: line_number + 1,
             });
             continue;
         }
@@ -859,10 +895,10 @@ fn parse_text_line(line: &str) -> Option<String> {
 }
 
 fn collect_event_entries(
-    lines: &mut std::iter::Peekable<std::str::Lines<'_>>,
+    lines: &mut std::iter::Peekable<std::iter::Enumerate<std::str::Lines<'_>>>,
     line: &mut DialogueLine,
 ) {
-    for line_text in lines.by_ref() {
+    while let Some((_, line_text)) = lines.next() {
         let trimmed = line_text.trim();
         if trimmed.starts_with(']') {
             break;
@@ -876,8 +912,8 @@ fn collect_event_entries(
     }
 }
 
-fn consume_event_block(lines: &mut std::iter::Peekable<std::str::Lines<'_>>) {
-    for line in lines.by_ref() {
+fn consume_event_block(lines: &mut std::iter::Peekable<std::iter::Enumerate<std::str::Lines<'_>>>) {
+    while let Some((_, line)) = lines.next() {
         if line.trim().starts_with(']') {
             break;
         }
@@ -958,6 +994,10 @@ impl CursorBlink {
 
 fn cursor_highlight_color() -> Color {
     Color::srgb(0.25, 0.4, 0.9)
+}
+
+fn active_line_highlight_color() -> Color {
+    Color::srgb(0.2, 0.2, 0.25)
 }
 
 #[derive(Default)]
@@ -1255,10 +1295,10 @@ impl TerminalMachine {
         self.dirty = true;
     }
 
-    fn render(&self, cursor_visible: bool) -> TerminalRender {
+    fn render(&self, cursor_visible: bool, highlight_line: Option<usize>) -> TerminalRender {
         match &self.view {
             TerminalView::Shell => self.shell.render(self.focused, cursor_visible),
-            TerminalView::Vim(editor) => editor.render(cursor_visible),
+            TerminalView::Vim(editor) => editor.render(cursor_visible, highlight_line),
         }
     }
 }
@@ -1515,7 +1555,7 @@ impl VimEditorState {
         }
     }
 
-    fn render(&self, cursor_visible: bool) -> TerminalRender {
+    fn render(&self, cursor_visible: bool, highlight_line: Option<usize>) -> TerminalRender {
         let mut render = TerminalRender::default();
         render.push_plain_line(
             format!("-- bevim: {} --", self.display_name),
@@ -1523,12 +1563,14 @@ impl VimEditorState {
         );
 
         for (idx, _) in self.buffer.iter().enumerate() {
+            let line_bg =
+                (highlight_line == Some(idx + 1)).then_some(active_line_highlight_color());
             let mut line = StyledLine::default();
             line.push_segment(format!("{:>4} ", idx + 1), Color::srgb(0.6, 0.6, 0.9));
             let segments_line = if self.highlight {
-                self.highlight_line(idx, cursor_visible)
+                self.syntax_highlight_line(idx, cursor_visible, line_bg)
             } else {
-                self.plain_line(idx, cursor_visible)
+                self.plain_line(idx, cursor_visible, line_bg)
             };
             for segment in segments_line.segments {
                 line.push_segment_with_bg(segment.text, segment.color, segment.background);
@@ -1575,7 +1617,7 @@ impl VimEditorState {
         &self.display_name
     }
 
-    fn plain_line(&self, row: usize, cursor_visible: bool) -> StyledLine {
+    fn plain_line(&self, row: usize, cursor_visible: bool, line_bg: Option<Color>) -> StyledLine {
         let mut line = StyledLine::default();
         let Some(chars) = self.buffer.get(row) else {
             return line;
@@ -1593,6 +1635,7 @@ impl VimEditorState {
             Color::srgb(0.9, 0.9, 0.9),
             cursor_col,
             cursor_highlight_color(),
+            line_bg,
         );
         if matches!(cursor_col, Some(col) if col == chars.len()) {
             line.push_segment_with_bg(
@@ -1604,7 +1647,12 @@ impl VimEditorState {
         line
     }
 
-    fn highlight_line(&self, row: usize, cursor_visible: bool) -> StyledLine {
+    fn syntax_highlight_line(
+        &self,
+        row: usize,
+        cursor_visible: bool,
+        line_bg: Option<Color>,
+    ) -> StyledLine {
         let mut line = StyledLine::default();
         let Some(chars) = self.buffer.get(row) else {
             return line;
@@ -1628,6 +1676,7 @@ impl VimEditorState {
                     Color::srgb(0.6, 0.8, 0.6),
                     cursor_col,
                     cursor_bg,
+                    line_bg,
                 );
                 return line;
             }
@@ -1650,6 +1699,7 @@ impl VimEditorState {
                     Color::srgb(0.7, 1.0, 0.7),
                     cursor_col,
                     cursor_bg,
+                    line_bg,
                 );
                 continue;
             }
@@ -1664,7 +1714,7 @@ impl VimEditorState {
                     _ => Color::srgb(0.9, 0.9, 0.9),
                 };
                 self.push_token_with_cursor(
-                    &mut line, chars, start, idx, word_color, cursor_col, cursor_bg,
+                    &mut line, chars, start, idx, word_color, cursor_col, cursor_bg, line_bg,
                 );
                 continue;
             }
@@ -1678,6 +1728,7 @@ impl VimEditorState {
                     Color::srgb(0.9, 0.7, 0.5),
                     cursor_col,
                     cursor_bg,
+                    line_bg,
                 );
                 idx += 2;
                 continue;
@@ -1696,6 +1747,7 @@ impl VimEditorState {
                 color,
                 cursor_col,
                 cursor_bg,
+                line_bg,
             );
             idx += 1;
         }
@@ -1716,6 +1768,7 @@ impl VimEditorState {
         color: Color,
         cursor_col: Option<usize>,
         cursor_bg: Color,
+        line_bg: Option<Color>,
     ) {
         if start >= end {
             return;
@@ -1725,17 +1778,36 @@ impl VimEditorState {
             && cursor < end
         {
             if cursor > start {
-                line.push_segment(chars[start..cursor].iter().collect::<String>(), color);
+                let prefix = chars[start..cursor].iter().collect::<String>();
+                Self::push_colored_segment(line, prefix, color, line_bg);
             }
             let mut cursor_char = String::new();
             cursor_char.push(chars[cursor]);
             line.push_segment_with_bg(cursor_char, color, Some(cursor_bg));
             if cursor + 1 < end {
-                line.push_segment(chars[cursor + 1..end].iter().collect::<String>(), color);
+                let suffix = chars[cursor + 1..end].iter().collect::<String>();
+                Self::push_colored_segment(line, suffix, color, line_bg);
             }
             return;
         }
-        line.push_segment(chars[start..end].iter().collect::<String>(), color);
+        let text = chars[start..end].iter().collect::<String>();
+        Self::push_colored_segment(line, text, color, line_bg);
+    }
+
+    fn push_colored_segment(
+        line: &mut StyledLine,
+        text: String,
+        color: Color,
+        background: Option<Color>,
+    ) {
+        if text.is_empty() {
+            return;
+        }
+        if let Some(bg) = background {
+            line.push_segment_with_bg(text, color, Some(bg));
+        } else {
+            line.push_segment(text, color);
+        }
     }
 
     fn insert_char(&mut self, ch: char) {
