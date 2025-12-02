@@ -4,6 +4,8 @@
 
 **bevy_mortar_bond** — A Bevy "bond" (binding) plugin for the [mortar](https://github.com/Bli-AIk/mortar) language.
 
+https://github.com/user-attachments/assets/a132d6ba-43b9-4367-9369-19dc83bdcb5f
+
 | English | Simplified Chinese          |
 |---------|-----------------------------|
 | English | [简体中文](./readme_zh-hans.md) |
