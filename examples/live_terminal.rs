@@ -264,10 +264,8 @@ fn handle_choice_buttons(
         return;
     }
     for (interaction, button) in &mut buttons {
-        if *interaction == Interaction::Pressed {
-            if dialogue.select_choice(button.index) {
-                break;
-            }
+        if *interaction == Interaction::Pressed && dialogue.select_choice(button.index) {
+            break;
         }
     }
 }
