@@ -13,7 +13,10 @@ mod typewriter;
 
 use bevy::{
     asset::AssetPlugin,
-    ecs::message::MessageReader,
+    ecs::{
+        message::{MessageReader, MessageWriter},
+        prelude::Message,
+    },
     input::{
         ButtonState,
         keyboard::{KeyCode, KeyboardInput},
@@ -42,8 +45,8 @@ const LIVE_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/live");
 const FONT_PATH: &str = "font/Unifont.otf";
 const SHELL_COMMANDS: [&str; 2] = ["bevim live_example", "clear"];
 const DIALOGUE_CHAR_SPEED: f32 = 0.04;
-const DIALOGUE_PLACEHOLDER: &str = "开始编辑 live_example.mortar 以驱动台词。";
-const DIALOGUE_FINISHED_LINE: &str = "（对话结束）";
+const DIALOGUE_PLACEHOLDER: &str = "Start editing live_example.mortar to drive the dialogue.";
+const DIALOGUE_FINISHED_LINE: &str = "(End of conversation)";
 
 fn main() {
     App::new()
@@ -87,7 +90,6 @@ fn main() {
             Update,
             (
                 update_dialogue_text_render,
-                drain_dialogue_events,
                 apply_animation_events,
                 revert_animation_to_idle,
                 refresh_terminal_display,
@@ -117,6 +119,21 @@ struct GameDialogueText;
 
 #[derive(Component)]
 struct AnimationRevertTimer(Timer);
+
+#[derive(Component, Default)]
+struct ActiveLineEvents {
+    events: Vec<LineEvent>,
+    next_event: usize,
+}
+
+impl ActiveLineEvents {
+    fn from_events(events: Vec<LineEvent>) -> Self {
+        Self {
+            events,
+            next_event: 0,
+        }
+    }
+}
 
 fn setup_ui(
     mut commands: Commands,
@@ -274,9 +291,9 @@ fn setup_ui(
 
                     game_panel.spawn((
                         Text::new(
-                            "按 Z 以步进对话。\n\
-                             live_example.mortar 中的 isFemale 常量决定角色性别。\n\
-                             点击此面板以捕获该输入。",
+                            "Press Z to step through the dialogue.\n\
+                             The `isFemale` constant in `live_example.mortar` determines the character's gender.\n\
+                             Click on this panel to capture the input.",
                         ),
                         TextFont {
                             font,
@@ -486,27 +503,65 @@ fn apply_gender_from_script(
 }
 
 fn apply_pending_dialogue_text(
+    mut commands: Commands,
     mut dialogue: ResMut<LiveDialogueData>,
-    mut text_query: Query<&mut Typewriter, With<GameDialogueText>>,
+    mut text_query: Query<(Entity, &mut Typewriter), With<GameDialogueText>>,
 ) {
     if !dialogue.needs_text_update {
         return;
     }
-    let Some(next_line) = dialogue.pending_text.take() else {
+    let Some(line) = dialogue.pending_line.take() else {
         dialogue.needs_text_update = false;
         return;
     };
-    let Ok(mut typewriter) = text_query.single_mut() else {
+    let Ok((entity, mut typewriter)) = text_query.single_mut() else {
         return;
     };
-    *typewriter = Typewriter::new(next_line, DIALOGUE_CHAR_SPEED);
-    typewriter.play();
+    let DialogueLine { text, events } = line;
+    let instant =
+        events.is_empty() && (text == DIALOGUE_PLACEHOLDER || text == DIALOGUE_FINISHED_LINE);
+    *typewriter = Typewriter::new(text.clone(), DIALOGUE_CHAR_SPEED);
+    if instant {
+        typewriter.current_text = text.clone();
+        typewriter.current_char_index = text.chars().count();
+        typewriter.state = TypewriterState::Finished;
+    } else {
+        typewriter.play();
+    }
+    if events.is_empty() {
+        commands.entity(entity).remove::<ActiveLineEvents>();
+    } else {
+        commands
+            .entity(entity)
+            .insert(ActiveLineEvents::from_events(events));
+    }
     dialogue.needs_text_update = false;
 }
 
-fn update_dialogue_text_render(mut query: Query<(&Typewriter, &mut Text), With<GameDialogueText>>) {
-    for (typewriter, mut text) in &mut query {
+fn update_dialogue_text_render(
+    mut writer: MessageWriter<RogueAnimationEvent>,
+    mut query: Query<
+        (&Typewriter, &mut Text, Option<&mut ActiveLineEvents>),
+        With<GameDialogueText>,
+    >,
+) {
+    for (typewriter, mut text, events) in &mut query {
         **text = typewriter.current_text.clone();
+        if let Some(mut active) = events {
+            while let Some(event) = active.events.get(active.next_event) {
+                let required = event.trigger_index.saturating_add(1);
+                if typewriter.current_char_index >= required {
+                    if let Some(animation) = animation_from_label(match &event.action {
+                        LineEventAction::PlayAnim(label) => label,
+                    }) {
+                        writer.write(RogueAnimationEvent { animation });
+                    }
+                    active.next_event += 1;
+                } else {
+                    break;
+                }
+            }
+        }
     }
 }
 
@@ -528,19 +583,6 @@ fn monitor_live_example_script(
     match ParsedScript::from_path(&path) {
         Ok(parsed) => dialogue.apply_parsed(parsed, modified),
         Err(err) => warn!("无法解析 {}: {}", path.display(), err),
-    }
-}
-
-fn drain_dialogue_events(
-    mut dialogue: ResMut<LiveDialogueData>,
-    mut writer: MessageWriter<RogueAnimationEvent>,
-) {
-    for event in dialogue.drain_events() {
-        if let DialogueEvent::PlayAnim(anim) = event {
-            if let Some(animation) = animation_from_label(&anim) {
-                writer.write(RogueAnimationEvent { animation });
-            }
-        }
     }
 }
 
@@ -577,7 +619,7 @@ fn revert_animation_to_idle(
     >,
 ) {
     for (entity, mut timer, mut sprite) in &mut query {
-        if timer.0.tick(time.delta()).finished() {
+        if timer.0.tick(time.delta()).is_finished() {
             sprite.animation = RogueAnimation::Idle;
             commands.entity(entity).remove::<AnimationRevertTimer>();
         }
@@ -614,19 +656,25 @@ impl Default for LiveDialogueWatcher {
 }
 
 #[derive(Clone)]
-enum DialogueEntry {
-    Text(String),
-    Event(DialogueEvent),
+struct DialogueLine {
+    text: String,
+    events: Vec<LineEvent>,
 }
 
 #[derive(Clone)]
-enum DialogueEvent {
+struct LineEvent {
+    trigger_index: usize,
+    action: LineEventAction,
+}
+
+#[derive(Clone)]
+enum LineEventAction {
     PlayAnim(String),
 }
 
 struct ParsedScript {
     is_female: bool,
-    entries: Vec<DialogueEntry>,
+    entries: Vec<DialogueLine>,
 }
 
 impl ParsedScript {
@@ -639,10 +687,9 @@ impl ParsedScript {
 #[derive(Resource)]
 struct LiveDialogueData {
     is_female: bool,
-    entries: Vec<DialogueEntry>,
+    entries: Vec<DialogueLine>,
     current_index: usize,
-    pending_text: Option<String>,
-    pending_events: Vec<DialogueEvent>,
+    pending_line: Option<DialogueLine>,
     needs_text_update: bool,
     needs_gender_sync: bool,
     finished: bool,
@@ -655,8 +702,10 @@ impl Default for LiveDialogueData {
             is_female: false,
             entries: Vec::new(),
             current_index: 0,
-            pending_text: Some(DIALOGUE_PLACEHOLDER.to_string()),
-            pending_events: Vec::new(),
+            pending_line: Some(DialogueLine {
+                text: DIALOGUE_PLACEHOLDER.to_string(),
+                events: Vec::new(),
+            }),
             needs_text_update: true,
             needs_gender_sync: true,
             finished: false,
@@ -680,19 +729,21 @@ impl LiveDialogueData {
         self.is_female = parsed.is_female;
         self.entries = parsed.entries;
         self.current_index = 0;
-        self.pending_events.clear();
+        self.pending_line = None;
         self.finished = false;
-        self.pending_text = None;
         self.needs_gender_sync = true;
         self.last_modified = modified;
-        self.queue_next_text();
+        self.queue_next_line();
     }
 
-    fn queue_next_text(&mut self) {
-        if let Some(next) = self.pull_next_text() {
-            self.pending_text = Some(next);
+    fn queue_next_line(&mut self) {
+        if let Some(next) = self.pull_next_line() {
+            self.pending_line = Some(next);
         } else {
-            self.pending_text = Some(DIALOGUE_PLACEHOLDER.to_string());
+            self.pending_line = Some(DialogueLine {
+                text: DIALOGUE_PLACEHOLDER.to_string(),
+                events: Vec::new(),
+            });
             self.finished = true;
         }
         self.needs_text_update = true;
@@ -704,40 +755,28 @@ impl LiveDialogueData {
                 return false;
             }
             self.finished = true;
-            self.pending_text = Some(DIALOGUE_FINISHED_LINE.to_string());
+            self.pending_line = Some(DialogueLine {
+                text: DIALOGUE_FINISHED_LINE.to_string(),
+                events: Vec::new(),
+            });
             self.needs_text_update = true;
             return true;
         }
-        if let Some(next) = self.pull_next_text() {
-            self.pending_text = Some(next);
+        if let Some(next) = self.pull_next_line() {
+            self.pending_line = Some(next);
             self.needs_text_update = true;
             return true;
         }
         false
     }
 
-    fn pull_next_text(&mut self) -> Option<String> {
-        while self.current_index < self.entries.len() {
-            match &self.entries[self.current_index] {
-                DialogueEntry::Text(text) => {
-                    self.current_index += 1;
-                    return Some(text.clone());
-                }
-                DialogueEntry::Event(event) => {
-                    self.pending_events.push(event.clone());
-                    self.current_index += 1;
-                }
-            }
+    fn pull_next_line(&mut self) -> Option<DialogueLine> {
+        if self.current_index >= self.entries.len() {
+            return None;
         }
-        None
-    }
-
-    fn drain_events(&mut self) -> Vec<DialogueEvent> {
-        if self.pending_events.is_empty() {
-            Vec::new()
-        } else {
-            self.pending_events.drain(..).collect()
-        }
+        let line = self.entries[self.current_index].clone();
+        self.current_index += 1;
+        Some(line)
     }
 }
 
@@ -750,16 +789,16 @@ fn parse_script_contents(contents: &str) -> ParsedScript {
 fn extract_is_female(contents: &str) -> bool {
     for line in contents.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with("pub const isFemale") {
-            if let Some(value) = trimmed.split('=').nth(1) {
-                return value.to_ascii_lowercase().contains("true");
-            }
+        if trimmed.starts_with("pub const isFemale")
+            && let Some(value) = trimmed.split('=').nth(1)
+        {
+            return value.to_ascii_lowercase().contains("true");
         }
     }
     false
 }
 
-fn collect_entries(contents: &str, is_female: bool) -> Vec<DialogueEntry> {
+fn collect_entries(contents: &str, is_female: bool) -> Vec<DialogueLine> {
     let mut entries = Vec::new();
     let mut contexts: Vec<ConditionalContext> = Vec::new();
     let mut lines = contents.lines().peekable();
@@ -789,11 +828,18 @@ fn collect_entries(contents: &str, is_female: bool) -> Vec<DialogueEntry> {
             continue;
         }
         if let Some(text) = parse_text_line(trimmed) {
-            entries.push(DialogueEntry::Text(text));
+            entries.push(DialogueLine {
+                text,
+                events: Vec::new(),
+            });
             continue;
         }
         if trimmed.starts_with("with events") {
-            collect_event_entries(&mut lines, &mut entries);
+            if let Some(last) = entries.last_mut() {
+                collect_event_entries(&mut lines, last);
+            } else {
+                consume_event_block(&mut lines);
+            }
         }
     }
 
@@ -814,10 +860,10 @@ fn parse_text_line(line: &str) -> Option<String> {
 
 fn collect_event_entries(
     lines: &mut std::iter::Peekable<std::str::Lines<'_>>,
-    entries: &mut Vec<DialogueEntry>,
+    line: &mut DialogueLine,
 ) {
-    while let Some(line) = lines.next() {
-        let trimmed = line.trim();
+    for line_text in lines.by_ref() {
+        let trimmed = line_text.trim();
         if trimmed.starts_with(']') {
             break;
         }
@@ -825,22 +871,34 @@ fn collect_event_entries(
             continue;
         }
         if let Some(event) = parse_event_line(trimmed) {
-            entries.push(DialogueEntry::Event(event));
+            line.events.push(event);
         }
     }
 }
 
-fn parse_event_line(line: &str) -> Option<DialogueEvent> {
+fn consume_event_block(lines: &mut std::iter::Peekable<std::str::Lines<'_>>) {
+    for line in lines.by_ref() {
+        if line.trim().starts_with(']') {
+            break;
+        }
+    }
+}
+
+fn parse_event_line(line: &str) -> Option<LineEvent> {
     let cleaned = line.trim().trim_end_matches(',');
     if cleaned.is_empty() {
         return None;
     }
     let mut parts = cleaned.splitn(2, ',');
-    parts.next()?; // skip index
+    let index_str = parts.next()?.trim();
+    let trigger_index = index_str.parse::<usize>().ok()?;
     let action = parts.next()?.trim();
     if let Some(name) = action.strip_prefix("play_anim(") {
         let label = name.trim().trim_matches(|c| c == '"' || c == ')');
-        return Some(DialogueEvent::PlayAnim(label.to_string()));
+        return Some(LineEvent {
+            trigger_index,
+            action: LineEventAction::PlayAnim(label.to_string()),
+        });
     }
     None
 }
