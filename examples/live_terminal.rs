@@ -323,7 +323,8 @@ fn setup_ui(
                         Text::new(
                             "Press Z to advance dialogue; click the buttons when choices appear.\n\
                              The `isFemale` constant in `live_example.mortar` decides the character's gender.\n\
-                             Click this panel to capture input.",
+                             Click this panel to capture input.\n\
+                             Sprite from https://opengameart.org/content/animated-rogue",
                         ),
                         TextFont {
                             font,
