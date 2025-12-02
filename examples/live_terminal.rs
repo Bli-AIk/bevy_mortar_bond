@@ -5,7 +5,8 @@
 //! keyboard focus, run `bevim live_example`, and then edit the Mortar script in
 //! a tiny vim-inspired editor. The right-hand view is left as a TODO hook for
 //! real gameplay rendering.
-
+//!
+//! Sprite from https://opengameart.org/content/animated-rogue
 #[path = "utils/rogue_sprite.rs"]
 mod rogue_sprite;
 #[path = "utils/typewriter.rs"]
@@ -777,6 +778,13 @@ struct DialogueLine {
 #[derive(Clone)]
 struct ChoiceOption {
     label: String,
+    target: ChoiceTarget,
+}
+
+#[derive(Clone)]
+enum ChoiceTarget {
+    Return,
+    Node(String),
 }
 
 #[derive(Clone)]
@@ -957,14 +965,39 @@ impl LiveDialogueData {
         self.waiting_for_choice
     }
 
-    fn select_choice(&mut self, _index: usize) -> bool {
+    fn select_choice(&mut self, index: usize) -> bool {
         if !self.waiting_for_choice {
             return false;
         }
-        self.pending_choice = None;
-        self.waiting_for_choice = false;
-        self.choice_dirty = true;
-        self.queue_next_entry();
+        let Some(options) = self.pending_choice.as_ref() else {
+            return false;
+        };
+        let Some(option) = options.get(index) else {
+            return false;
+        };
+        match &option.target {
+            ChoiceTarget::Return => {
+                self.pending_choice = None;
+                self.waiting_for_choice = false;
+                self.choice_dirty = true;
+                self.pending_line = Some(DialogueLine {
+                    text: DIALOGUE_FINISHED_LINE.to_string(),
+                    events: Vec::new(),
+                    line_number: 0,
+                });
+                self.current_line = None;
+                self.highlight_dirty = true;
+                self.needs_text_update = true;
+                self.finished = true;
+                self.current_index = self.entries.len();
+            }
+            ChoiceTarget::Node(_target) => {
+                self.pending_choice = None;
+                self.waiting_for_choice = false;
+                self.choice_dirty = true;
+                self.queue_next_entry();
+            }
+        }
         true
     }
 }
@@ -1127,8 +1160,15 @@ fn parse_choice_line(line: &str) -> Option<ChoiceOption> {
     if label_part.is_empty() {
         return None;
     }
+    let target_part = parts.next()?.trim().trim_end_matches(',');
+    let target = if target_part.eq_ignore_ascii_case("return") {
+        ChoiceTarget::Return
+    } else {
+        ChoiceTarget::Node(target_part.to_string())
+    };
     Some(ChoiceOption {
         label: label_part.to_string(),
+        target,
     })
 }
 
