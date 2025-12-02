@@ -81,9 +81,11 @@ fn main() {
                 handle_panel_focus,
                 handle_keyboard_controls,
                 handle_dialogue_input,
+                handle_choice_buttons,
                 monitor_live_example_script,
                 apply_gender_from_script,
                 apply_pending_dialogue_text,
+                sync_choice_panel,
             ),
         )
         .add_systems(
@@ -125,6 +127,17 @@ struct ActiveLineEvents {
     events: Vec<LineEvent>,
     next_event: usize,
 }
+
+#[derive(Component)]
+struct ChoicePanel;
+
+#[derive(Component)]
+struct ChoiceButton {
+    index: usize,
+}
+
+#[derive(Component, Clone)]
+struct ChoicePanelFont(Handle<Font>);
 
 impl ActiveLineEvents {
     fn from_events(events: Vec<LineEvent>) -> Self {
@@ -242,6 +255,22 @@ fn setup_ui(
                                     ));
                                 });
 
+                            column.spawn((
+                                Node {
+                                    width: Val::Percent(100.0),
+                                    flex_direction: FlexDirection::Column,
+                                    row_gap: Val::Px(8.0),
+                                    padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
+                                    border: UiRect::all(Val::Px(2.0)),
+                                    ..default()
+                                },
+                                BackgroundColor(Color::srgb(0.06, 0.06, 0.09)),
+                                BorderColor::all(Color::srgb(0.35, 0.35, 0.45)),
+                                ChoicePanel,
+                                Visibility::Hidden,
+                                ChoicePanelFont(font.clone()),
+                            ));
+
                             column
                                 .spawn((
                                     Node {
@@ -291,9 +320,9 @@ fn setup_ui(
 
                     game_panel.spawn((
                         Text::new(
-                            "Press Z to step through the dialogue.\n\
-                             The `isFemale` constant in `live_example.mortar` determines the character's gender.\n\
-                             Click on this panel to capture the input.",
+                            "Press Z to advance dialogue; click the buttons when choices appear.\n\
+                             The `isFemale` constant in `live_example.mortar` decides the character's gender.\n\
+                             Click this panel to capture input.",
                         ),
                         TextFont {
                             font,
@@ -374,6 +403,9 @@ fn handle_dialogue_input(
     };
     for input in inputs.read() {
         if input.state != ButtonState::Pressed {
+            continue;
+        }
+        if dialogue.is_waiting_for_choice() {
             continue;
         }
         if input.key_code == KeyCode::KeyZ {
@@ -547,6 +579,77 @@ fn apply_pending_dialogue_text(
     dialogue.needs_text_update = false;
 }
 
+fn sync_choice_panel(
+    mut commands: Commands,
+    mut dialogue: ResMut<LiveDialogueData>,
+    mut panel_query: Query<
+        (Entity, Option<&Children>, &mut Visibility, &ChoicePanelFont),
+        With<ChoicePanel>,
+    >,
+    child_query: Query<&Children>,
+) {
+    if !dialogue.take_choice_dirty() {
+        return;
+    }
+    let Ok((panel_entity, children, mut visibility, font)) = panel_query.single_mut() else {
+        return;
+    };
+    if let Some(children) = children {
+        for child in children.iter() {
+            despawn_recursive(child, &mut commands, &child_query);
+        }
+    }
+    if let Some(options) = dialogue.pending_choices() {
+        *visibility = Visibility::Visible;
+        commands.entity(panel_entity).with_children(|parent| {
+            for (index, option) in options.iter().enumerate() {
+                parent
+                    .spawn((
+                        Button,
+                        ChoiceButton { index },
+                        Node {
+                            width: Val::Percent(100.0),
+                            padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
+                            border: UiRect::all(Val::Px(1.0)),
+                            ..default()
+                        },
+                        BackgroundColor(Color::srgb(0.15, 0.18, 0.3)),
+                        BorderColor::all(Color::srgb(0.4, 0.5, 0.8)),
+                    ))
+                    .with_children(|button| {
+                        button.spawn((
+                            Text::new(option.label.clone()),
+                            TextFont {
+                                font: font.0.clone(),
+                                font_size: 18.0,
+                                ..default()
+                            },
+                            TextColor(Color::srgb(0.9, 0.9, 1.0)),
+                        ));
+                    });
+            }
+        });
+    } else {
+        *visibility = Visibility::Hidden;
+    }
+}
+
+fn handle_choice_buttons(
+    mut buttons: Query<(&Interaction, &ChoiceButton), (Changed<Interaction>, With<Button>)>,
+    mut dialogue: ResMut<LiveDialogueData>,
+) {
+    if !dialogue.is_waiting_for_choice() {
+        return;
+    }
+    for (interaction, button) in &mut buttons {
+        if *interaction == Interaction::Pressed {
+            if dialogue.select_choice(button.index) {
+                break;
+            }
+        }
+    }
+}
+
 fn update_dialogue_text_render(
     mut writer: MessageWriter<RogueAnimationEvent>,
     mut query: Query<
@@ -672,6 +775,17 @@ struct DialogueLine {
 }
 
 #[derive(Clone)]
+struct ChoiceOption {
+    label: String,
+}
+
+#[derive(Clone)]
+enum DialogueStep {
+    Line(DialogueLine),
+    Choice(Vec<ChoiceOption>),
+}
+
+#[derive(Clone)]
 struct LineEvent {
     trigger_index: usize,
     action: LineEventAction,
@@ -684,7 +798,7 @@ enum LineEventAction {
 
 struct ParsedScript {
     is_female: bool,
-    entries: Vec<DialogueLine>,
+    entries: Vec<DialogueStep>,
 }
 
 impl ParsedScript {
@@ -697,10 +811,13 @@ impl ParsedScript {
 #[derive(Resource)]
 struct LiveDialogueData {
     is_female: bool,
-    entries: Vec<DialogueLine>,
+    entries: Vec<DialogueStep>,
     current_index: usize,
     pending_line: Option<DialogueLine>,
     current_line: Option<usize>,
+    pending_choice: Option<Vec<ChoiceOption>>,
+    waiting_for_choice: bool,
+    choice_dirty: bool,
     highlight_dirty: bool,
     needs_text_update: bool,
     needs_gender_sync: bool,
@@ -720,6 +837,9 @@ impl Default for LiveDialogueData {
                 line_number: 0,
             }),
             current_line: None,
+            pending_choice: None,
+            waiting_for_choice: false,
+            choice_dirty: true,
             highlight_dirty: true,
             needs_text_update: true,
             needs_gender_sync: true,
@@ -746,32 +866,58 @@ impl LiveDialogueData {
         self.current_index = 0;
         self.pending_line = None;
         self.current_line = None;
+        self.pending_choice = None;
+        self.waiting_for_choice = false;
+        self.choice_dirty = true;
         self.highlight_dirty = true;
         self.finished = false;
         self.needs_gender_sync = true;
         self.last_modified = modified;
-        self.queue_next_line();
+        self.queue_next_entry();
     }
 
-    fn queue_next_line(&mut self) {
-        if let Some(next) = self.pull_next_line() {
-            self.current_line = (next.line_number > 0).then_some(next.line_number);
-            self.highlight_dirty = true;
-            self.pending_line = Some(next);
-        } else {
-            self.pending_line = Some(DialogueLine {
-                text: DIALOGUE_PLACEHOLDER.to_string(),
-                events: Vec::new(),
-                line_number: 0,
-            });
-            self.current_line = None;
-            self.highlight_dirty = true;
-            self.finished = true;
+    fn queue_next_entry(&mut self) {
+        while self.current_index < self.entries.len() {
+            match &self.entries[self.current_index] {
+                DialogueStep::Line(line) => {
+                    self.current_index += 1;
+                    self.pending_line = Some(line.clone());
+                    self.current_line = (line.line_number > 0).then_some(line.line_number);
+                    self.highlight_dirty = true;
+                    self.pending_choice = None;
+                    self.waiting_for_choice = false;
+                    self.choice_dirty = true;
+                    self.needs_text_update = true;
+                    return;
+                }
+                DialogueStep::Choice(options) => {
+                    self.current_index += 1;
+                    self.pending_choice = Some(options.clone());
+                    self.waiting_for_choice = true;
+                    self.choice_dirty = true;
+                    self.needs_text_update = false;
+                    return;
+                }
+            }
         }
+        self.pending_line = Some(DialogueLine {
+            text: DIALOGUE_PLACEHOLDER.to_string(),
+            events: Vec::new(),
+            line_number: 0,
+        });
+        self.current_line = None;
+        self.highlight_dirty = true;
+        self.pending_choice = None;
+        self.waiting_for_choice = false;
+        self.choice_dirty = true;
         self.needs_text_update = true;
+        self.finished = true;
     }
 
     fn advance_text(&mut self) -> bool {
+        if self.waiting_for_choice {
+            return false;
+        }
         if self.current_index >= self.entries.len() {
             if self.finished {
                 return false;
@@ -787,23 +933,8 @@ impl LiveDialogueData {
             self.needs_text_update = true;
             return true;
         }
-        if let Some(next) = self.pull_next_line() {
-            self.current_line = (next.line_number > 0).then_some(next.line_number);
-            self.highlight_dirty = true;
-            self.pending_line = Some(next);
-            self.needs_text_update = true;
-            return true;
-        }
-        false
-    }
-
-    fn pull_next_line(&mut self) -> Option<DialogueLine> {
-        if self.current_index >= self.entries.len() {
-            return None;
-        }
-        let line = self.entries[self.current_index].clone();
-        self.current_index += 1;
-        Some(line)
+        self.queue_next_entry();
+        true
     }
 
     fn highlight_line(&self) -> Option<usize> {
@@ -812,6 +943,29 @@ impl LiveDialogueData {
 
     fn take_highlight_dirty(&mut self) -> bool {
         std::mem::take(&mut self.highlight_dirty)
+    }
+
+    fn take_choice_dirty(&mut self) -> bool {
+        std::mem::take(&mut self.choice_dirty)
+    }
+
+    fn pending_choices(&self) -> Option<&[ChoiceOption]> {
+        self.pending_choice.as_deref()
+    }
+
+    fn is_waiting_for_choice(&self) -> bool {
+        self.waiting_for_choice
+    }
+
+    fn select_choice(&mut self, _index: usize) -> bool {
+        if !self.waiting_for_choice {
+            return false;
+        }
+        self.pending_choice = None;
+        self.waiting_for_choice = false;
+        self.choice_dirty = true;
+        self.queue_next_entry();
+        true
     }
 }
 
@@ -833,11 +987,10 @@ fn extract_is_female(contents: &str) -> bool {
     false
 }
 
-fn collect_entries(contents: &str, is_female: bool) -> Vec<DialogueLine> {
+fn collect_entries(contents: &str, is_female: bool) -> Vec<DialogueStep> {
     let mut entries = Vec::new();
     let mut contexts: Vec<ConditionalContext> = Vec::new();
     let mut lines = contents.lines().enumerate().peekable();
-
     while let Some((line_number, line)) = lines.next() {
         let trimmed = line.trim();
         if trimmed.starts_with("if (isFemale") {
@@ -858,27 +1011,36 @@ fn collect_entries(contents: &str, is_female: bool) -> Vec<DialogueLine> {
             contexts.pop();
             continue;
         }
-        let should_include = contexts.iter().all(|ctx| ctx.value);
-        if !should_include {
+        if !contexts.iter().all(|ctx| ctx.value) {
             continue;
         }
         if let Some(text) = parse_text_line(trimmed) {
-            entries.push(DialogueLine {
+            entries.push(DialogueStep::Line(DialogueLine {
                 text,
                 events: Vec::new(),
                 line_number: line_number + 1,
-            });
+            }));
             continue;
         }
         if trimmed.starts_with("with events") {
-            if let Some(last) = entries.last_mut() {
-                collect_event_entries(&mut lines, last);
+            if let Some(last) = entries.last_mut()
+                && matches!(last, DialogueStep::Line(_))
+            {
+                if let DialogueStep::Line(line) = last {
+                    collect_event_entries(&mut lines, line);
+                }
             } else {
                 consume_event_block(&mut lines);
             }
+            continue;
+        }
+        if trimmed.starts_with("choice") {
+            let options = collect_choice_entries(&mut lines);
+            if !options.is_empty() {
+                entries.push(DialogueStep::Choice(options));
+            }
         }
     }
-
     entries
 }
 
@@ -920,6 +1082,25 @@ fn consume_event_block(lines: &mut std::iter::Peekable<std::iter::Enumerate<std:
     }
 }
 
+fn collect_choice_entries(
+    lines: &mut std::iter::Peekable<std::iter::Enumerate<std::str::Lines<'_>>>,
+) -> Vec<ChoiceOption> {
+    let mut options = Vec::new();
+    while let Some((_, line_text)) = lines.next() {
+        let trimmed = line_text.trim();
+        if trimmed.starts_with(']') {
+            break;
+        }
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Some(option) = parse_choice_line(trimmed) {
+            options.push(option);
+        }
+    }
+    options
+}
+
 fn parse_event_line(line: &str) -> Option<LineEvent> {
     let cleaned = line.trim().trim_end_matches(',');
     if cleaned.is_empty() {
@@ -937,6 +1118,18 @@ fn parse_event_line(line: &str) -> Option<LineEvent> {
         });
     }
     None
+}
+
+fn parse_choice_line(line: &str) -> Option<ChoiceOption> {
+    let cleaned = line.trim().trim_end_matches(',');
+    let mut parts = cleaned.splitn(2, "->");
+    let label_part = parts.next()?.trim().trim_matches('"');
+    if label_part.is_empty() {
+        return None;
+    }
+    Some(ChoiceOption {
+        label: label_part.to_string(),
+    })
 }
 
 struct ConditionalContext {
