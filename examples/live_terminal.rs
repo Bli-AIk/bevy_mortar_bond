@@ -8,14 +8,17 @@
 
 #[path = "utils/rogue_sprite.rs"]
 mod rogue_sprite;
+#[path = "utils/typewriter.rs"]
+mod typewriter;
 
 use bevy::{
     asset::AssetPlugin,
     ecs::message::MessageReader,
     input::{
-        ButtonInput, ButtonState,
+        ButtonState,
         keyboard::{KeyCode, KeyboardInput},
     },
+    log::warn,
     prelude::*,
     ui::widget::NodeImageMode,
     window::{PresentMode, WindowResolution},
@@ -29,19 +32,26 @@ use std::{
     fs,
     io::ErrorKind,
     path::{Component, Path, PathBuf},
-    time::Duration,
+    time::{Duration, SystemTime},
 };
+use typewriter::{Typewriter, TypewriterPlugin, TypewriterState};
 
 const DEFAULT_FILE: &str = "live_example.mortar";
 const ASSET_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets");
 const LIVE_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/live");
 const FONT_PATH: &str = "font/Unifont.otf";
 const SHELL_COMMANDS: [&str; 2] = ["bevim live_example", "clear"];
+const DIALOGUE_CHAR_SPEED: f32 = 0.04;
+const DIALOGUE_PLACEHOLDER: &str = "开始编辑 live_example.mortar 以驱动台词。";
+const DIALOGUE_FINISHED_LINE: &str = "（对话结束）";
 
 fn main() {
     App::new()
         .init_resource::<TerminalMachine>()
         .init_resource::<CursorBlink>()
+        .init_resource::<LiveDialogueData>()
+        .init_resource::<LiveDialogueWatcher>()
+        .add_message::<RogueAnimationEvent>()
         .add_plugins(
             DefaultPlugins
                 .set(ImagePlugin::default_nearest())
@@ -59,6 +69,7 @@ fn main() {
                     ..default()
                 }),
         )
+        .add_plugins((TypewriterPlugin, RogueSpritePlugin))
         .add_systems(Startup, setup_ui)
         .add_systems(
             Update,
@@ -66,14 +77,23 @@ fn main() {
                 tick_cursor_blink,
                 handle_panel_focus,
                 handle_keyboard_controls,
-                handle_gender_buttons,
-                update_gender_button_colors,
-                control_preview_animation,
+                handle_dialogue_input,
+                monitor_live_example_script,
+                apply_gender_from_script,
+                apply_pending_dialogue_text,
+            ),
+        )
+        .add_systems(
+            Update,
+            (
+                update_dialogue_text_render,
+                drain_dialogue_events,
+                apply_animation_events,
+                revert_animation_to_idle,
                 refresh_terminal_display,
                 update_focus_visuals,
             ),
         )
-        .add_plugins(RogueSpritePlugin)
         .run();
 }
 
@@ -93,9 +113,10 @@ struct TerminalFont(Handle<Font>);
 struct RoguePreviewImage;
 
 #[derive(Component)]
-struct GenderButton {
-    gender: RogueGender,
-}
+struct GameDialogueText;
+
+#[derive(Component)]
+struct AnimationRevertTimer(Timer);
 
 fn setup_ui(
     mut commands: Commands,
@@ -153,7 +174,7 @@ fn setup_ui(
                         padding: UiRect::all(Val::Px(16.0)),
                         border: UiRect::all(Val::Px(2.0)),
                         flex_direction: FlexDirection::Column,
-                        row_gap: Val::Px(12.0),
+                        row_gap: Val::Px(16.0),
                         ..default()
                     },
                     BackgroundColor(Color::srgb(0.1, 0.1, 0.15)),
@@ -161,78 +182,55 @@ fn setup_ui(
                 ))
                 .with_children(|game_panel| {
                     game_panel
-                        .spawn(Node {
-                            width: Val::Percent(100.0),
-                            flex_direction: FlexDirection::Column,
-                            row_gap: Val::Px(8.0),
-                            ..default()
-                        })
-                        .with_children(|setup| {
-                            setup.spawn((
-                                Text::new("SetUp"),
-                                TextFont {
-                                    font: font.clone(),
-                                    font_size: 22.0,
-                                    ..default()
-                                },
-                                TextColor(Color::srgb(0.9, 0.9, 1.0)),
-                            ));
-
-                            setup
-                                .spawn(Node {
-                                    width: Val::Percent(100.0),
-                                    flex_direction: FlexDirection::Row,
-                                    column_gap: Val::Px(12.0),
-                                    ..default()
-                                })
-                                .with_children(|row| {
-                                    for (gender, label) in [
-                                        (RogueGender::Male, "Male (rows 1-5)"),
-                                        (RogueGender::Female, "Female (rows 6-10)"),
-                                    ] {
-                                        row.spawn((
-                                            Button,
-                                            GenderButton { gender },
-                                            Node {
-                                                padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
-                                                border: UiRect::all(Val::Px(1.0)),
-                                                ..default()
-                                            },
-                                            BackgroundColor(Color::srgb(0.15, 0.18, 0.25)),
-                                            BorderColor::all(Color::srgb(0.4, 0.6, 0.9)),
-                                        ))
-                                        .with_children(
-                                            |button| {
-                                                button.spawn((
-                                                    Text::new(label),
-                                                    TextFont {
-                                                        font: font.clone(),
-                                                        font_size: 18.0,
-                                                        ..default()
-                                                    },
-                                                    TextColor(Color::srgb(0.9, 0.9, 1.0)),
-                                                ));
-                                            },
-                                        );
-                                    }
-                                });
-                        });
-
-                    game_panel
-                        .spawn(Node {
-                            width: Val::Percent(100.0),
-                            flex_grow: 1.0,
-                            align_items: AlignItems::Stretch,
-                            justify_content: JustifyContent::Center,
-                            ..default()
-                        })
-                        .with_children(|preview_area| {
-                            preview_area
+                        .spawn((
+                            Node {
+                                width: Val::Percent(100.0),
+                                flex_grow: 1.0,
+                                flex_direction: FlexDirection::Column,
+                                row_gap: Val::Px(12.0),
+                                ..default()
+                            },
+                            BackgroundColor(Color::NONE),
+                        ))
+                        .with_children(|column| {
+                            column
                                 .spawn((
                                     Node {
                                         width: Val::Percent(100.0),
-                                        height: Val::Percent(100.0),
-                                        align_items: AlignItems::Center,
+                                        padding: UiRect::all(Val::Px(12.0)),
+                                        border: UiRect::all(Val::Px(2.0)),
+                                        ..default()
+                                    },
+                                    BackgroundColor(Color::srgb(0.08, 0.08, 0.12)),
+                                    BorderColor::all(Color::srgb(0.4, 0.5, 0.7)),
+                                ))
+                                .with_children(|dialogue_box| {
+                                    let mut initial_typewriter =
+                                        Typewriter::new(DIALOGUE_PLACEHOLDER, DIALOGUE_CHAR_SPEED);
+                                    initial_typewriter.current_text =
+                                        DIALOGUE_PLACEHOLDER.to_string();
+                                    initial_typewriter.current_char_index =
+                                        DIALOGUE_PLACEHOLDER.chars().count();
+                                    initial_typewriter.state = TypewriterState::Finished;
+                                    dialogue_box.spawn((
+                                        Text::new(DIALOGUE_PLACEHOLDER),
+                                        TextFont {
+                                            font: font.clone(),
+                                            font_size: 20.0,
+                                            ..default()
+                                        },
+                                        TextColor(Color::srgb(0.9, 0.9, 1.0)),
+                                        GameDialogueText,
+                                        initial_typewriter,
+                                    ));
+                                });
+
+                            column
+                                .spawn((
+                                    Node {
+                                        width: Val::Percent(100.0),
+                                        flex_grow: 1.0,
+                                        align_items: AlignItems::Stretch,
                                         justify_content: JustifyContent::Center,
                                         border: UiRect::all(Val::Px(2.0)),
                                         ..default()
@@ -241,29 +239,44 @@ fn setup_ui(
                                     BorderColor::all(Color::srgb(0.3, 0.3, 0.4)),
                                 ))
                                 .with_children(|preview_box| {
-                                    let sprite =
-                                        RogueSprite::new(RogueGender::Male, RogueAnimation::Idle);
-                                    let mut image = rogue_sheet.image_node(&sprite);
-                                    image.image_mode = NodeImageMode::Stretch;
-                                    preview_box.spawn((
-                                        RoguePreviewImage,
-                                        sprite,
-                                        RogueAnimationState::default(),
-                                        image,
-                                        Node {
-                                            width: Val::Px(192.0),
-                                            height: Val::Px(192.0),
-                                            ..default()
-                                        },
-                                    ));
+                                    preview_box
+                                        .spawn((
+                                            Node {
+                                                width: Val::Percent(100.0),
+                                                height: Val::Percent(100.0),
+                                                align_items: AlignItems::Center,
+                                                justify_content: JustifyContent::Center,
+                                                ..default()
+                                            },
+                                            BackgroundColor(Color::NONE),
+                                        ))
+                                        .with_children(|center| {
+                                            let sprite = RogueSprite::new(
+                                                RogueGender::Male,
+                                                RogueAnimation::Idle,
+                                            );
+                                            let mut image = rogue_sheet.image_node(&sprite);
+                                            image.image_mode = NodeImageMode::Stretch;
+                                            center.spawn((
+                                                RoguePreviewImage,
+                                                sprite,
+                                                RogueAnimationState::default(),
+                                                image,
+                                                Node {
+                                                    width: Val::Px(192.0),
+                                                    height: Val::Px(192.0),
+                                                    ..default()
+                                                },
+                                            ));
+                                        });
                                 });
                         });
 
                     game_panel.spawn((
                         Text::new(
-                            "The character plays Idle by default.\n\
-                             Press and hold the P key to preview the Walk animation, release to resume.\n\
-                             Click this panel to capture this input.",
+                            "按 Z 以步进对话。\n\
+                             live_example.mortar 中的 isFemale 常量决定角色性别。\n\
+                             点击此面板以捕获该输入。",
                         ),
                         TextFont {
                             font,
@@ -292,54 +305,6 @@ fn handle_panel_focus(
         if *interaction == Interaction::Pressed {
             machine.set_focus(false);
         }
-    }
-}
-
-fn handle_gender_buttons(
-    mut buttons: Query<(&Interaction, &GenderButton), (Changed<Interaction>, With<Button>)>,
-    mut preview: Query<&mut RogueSprite, With<RoguePreviewImage>>,
-) {
-    let Ok(mut sprite) = preview.single_mut() else {
-        return;
-    };
-    for (interaction, gender_button) in &mut buttons {
-        if *interaction == Interaction::Pressed && sprite.gender != gender_button.gender {
-            sprite.gender = gender_button.gender;
-        }
-    }
-}
-
-fn update_gender_button_colors(
-    preview: Query<&RogueSprite, With<RoguePreviewImage>>,
-    mut buttons: Query<(&GenderButton, &mut BackgroundColor)>,
-) {
-    let Ok(sprite) = preview.single() else {
-        return;
-    };
-    for (button, mut color) in &mut buttons {
-        let selected = button.gender == sprite.gender;
-        color.0 = if selected {
-            Color::srgb(0.25, 0.32, 0.55)
-        } else {
-            Color::srgb(0.15, 0.18, 0.25)
-        };
-    }
-}
-
-fn control_preview_animation(
-    keys: Res<ButtonInput<KeyCode>>,
-    mut preview: Query<&mut RogueSprite, With<RoguePreviewImage>>,
-) {
-    let Ok(mut sprite) = preview.single_mut() else {
-        return;
-    };
-    let target = if keys.pressed(KeyCode::KeyP) {
-        RogueAnimation::Walk
-    } else {
-        RogueAnimation::Idle
-    };
-    if sprite.animation != target {
-        sprite.animation = target;
     }
 }
 
@@ -374,6 +339,36 @@ fn handle_keyboard_controls(
             KeyCode::ArrowUp => machine.move_cursor_up(),
             KeyCode::ArrowDown => machine.move_cursor_down(),
             _ => {}
+        }
+    }
+}
+
+fn handle_dialogue_input(
+    mut inputs: MessageReader<KeyboardInput>,
+    machine: Res<TerminalMachine>,
+    mut dialogue: ResMut<LiveDialogueData>,
+    mut text_query: Query<&mut Typewriter, With<GameDialogueText>>,
+) {
+    if machine.focused {
+        return;
+    }
+    let Ok(mut typewriter) = text_query.single_mut() else {
+        return;
+    };
+    for input in inputs.read() {
+        if input.state != ButtonState::Pressed {
+            continue;
+        }
+        if input.key_code == KeyCode::KeyZ {
+            if typewriter.is_playing() {
+                typewriter.current_text = typewriter.source_text.clone();
+                typewriter.current_char_index = typewriter.source_text.chars().count();
+                typewriter.state = TypewriterState::Finished;
+            } else if typewriter.state == TypewriterState::Finished
+                || typewriter.state == TypewriterState::Idle
+            {
+                dialogue.advance_text();
+            }
         }
     }
 }
@@ -468,6 +463,399 @@ fn update_focus_visuals(
             Color::srgb(0.7, 0.7, 0.7)
         };
         *border = BorderColor::all(color);
+    }
+}
+
+fn apply_gender_from_script(
+    mut dialogue: ResMut<LiveDialogueData>,
+    mut preview: Query<&mut RogueSprite, With<RoguePreviewImage>>,
+) {
+    if !dialogue.needs_gender_sync {
+        return;
+    }
+    let Ok(mut sprite) = preview.single_mut() else {
+        return;
+    };
+    let target = if dialogue.is_female {
+        RogueGender::Female
+    } else {
+        RogueGender::Male
+    };
+    sprite.gender = target;
+    dialogue.needs_gender_sync = false;
+}
+
+fn apply_pending_dialogue_text(
+    mut dialogue: ResMut<LiveDialogueData>,
+    mut text_query: Query<&mut Typewriter, With<GameDialogueText>>,
+) {
+    if !dialogue.needs_text_update {
+        return;
+    }
+    let Some(next_line) = dialogue.pending_text.take() else {
+        dialogue.needs_text_update = false;
+        return;
+    };
+    let Ok(mut typewriter) = text_query.single_mut() else {
+        return;
+    };
+    *typewriter = Typewriter::new(next_line, DIALOGUE_CHAR_SPEED);
+    typewriter.play();
+    dialogue.needs_text_update = false;
+}
+
+fn update_dialogue_text_render(mut query: Query<(&Typewriter, &mut Text), With<GameDialogueText>>) {
+    for (typewriter, mut text) in &mut query {
+        **text = typewriter.current_text.clone();
+    }
+}
+
+fn monitor_live_example_script(
+    time: Res<Time>,
+    mut watcher: ResMut<LiveDialogueWatcher>,
+    mut dialogue: ResMut<LiveDialogueData>,
+) {
+    if !watcher.timer.tick(time.delta()).just_finished() {
+        return;
+    }
+    let path = live_root_path().join(DEFAULT_FILE);
+    let modified = fs::metadata(&path)
+        .ok()
+        .and_then(|meta| meta.modified().ok());
+    if dialogue.last_modified == modified {
+        return;
+    }
+    match ParsedScript::from_path(&path) {
+        Ok(parsed) => dialogue.apply_parsed(parsed, modified),
+        Err(err) => warn!("无法解析 {}: {}", path.display(), err),
+    }
+}
+
+fn drain_dialogue_events(
+    mut dialogue: ResMut<LiveDialogueData>,
+    mut writer: MessageWriter<RogueAnimationEvent>,
+) {
+    for event in dialogue.drain_events() {
+        if let DialogueEvent::PlayAnim(anim) = event {
+            if let Some(animation) = animation_from_label(&anim) {
+                writer.write(RogueAnimationEvent { animation });
+            }
+        }
+    }
+}
+
+fn apply_animation_events(
+    mut commands: Commands,
+    mut events: MessageReader<RogueAnimationEvent>,
+    mut preview: Query<(Entity, &mut RogueSprite), With<RoguePreviewImage>>,
+) {
+    let Ok((entity, mut sprite)) = preview.single_mut() else {
+        for _ in events.read() {}
+        return;
+    };
+    for event in events.read() {
+        if sprite.animation != event.animation {
+            sprite.animation = event.animation;
+        }
+        if matches!(event.animation, RogueAnimation::Attack) {
+            commands
+                .entity(entity)
+                .insert(AnimationRevertTimer(Timer::from_seconds(
+                    0.8,
+                    TimerMode::Once,
+                )));
+        }
+    }
+}
+
+fn revert_animation_to_idle(
+    time: Res<Time>,
+    mut commands: Commands,
+    mut query: Query<
+        (Entity, &mut AnimationRevertTimer, &mut RogueSprite),
+        With<RoguePreviewImage>,
+    >,
+) {
+    for (entity, mut timer, mut sprite) in &mut query {
+        if timer.0.tick(time.delta()).finished() {
+            sprite.animation = RogueAnimation::Idle;
+            commands.entity(entity).remove::<AnimationRevertTimer>();
+        }
+    }
+}
+
+fn animation_from_label(label: &str) -> Option<RogueAnimation> {
+    match label.to_ascii_lowercase().as_str() {
+        "idle" => Some(RogueAnimation::Idle),
+        "walk" => Some(RogueAnimation::Walk),
+        "attack" => Some(RogueAnimation::Attack),
+        "gesture" => Some(RogueAnimation::Gesture),
+        "death" => Some(RogueAnimation::Death),
+        _ => None,
+    }
+}
+
+#[derive(Message)]
+struct RogueAnimationEvent {
+    animation: RogueAnimation,
+}
+
+#[derive(Resource)]
+struct LiveDialogueWatcher {
+    timer: Timer,
+}
+
+impl Default for LiveDialogueWatcher {
+    fn default() -> Self {
+        Self {
+            timer: Timer::from_seconds(0.5, TimerMode::Repeating),
+        }
+    }
+}
+
+#[derive(Clone)]
+enum DialogueEntry {
+    Text(String),
+    Event(DialogueEvent),
+}
+
+#[derive(Clone)]
+enum DialogueEvent {
+    PlayAnim(String),
+}
+
+struct ParsedScript {
+    is_female: bool,
+    entries: Vec<DialogueEntry>,
+}
+
+impl ParsedScript {
+    fn from_path(path: &Path) -> Result<Self, std::io::Error> {
+        let contents = fs::read_to_string(path)?;
+        Ok(parse_script_contents(&contents))
+    }
+}
+
+#[derive(Resource)]
+struct LiveDialogueData {
+    is_female: bool,
+    entries: Vec<DialogueEntry>,
+    current_index: usize,
+    pending_text: Option<String>,
+    pending_events: Vec<DialogueEvent>,
+    needs_text_update: bool,
+    needs_gender_sync: bool,
+    finished: bool,
+    last_modified: Option<SystemTime>,
+}
+
+impl Default for LiveDialogueData {
+    fn default() -> Self {
+        let mut data = Self {
+            is_female: false,
+            entries: Vec::new(),
+            current_index: 0,
+            pending_text: Some(DIALOGUE_PLACEHOLDER.to_string()),
+            pending_events: Vec::new(),
+            needs_text_update: true,
+            needs_gender_sync: true,
+            finished: false,
+            last_modified: None,
+        };
+        let path = live_root_path().join(DEFAULT_FILE);
+        if let Ok(parsed) = ParsedScript::from_path(&path) {
+            let modified = fs::metadata(&path)
+                .ok()
+                .and_then(|meta| meta.modified().ok());
+            data.apply_parsed(parsed, modified);
+        } else {
+            warn!("初始化对话数据失败：无法读取 {}", path.display());
+        }
+        data
+    }
+}
+
+impl LiveDialogueData {
+    fn apply_parsed(&mut self, parsed: ParsedScript, modified: Option<SystemTime>) {
+        self.is_female = parsed.is_female;
+        self.entries = parsed.entries;
+        self.current_index = 0;
+        self.pending_events.clear();
+        self.finished = false;
+        self.pending_text = None;
+        self.needs_gender_sync = true;
+        self.last_modified = modified;
+        self.queue_next_text();
+    }
+
+    fn queue_next_text(&mut self) {
+        if let Some(next) = self.pull_next_text() {
+            self.pending_text = Some(next);
+        } else {
+            self.pending_text = Some(DIALOGUE_PLACEHOLDER.to_string());
+            self.finished = true;
+        }
+        self.needs_text_update = true;
+    }
+
+    fn advance_text(&mut self) -> bool {
+        if self.current_index >= self.entries.len() {
+            if self.finished {
+                return false;
+            }
+            self.finished = true;
+            self.pending_text = Some(DIALOGUE_FINISHED_LINE.to_string());
+            self.needs_text_update = true;
+            return true;
+        }
+        if let Some(next) = self.pull_next_text() {
+            self.pending_text = Some(next);
+            self.needs_text_update = true;
+            return true;
+        }
+        false
+    }
+
+    fn pull_next_text(&mut self) -> Option<String> {
+        while self.current_index < self.entries.len() {
+            match &self.entries[self.current_index] {
+                DialogueEntry::Text(text) => {
+                    self.current_index += 1;
+                    return Some(text.clone());
+                }
+                DialogueEntry::Event(event) => {
+                    self.pending_events.push(event.clone());
+                    self.current_index += 1;
+                }
+            }
+        }
+        None
+    }
+
+    fn drain_events(&mut self) -> Vec<DialogueEvent> {
+        if self.pending_events.is_empty() {
+            Vec::new()
+        } else {
+            self.pending_events.drain(..).collect()
+        }
+    }
+}
+
+fn parse_script_contents(contents: &str) -> ParsedScript {
+    let is_female = extract_is_female(contents);
+    let entries = collect_entries(contents, is_female);
+    ParsedScript { is_female, entries }
+}
+
+fn extract_is_female(contents: &str) -> bool {
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("pub const isFemale") {
+            if let Some(value) = trimmed.split('=').nth(1) {
+                return value.to_ascii_lowercase().contains("true");
+            }
+        }
+    }
+    false
+}
+
+fn collect_entries(contents: &str, is_female: bool) -> Vec<DialogueEntry> {
+    let mut entries = Vec::new();
+    let mut contexts: Vec<ConditionalContext> = Vec::new();
+    let mut lines = contents.lines().peekable();
+
+    while let Some(line) = lines.next() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("if (isFemale") {
+            contexts.push(ConditionalContext::new(is_female));
+            continue;
+        }
+        if trimmed.starts_with("if (!isFemale") {
+            contexts.push(ConditionalContext::new(!is_female));
+            continue;
+        }
+        if trimmed.starts_with("} else {") {
+            if let Some(ctx) = contexts.last_mut() {
+                ctx.value = !ctx.cond_result;
+            }
+            continue;
+        }
+        if trimmed == "}" {
+            contexts.pop();
+            continue;
+        }
+        let should_include = contexts.iter().all(|ctx| ctx.value);
+        if !should_include {
+            continue;
+        }
+        if let Some(text) = parse_text_line(trimmed) {
+            entries.push(DialogueEntry::Text(text));
+            continue;
+        }
+        if trimmed.starts_with("with events") {
+            collect_event_entries(&mut lines, &mut entries);
+        }
+    }
+
+    entries
+}
+
+fn parse_text_line(line: &str) -> Option<String> {
+    if !line.starts_with("text:") {
+        return None;
+    }
+    let mut parts = line.splitn(2, '"');
+    parts.next()?;
+    let rest = parts.next()?;
+    let mut segments = rest.splitn(2, '"');
+    let content = segments.next()?;
+    Some(content.to_string())
+}
+
+fn collect_event_entries(
+    lines: &mut std::iter::Peekable<std::str::Lines<'_>>,
+    entries: &mut Vec<DialogueEntry>,
+) {
+    while let Some(line) = lines.next() {
+        let trimmed = line.trim();
+        if trimmed.starts_with(']') {
+            break;
+        }
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Some(event) = parse_event_line(trimmed) {
+            entries.push(DialogueEntry::Event(event));
+        }
+    }
+}
+
+fn parse_event_line(line: &str) -> Option<DialogueEvent> {
+    let cleaned = line.trim().trim_end_matches(',');
+    if cleaned.is_empty() {
+        return None;
+    }
+    let mut parts = cleaned.splitn(2, ',');
+    parts.next()?; // skip index
+    let action = parts.next()?.trim();
+    if let Some(name) = action.strip_prefix("play_anim(") {
+        let label = name.trim().trim_matches(|c| c == '"' || c == ')');
+        return Some(DialogueEvent::PlayAnim(label.to_string()));
+    }
+    None
+}
+
+struct ConditionalContext {
+    cond_result: bool,
+    value: bool,
+}
+
+impl ConditionalContext {
+    fn new(cond_result: bool) -> Self {
+        Self {
+            cond_result,
+            value: cond_result,
+        }
     }
 }
 
