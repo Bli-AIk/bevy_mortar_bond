@@ -6,9 +6,9 @@
 mod core_tests {
     use crate::*;
 
-    // =============================================================================
-    // MortarEventTracker Tests
-    // =============================================================================
+    // MortarEventTracker tests.
+    //
+    // MortarEventTracker 测试。
 
     #[test]
     fn test_event_tracker_creation() {
@@ -50,24 +50,32 @@ mod core_tests {
         let mut tracker = MortarEventTracker::new(events);
         let runtime = MortarRuntime::default();
 
-        // Before reaching first event
-        let actions = tracker.trigger_at_index(4, &runtime);
+        // Before reaching first event.
+        //
+        // 在到达第一个事件之前。
+        let actions = tracker.trigger_at_index(4.0, &runtime);
         assert_eq!(actions.len(), 0);
         assert_eq!(tracker.fired_count(), 0);
 
-        // Reach first event
-        let actions = tracker.trigger_at_index(5, &runtime);
+        // Reach first event.
+        //
+        // 触发第一个事件。
+        let actions = tracker.trigger_at_index(5.0, &runtime);
         assert_eq!(actions.len(), 1);
         assert_eq!(actions[0].action_name, "play_sound");
         assert_eq!(tracker.fired_count(), 1);
 
-        // Don't re-trigger first event
-        let actions = tracker.trigger_at_index(6, &runtime);
+        // Don't re-trigger first event.
+        //
+        // 不应重复触发第一个事件。
+        let actions = tracker.trigger_at_index(6.0, &runtime);
         assert_eq!(actions.len(), 0);
         assert_eq!(tracker.fired_count(), 1);
 
-        // Trigger second event
-        let actions = tracker.trigger_at_index(10, &runtime);
+        // Trigger second event.
+        //
+        // 触发第二个事件。
+        let actions = tracker.trigger_at_index(10.0, &runtime);
         assert_eq!(actions.len(), 1);
         assert_eq!(actions[0].action_name, "set_color");
         assert_eq!(tracker.fired_count(), 2);
@@ -87,23 +95,29 @@ mod core_tests {
         let mut tracker = MortarEventTracker::new(events);
         let runtime = MortarRuntime::default();
 
-        // Trigger event
-        let _ = tracker.trigger_at_index(5, &runtime);
+        // Trigger event.
+        //
+        // 触发事件。
+        let _ = tracker.trigger_at_index(5.0, &runtime);
         assert_eq!(tracker.fired_count(), 1);
 
-        // Reset
+        // Reset.
+        //
+        // 重置。
         tracker.reset();
         assert_eq!(tracker.fired_count(), 0);
 
-        // Can trigger again after reset
-        let actions = tracker.trigger_at_index(5, &runtime);
+        // Can trigger again after reset.
+        //
+        // 重置后可再次触发。
+        let actions = tracker.trigger_at_index(5.0, &runtime);
         assert_eq!(actions.len(), 1);
         assert_eq!(tracker.fired_count(), 1);
     }
 
-    // =============================================================================
-    // DialogueState Tests
-    // =============================================================================
+    // DialogueState tests.
+    //
+    // DialogueState 测试。
 
     fn create_test_node() -> Node {
         use serde_json::json;
@@ -143,16 +157,22 @@ mod core_tests {
         let node = create_test_node();
         let mut state = DialogueState::new("test.mortar".to_string(), "TestNode".to_string(), node);
 
-        // Initial state
+        // Initial state.
+        //
+        // 初始状态。
         assert_eq!(state.current_text(), Some("First text"));
         assert!(state.has_next_text());
 
-        // Advance to next text
+        // Advance to next text.
+        //
+        // 前进到下一条文本。
         assert!(state.next_text());
         assert_eq!(state.current_text(), Some("Second text"));
         assert!(!state.has_next_text());
 
-        // Can't advance beyond last text
+        // Can't advance beyond last text.
+        //
+        // 不能越过最后一条文本。
         assert!(!state.next_text());
         assert_eq!(state.text_index, 1);
     }
@@ -162,11 +182,15 @@ mod core_tests {
         let node = create_test_node();
         let mut state = DialogueState::new("test.mortar".to_string(), "TestNode".to_string(), node);
 
-        // Advance to second text
+        // Advance to second text.
+        //
+        // 前进到第二条文本。
         state.next_text();
         assert_eq!(state.text_index, 1);
 
-        // Reset
+        // Reset.
+        //
+        // 重置。
         state.reset();
         assert_eq!(state.text_index, 0);
         assert_eq!(state.current_text(), Some("First text"));
@@ -177,10 +201,14 @@ mod core_tests {
         let node = create_test_node();
         let mut state = DialogueState::new("test.mortar".to_string(), "TestNode".to_string(), node);
 
-        // Initially empty
+        // Initially empty.
+        //
+        // 初始为空。
         assert_eq!(state.choice_stack.len(), 0);
 
-        // Push choices
+        // Push choices.
+        //
+        // 推入选项。
         state.push_choice(0);
         assert_eq!(state.choice_stack.len(), 1);
         assert_eq!(state.selected_choice, None);
@@ -188,11 +216,15 @@ mod core_tests {
         state.push_choice(1);
         assert_eq!(state.choice_stack.len(), 2);
 
-        // Pop choices
+        // Pop choices.
+        //
+        // 弹出选项。
         assert_eq!(state.pop_choice(), Some(1));
         assert_eq!(state.choice_stack.len(), 1);
 
-        // Clear stack
+        // Clear stack.
+        //
+        // 清空堆栈。
         state.clear_choice_stack();
         assert_eq!(state.choice_stack.len(), 0);
     }
@@ -202,13 +234,17 @@ mod core_tests {
         let node = create_test_node();
         let mut state = DialogueState::new("test.mortar".to_string(), "TestNode".to_string(), node);
 
-        // Mark content items as executed
+        // Mark content items as executed.
+        //
+        // 标记内容项为已执行。
         state.mark_content_executed(0);
         state.mark_content_executed(1);
         assert!(state.executed_content_indices.contains(&0));
         assert!(state.executed_content_indices.contains(&1));
 
-        // Don't duplicate
+        // Don't duplicate.
+        //
+        // 不要重复记录。
         state.mark_content_executed(0);
         assert_eq!(
             state
@@ -224,7 +260,9 @@ mod core_tests {
     fn test_dialogue_state_has_next_text_before_choice() {
         use serde_json::json;
 
-        // Create node with text, choice, text pattern
+        // Create node with text, choice, text pattern.
+        //
+        // 创建包含文本、选项与文本组合的节点。
         let node = Node {
             name: "TestNode".to_string(),
             content: vec![
@@ -253,13 +291,15 @@ mod core_tests {
 
         let state = DialogueState::new("test.mortar".to_string(), "TestNode".to_string(), node);
 
-        // At text_index 0, there's a choice before the next text
+        // At text_index 0, there's a choice before the next text.
+        //
+        // 在 text_index 0 时，下一段文本前存在一个选项。
         assert!(!state.has_next_text_before_choice());
     }
 
-    // =============================================================================
-    // MortarValue Tests
-    // =============================================================================
+    // MortarValue tests.
+    //
+    // MortarValue 测试。
 
     #[test]
     fn test_mortar_value_parse_string() {
@@ -310,9 +350,9 @@ mod core_tests {
         );
     }
 
-    // =============================================================================
-    // MortarVariableState Tests
-    // =============================================================================
+    // MortarVariableState tests.
+    //
+    // MortarVariableState 测试。
 
     #[test]
     fn test_variable_state_from_variables() {
@@ -351,11 +391,15 @@ mod core_tests {
 
         let mut state = MortarVariableState::from_variables(&variables, &[]);
 
-        // Update variable
+        // Update variable.
+        //
+        // 更新变量。
         state.execute_assignment("count", "42");
         assert_eq!(state.get("count"), Some(&MortarVariableValue::Number(42.0)));
 
-        // Update string (note: execute_assignment stores the raw value including quotes)
+        // Update string (note: execute_assignment stores the raw value including quotes).
+        //
+        // 更新字符串（execute_assignment 会保留包含引号的原值）。
         state.execute_assignment("count", "\"text\"");
         assert_eq!(
             state.get("count"),
@@ -380,7 +424,9 @@ mod core_tests {
 
         let state = MortarVariableState::from_variables(&variables, &[]);
 
-        // Test identifier condition (true boolean variable)
+        // Test identifier condition (true boolean variable).
+        //
+        // 测试标识符条件（布尔变量为真）。
         let condition = mortar_compiler::IfCondition {
             cond_type: "identifier".to_string(),
             operator: None,
@@ -391,7 +437,9 @@ mod core_tests {
         };
         assert!(state.evaluate_condition(&condition));
 
-        // Test identifier condition (false boolean variable)
+        // Test identifier condition (false boolean variable).
+        //
+        // 测试标识符条件（布尔变量为假）。
         let condition = mortar_compiler::IfCondition {
             cond_type: "identifier".to_string(),
             operator: None,
@@ -419,26 +467,30 @@ mod core_tests {
         );
     }
 
-    // =============================================================================
-    // MortarRegistry Tests
-    // =============================================================================
+    // MortarRegistry tests.
+    //
+    // MortarRegistry 测试。
 
     #[test]
     fn test_registry_register_and_get() {
         let mut registry = MortarRegistry::default();
         let handle: Handle<MortarAsset> = Handle::default();
 
-        // Register asset
+        // Register asset.
+        //
+        // 注册资源。
         registry.register("test.mortar", handle.clone());
 
-        // Retrieve asset
+        // Retrieve asset.
+        //
+        // 获取资源。
         assert!(registry.get("test.mortar").is_some());
         assert!(registry.get("nonexistent.mortar").is_none());
     }
 
-    // =============================================================================
-    // Interpolation Tests
-    // =============================================================================
+    // Interpolation tests.
+    //
+    // 插值测试。
 
     #[test]
     fn test_process_interpolated_text_no_interpolation() {
@@ -507,21 +559,17 @@ mod core_tests {
         assert_eq!(result, "Hello Alice!");
     }
 
-    // =============================================================================
-    // Integration Tests
-    // =============================================================================
+    // Integration tests.
+    //
+    // 集成测试。
 
-    // Disabled: Needs update for new content structure
-    // #[test]
-    // fn test_dialogue_flow_with_choices() {
-    //     // TODO: Rewrite using new content array structure with choice items
-    // }
+    // Disabled: Needs update for new content structure.
+    //
+    // 已禁用：需要根据新的内容结构更新。
 
-    // Disabled: Needs update for new content structure
-    // #[test]
-    // fn test_dialogue_state_with_choice_position() {
-    //     // TODO: Test choice position using new content array structure
-    // }
+    // Disabled: Needs update for new content structure.
+    //
+    // 已禁用：需要根据新的内容结构更新。
 
     #[test]
     fn test_event_with_index_variable() {
@@ -537,15 +585,17 @@ mod core_tests {
         assert_eq!(event.index_variable, Some("custom_time".to_string()));
     }
 
-    // =============================================================================
-    // MortarFunctionRegistry Tests
-    // =============================================================================
+    // MortarFunctionRegistry tests.
+    //
+    // MortarFunctionRegistry 测试。
 
     #[test]
     fn test_function_registry_register_and_call() {
         let mut registry = MortarFunctionRegistry::new();
 
-        // Register a test function
+        // Register a test function.
+        //
+        // 注册一个测试函数。
         registry.register("test_func", |args| {
             if let Some(MortarValue::String(s)) = args.first() {
                 MortarValue::String(MortarString(format!("Result: {}", s.0)))
@@ -554,7 +604,9 @@ mod core_tests {
             }
         });
 
-        // Call the function
+        // Call the function.
+        //
+        // 调用该函数。
         let result = registry.call(
             "test_func",
             &[MortarValue::String(MortarString("hello".to_string()))],
@@ -565,14 +617,16 @@ mod core_tests {
             _ => panic!("Expected String result"),
         }
 
-        // Call non-existent function
+        // Call non-existent function.
+        //
+        // 调用不存在的函数。
         let result = registry.call("non_existent", &[]);
         assert!(result.is_none());
     }
 
-    // =============================================================================
-    // Additional DialogueState Tests
-    // =============================================================================
+    // Additional DialogueState tests.
+    //
+    // 额外的 DialogueState 测试。
 
     #[test]
     fn test_dialogue_state_get_next_node() {
@@ -582,27 +636,20 @@ mod core_tests {
         assert_eq!(state.get_next_node(), Some("NextNode"));
     }
 
-    // Disabled: Needs update for new content structure
-    // #[test]
-    // fn test_dialogue_state_node_data() {
-    //     let node = create_test_node();
-    //     let state = DialogueState::new("test.mortar".to_string(), "TestNode".to_string(), node);
+    // Disabled: Needs update for new content structure.
     //
-    //     let node_data = state.node_data();
-    //     assert_eq!(node_data.name, "TestNode");
-    //     assert_eq!(node_data.content.len(), 2);
-    // }
+    // 已禁用：需要根据新的内容结构更新。
 
-    // Disabled: Needs complete rewrite for new content structure
-    // Use get_runs_at_content_position instead of get_runs_at_position
-    // #[test]
-    // fn test_dialogue_state_get_runs_at_content_position() {
-    //     // TODO: Rewrite this test using the new content array structure
-    // }
+    // Disabled: Needs complete rewrite for new content structure.
+    //
+    // 已禁用：需要依据新的内容结构彻底重写。
+    // Use get_runs_at_content_position instead of get_runs_at_position.
+    //
+    // 请改用 get_runs_at_content_position 取代 get_runs_at_position。
 
-    // =============================================================================
-    // Variable State Advanced Tests
-    // =============================================================================
+    // Variable state advanced tests.
+    //
+    // 变量状态高级测试。
 
     #[test]
     fn test_variable_state_branch_text() {
@@ -632,11 +679,15 @@ mod core_tests {
 
         let mut state = MortarVariableState::from_variables(&variables, &[]);
 
-        // Parse number
+        // Parse number.
+        //
+        // 解析数字。
         state.execute_assignment("test", "100");
         assert_eq!(state.get("test"), Some(&MortarVariableValue::Number(100.0)));
 
-        // Parse boolean
+        // Parse boolean.
+        //
+        // 解析布尔值。
         state.execute_assignment("test", "true");
         assert_eq!(state.get("test"), Some(&MortarVariableValue::Boolean(true)));
 
@@ -647,9 +698,9 @@ mod core_tests {
         );
     }
 
-    // =============================================================================
-    // Condition Evaluation Tests
-    // =============================================================================
+    // Condition evaluation tests.
+    //
+    // 条件求值测试。
 
     #[test]
     fn test_evaluate_condition_with_function() {
@@ -661,7 +712,9 @@ mod core_tests {
             args: vec![],
         };
 
-        // Function not found should return false
+        // Function not found should return false.
+        //
+        // 找不到函数时应返回 false。
         let result = evaluate_condition(&condition, &functions, &function_decls);
         assert!(!result);
     }
@@ -670,7 +723,9 @@ mod core_tests {
     fn test_evaluate_condition_with_registered_function() {
         let mut functions = MortarFunctionRegistry::new();
 
-        // Register a condition function
+        // Register a condition function.
+        //
+        // 注册条件函数。
         functions.register("has_key", |_args| MortarValue::Boolean(MortarBoolean(true)));
 
         let function_decls = vec![];
@@ -683,34 +738,42 @@ mod core_tests {
         assert!(result);
     }
 
-    // =============================================================================
-    // MortarValue Advanced Tests
-    // =============================================================================
+    // MortarValue advanced tests.
+    //
+    // MortarValue 高级测试。
 
     #[test]
     fn test_mortar_value_parse_edge_cases() {
-        // Parse empty string
+        // Parse empty string.
+        //
+        // 解析空字符串。
         let val = MortarValue::parse("");
         match val {
             MortarValue::String(s) => assert_eq!(s.0, ""),
             _ => panic!("Expected String"),
         }
 
-        // Parse quoted empty string
+        // Parse quoted empty string.
+        //
+        // 解析带引号的空字符串。
         let val = MortarValue::parse("\"\"");
         match val {
             MortarValue::String(s) => assert_eq!(s.0, ""),
             _ => panic!("Expected String"),
         }
 
-        // Parse negative number
+        // Parse negative number.
+        //
+        // 解析负数。
         let val = MortarValue::parse("-42.5");
         match val {
             MortarValue::Number(n) => assert_eq!(n.0, -42.5),
             _ => panic!("Expected Number"),
         }
 
-        // Parse zero
+        // Parse zero.
+        //
+        // 解析零值。
         let val = MortarValue::parse("0");
         match val {
             MortarValue::Number(n) => assert_eq!(n.0, 0.0),
@@ -718,9 +781,9 @@ mod core_tests {
         }
     }
 
-    // =============================================================================
-    // Text Data Tests
-    // =============================================================================
+    // Text data tests.
+    //
+    // 文本数据测试。
 
     #[test]
     fn test_dialogue_state_current_text_data() {
@@ -760,22 +823,24 @@ mod core_tests {
 
         let mut state = DialogueState::new("test.mortar".to_string(), "TestNode".to_string(), node);
 
-        // Initially choices not broken
+        // Initially choices not broken.
+        //
+        // 初始状态下选项未被破坏。
         assert!(!state.choices_broken);
         assert!(state.get_choices().is_some());
 
-        // Break choices
+        // Break choices.
+        //
+        // 破坏选项。
         state.choices_broken = true;
         assert!(state.get_choices().is_none());
     }
 
-    // =============================================================================
-    // Integration Test: Full Workflow
-    // =============================================================================
+    // Integration test: full workflow.
+    //
+    // 集成测试：完整流程。
 
-    // Disabled: Needs complete rewrite for new content structure
-    // #[test]
-    // fn test_full_dialogue_workflow() {
-    //     // TODO: Rewrite this test using the new content array structure
-    // }
+    // Disabled: Needs complete rewrite for new content structure.
+    //
+    // 已禁用：需要依据新的内容结构彻底重写。
 }

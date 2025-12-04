@@ -4,7 +4,7 @@
 
 use bevy::asset::io::Reader;
 use bevy::asset::{Asset, AssetLoader, LoadContext};
-use bevy::log::{info, warn};
+use bevy::log::warn;
 use bevy::prelude::TypePath;
 use bevy::tasks::ConditionalSendFuture;
 use mortar_compiler::{Deserializer, Language, MortaredData, ParseHandler, Serializer};
@@ -48,8 +48,9 @@ impl MortarAssetLoader {
     ///
     /// 查找 `assets` 目录的基本路径。
     fn find_asset_base_path() -> Option<PathBuf> {
-        // Try multiple possible locations for the assets directory
-        // 尝试多个 `assets` 目录的可能位置
+        // Try multiple possible locations for the assets directory.
+        //
+        // 尝试多个 `assets` 目录的可能位置。
         let candidates = [
             PathBuf::from("assets"),
             PathBuf::from("crates/bevy_mortar_bond/assets"),
@@ -75,7 +76,7 @@ impl MortarAssetLoader {
             std::fs::metadata(source_fs_path).map_err(|_| "Cannot access .mortar file metadata")?;
 
         let Ok(compiled_meta) = std::fs::metadata(mortared_fs_path) else {
-            info!("No existing .mortared file found, will compile");
+            dev_info!("No existing .mortared file found, will compile");
             return Ok(true);
         };
 
@@ -91,7 +92,7 @@ impl MortarAssetLoader {
             );
             Ok(needs_recompile)
         } else {
-            info!("Cannot read modification times, will compile");
+            dev_info!("Cannot read modification times, will compile");
             Ok(true)
         }
     }
@@ -105,7 +106,7 @@ impl MortarAssetLoader {
         mortared_path: &Path,
         base_path: &Path,
     ) -> Result<MortaredData, Box<dyn std::error::Error + Send + Sync>> {
-        info!("Compiling .mortar file: {:?}", source_path);
+        dev_info!("Compiling .mortar file: {:?}", source_path);
 
         let mut bytes = Vec::new();
         reader.read_to_end(&mut bytes).await?;
@@ -128,8 +129,9 @@ impl MortarAssetLoader {
         let program = parse_result?;
         let json = Serializer::serialize_to_json(&program, true)?;
 
-        // Write the compiled file
-        // 写入编译后的文件
+        // Write the compiled file.
+        //
+        // 写入编译后的文件。
         let write_path = base_path.join(mortared_path);
         if let Err(e) = std::fs::write(&write_path, json.as_bytes()) {
             warn!("Failed to write .mortared file to {:?}: {}", write_path, e);
@@ -144,7 +146,7 @@ impl MortarAssetLoader {
     fn load_mortared_file(
         mortared_fs_path: &Path,
     ) -> Result<MortaredData, Box<dyn std::error::Error + Send + Sync>> {
-        info!("Loading existing .mortared file: {:?}", mortared_fs_path);
+        dev_info!("Loading existing .mortared file: {:?}", mortared_fs_path);
         let json = std::fs::read_to_string(mortared_fs_path)?;
         Deserializer::from_json(&json).map_err(Into::into)
     }
@@ -156,13 +158,62 @@ impl MortarAssetLoader {
         reader: &mut dyn Reader,
         path: &Path,
     ) -> Result<MortaredData, Box<dyn std::error::Error + Send + Sync>> {
-        info!("Loading .mortared file: {:?}", path);
+        dev_info!("Loading .mortared file: {:?}", path);
 
         let mut bytes = Vec::new();
         reader.read_to_end(&mut bytes).await?;
         let json = std::str::from_utf8(&bytes)?;
 
         Deserializer::from_json(json).map_err(Into::into)
+    }
+
+    /// Logs all public constants contained within a Mortar program.
+    ///
+    /// 记录 Mortar 程序中的所有公开常量。
+    fn log_public_constants(path: &Path, data: &MortaredData) {
+        let public_constants: Vec<_> = data
+            .constants
+            .iter()
+            .filter(|constant| constant.public)
+            .collect();
+        if public_constants.is_empty() {
+            return;
+        }
+
+        dev_info!("Public constants exported by {}:", path.display());
+
+        for constant in public_constants {
+            dev_info!(
+                "    {} ({}): {}",
+                constant.name,
+                constant.const_type,
+                Self::format_constant_value(&constant.value)
+            );
+        }
+    }
+
+    /// Formats a constant value for human-friendly logging output.
+    ///
+    /// 格式化常量值，便于阅读日志。
+    fn format_constant_value(value: &serde_json::Value) -> String {
+        match value {
+            serde_json::Value::String(s) => s.clone(),
+            serde_json::Value::Number(n) => n.to_string(),
+            serde_json::Value::Bool(b) => b.to_string(),
+            serde_json::Value::Array(items) => {
+                let formatted_items: Vec<String> =
+                    items.iter().map(Self::format_constant_value).collect();
+                format!("[{}]", formatted_items.join(", "))
+            }
+            serde_json::Value::Object(map) => {
+                let formatted_pairs: Vec<String> = map
+                    .iter()
+                    .map(|(key, val)| format!("{}: {}", key, Self::format_constant_value(val)))
+                    .collect();
+                format!("{{{}}}", formatted_pairs.join(", "))
+            }
+            serde_json::Value::Null => "null".to_string(),
+        }
     }
 }
 
@@ -188,8 +239,9 @@ impl AssetLoader for MortarAssetLoader {
                 Some("mortar") => {
                     let mortared_path = path.with_extension("mortared");
 
-                    // Find the actual assets directory
-                    // 查找实际的 `assets` 目录
+                    // Find the actual assets directory.
+                    //
+                    // 查找实际的 `assets` 目录。
                     let base_path =
                         Self::find_asset_base_path().ok_or("Cannot find assets directory")?;
 
@@ -210,13 +262,14 @@ impl AssetLoader for MortarAssetLoader {
                 _ => return Err("Unsupported file extension".into()),
             };
 
-            info!(
+            dev_info!(
                 "Successfully loaded mortar asset: {:?} (nodes: {}, functions: {}, variables: {})",
                 asset_path,
                 data.nodes.len(),
                 data.functions.len(),
                 data.variables.len()
             );
+            Self::log_public_constants(path, &data);
 
             Ok(MortarAsset { data })
         })

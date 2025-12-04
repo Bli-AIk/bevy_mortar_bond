@@ -30,10 +30,14 @@ pub fn mortar_functions(_attr: TokenStream, item: TokenStream) -> TokenStream {
             let fn_name = &method.sig.ident;
             let fn_name_str = fn_name.to_string();
 
-            // Check if return type is unit ()
+            // Check if return type is unit ().
+            //
+            // 检查返回类型是否为 unit ()。
             let returns_void = matches!(method.sig.output, ReturnType::Default);
 
-            // Extract argument types (skip self parameter)
+            // Extract argument types (skip self parameter).
+            //
+            // 提取参数类型（跳过 self 参数）。
             let args: Vec<_> = method
                 .sig
                 .inputs
@@ -70,7 +74,9 @@ pub fn mortar_functions(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     .map(|i| syn::Ident::new(&format!("arg{}", i), proc_macro2::Span::call_site()))
                     .collect();
 
-                // Generate type conversions based on the argument types
+                // Generate type conversions based on the argument types.
+                //
+                // 根据参数类型生成类型转换代码。
                 let arg_conversions: Vec<_> = args
                     .iter()
                     .zip(arg_indices.iter())
@@ -99,7 +105,9 @@ pub fn mortar_functions(_attr: TokenStream, item: TokenStream) -> TokenStream {
                                     .unwrap_or_else(|| bevy_mortar_bond::MortarBoolean::from(false));
                             }
                         } else {
-                            // Fallback to MortarValue for unknown types
+                            // Fallback to MortarValue for unknown types.
+                            //
+                            // 对未知类型回退到 MortarValue。
                             quote! {
                                 let #name = args.get(#idx)
                                     .cloned()
