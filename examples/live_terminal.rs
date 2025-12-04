@@ -1,10 +1,10 @@
-//! Split terminal + gameplay mock example.
+//! Split terminal + gameplay mock example (Refactored for real MortarRuntime).
 //!
 //! The window is divided into two panes: a faux Unix terminal on the left and a
-//! placeholder gameplay viewport on the right. Click the terminal to capture
-//! keyboard focus, run `bevim live_example`, and then edit the Mortar script in
-//! a tiny vim-inspired editor. The right-hand view is left as a TODO hook for
-//! real gameplay rendering.
+//! placeholder gameplay viewport on the right.
+//!
+//! This example demonstrates how to integrate `MortarDialoguePlugin` with a custom
+//! UI system (the terminal typewriter) by using a proxy entity to capture text.
 //!
 //! Sprite from https://opengameart.org/content/animated-rogue
 #[path = "utils/live_terminal.rs"]
@@ -21,16 +21,19 @@ use bevy::{
         ButtonState,
         keyboard::{KeyCode, KeyboardInput},
     },
-    log::warn,
     prelude::*,
     window::{PresentMode, WindowResolution},
 };
+use bevy_mortar_bond::{
+    MortarBoolean, MortarDialoguePlugin, MortarDialogueText, MortarEvent, MortarFunctions,
+    MortarGameEvent, MortarPlugin, MortarRegistry, MortarRuntime, MortarTextTarget,
+    mortar_functions,
+};
 use live_terminal::{
     ASSET_DIR, ChoiceButton, ChoicePanel, ChoicePanelFont, CursorBlink, DEFAULT_FILE,
-    DIALOGUE_CHAR_SPEED, DIALOGUE_FINISHED_LINE, DIALOGUE_PLACEHOLDER, GameDialogueText,
-    RogueAnimationEvent, RoguePreviewImage, TerminalMachine, TerminalView, animation_from_label,
-    apply_animation_events, despawn_recursive, handle_keyboard_controls, handle_panel_focus,
-    live_root_path, refresh_terminal_display, revert_animation_to_idle, setup_ui,
+    DIALOGUE_CHAR_SPEED, GameDialogueText, RogueAnimationEvent, RoguePreviewImage, TerminalMachine,
+    animation_from_label, apply_animation_events, despawn_recursive, handle_keyboard_controls,
+    handle_panel_focus, refresh_terminal_display, revert_animation_to_idle, setup_ui,
     tick_cursor_blink, update_focus_visuals,
 };
 use rogue_sprite::{RogueGender, RogueSprite, RogueSpritePlugin};
@@ -41,8 +44,6 @@ fn main() {
     App::new()
         .init_resource::<TerminalMachine>()
         .init_resource::<CursorBlink>()
-        .init_resource::<LiveDialogueData>()
-        .init_resource::<LiveDialogueWatcher>()
         .add_message::<RogueAnimationEvent>()
         .add_plugins(
             DefaultPlugins
@@ -61,8 +62,15 @@ fn main() {
                     ..default()
                 }),
         )
-        .add_plugins((TypewriterPlugin, RogueSpritePlugin))
-        .add_systems(Startup, setup_ui)
+        .add_plugins((
+            TypewriterPlugin,
+            RogueSpritePlugin,
+            MortarPlugin,
+            MortarDialoguePlugin,
+        ))
+        .init_resource::<LiveScriptSource>()
+        .init_resource::<ScriptWatcher>()
+        .add_systems(Startup, (setup_ui, setup_mortar_integration))
         .add_systems(
             Update,
             (
@@ -71,10 +79,10 @@ fn main() {
                 handle_keyboard_controls,
                 handle_dialogue_input,
                 handle_choice_buttons,
-                monitor_live_example_script,
-                apply_gender_from_script,
-                apply_pending_dialogue_text,
+                sync_mortar_text_to_terminal,
+                bridge_mortar_events,
                 sync_choice_panel,
+                monitor_script_changes,
             ),
         )
         .add_systems(
@@ -90,256 +98,84 @@ fn main() {
         .run();
 }
 
-#[derive(Component, Default)]
-struct ActiveLineEvents {
-    events: Vec<LineEvent>,
-    next_event: usize,
-}
+/// A hidden entity used to receive processed text from MortarDialoguePlugin.
+/// We read from this and feed the visible typewriter.
+#[derive(Component)]
+struct MortarTextProxy;
 
-impl ActiveLineEvents {
-    fn from_events(events: Vec<LineEvent>) -> Self {
-        Self {
-            events,
-            next_event: 0,
-        }
+#[derive(MortarFunctions)]
+struct TerminalFunctions;
+
+#[mortar_functions]
+impl TerminalFunctions {
+    fn get_name() -> String {
+        "Player".to_string()
+    }
+
+    fn set_gender(_is_female: MortarBoolean) {
+        // Handled via events or variable state inspection if needed
     }
 }
 
-fn handle_dialogue_input(
-    mut inputs: MessageReader<KeyboardInput>,
-    machine: Res<TerminalMachine>,
-    mut dialogue: ResMut<LiveDialogueData>,
-    mut text_query: Query<&mut Typewriter, With<GameDialogueText>>,
-) {
-    if machine.focused {
-        return;
+// --- Source Mapping & Highlighting Support ---
+
+#[derive(Resource, Default)]
+pub struct LiveScriptSource {
+    // Stores (NodeName, Step)
+    pub entries: Vec<(String, DialogueStep)>,
+    pub last_modified: Option<SystemTime>,
+}
+
+impl LiveScriptSource {
+    fn from_path(path: &Path) -> Result<Self, std::io::Error> {
+        let contents = fs::read_to_string(path)?;
+        let modified = fs::metadata(path).and_then(|m| m.modified()).ok();
+        let parsed = parse_script_contents(&contents);
+        Ok(Self {
+            entries: parsed.entries,
+            last_modified: modified,
+        })
     }
-    let Ok(mut typewriter) = text_query.single_mut() else {
-        return;
-    };
-    for input in inputs.read() {
-        if input.state != ButtonState::Pressed {
-            continue;
-        }
-        if dialogue.is_waiting_for_choice() {
-            continue;
-        }
-        if input.key_code == KeyCode::KeyZ {
-            if typewriter.is_playing() {
-                typewriter.current_text = typewriter.source_text.clone();
-                typewriter.current_char_index = typewriter.source_text.chars().count();
-                typewriter.state = TypewriterState::Finished;
-            } else if typewriter.state == TypewriterState::Finished
-                || typewriter.state == TypewriterState::Idle
-            {
-                dialogue.advance_text();
+
+    /// Heuristic to find the source line number for the current runtime state.
+    /// This matches the parsed entries for the current node against the runtime's text index.
+    pub fn get_highlight_line(&self, runtime: &MortarRuntime) -> Option<usize> {
+        let state = runtime.active_dialogue.as_ref()?;
+        let current_node = &state.current_node;
+        
+        let mut current_text_count = 0;
+        
+        for (node_name, entry) in &self.entries {
+            if node_name != current_node {
+                continue;
             }
-        }
-    }
-}
 
-fn apply_gender_from_script(
-    mut dialogue: ResMut<LiveDialogueData>,
-    mut preview: Query<&mut RogueSprite, With<RoguePreviewImage>>,
-) {
-    if !dialogue.needs_gender_sync {
-        return;
-    }
-    let Ok(mut sprite) = preview.single_mut() else {
-        return;
-    };
-    let target = if dialogue.is_female {
-        RogueGender::Female
-    } else {
-        RogueGender::Male
-    };
-    sprite.gender = target;
-    dialogue.needs_gender_sync = false;
-}
-
-fn apply_pending_dialogue_text(
-    mut commands: Commands,
-    mut dialogue: ResMut<LiveDialogueData>,
-    mut text_query: Query<(Entity, &mut Typewriter), With<GameDialogueText>>,
-    mut machine: ResMut<TerminalMachine>,
-) {
-    if !dialogue.needs_text_update {
-        return;
-    }
-    let Some(line) = dialogue.pending_line.take() else {
-        dialogue.needs_text_update = false;
-        return;
-    };
-    let Ok((entity, mut typewriter)) = text_query.single_mut() else {
-        return;
-    };
-    let DialogueLine {
-        text,
-        events,
-        line_number: _,
-    } = line;
-    let instant =
-        events.is_empty() && (text == DIALOGUE_PLACEHOLDER || text == DIALOGUE_FINISHED_LINE);
-    *typewriter = Typewriter::new(text.clone(), DIALOGUE_CHAR_SPEED);
-    if instant {
-        typewriter.current_text = text.clone();
-        typewriter.current_char_index = text.chars().count();
-        typewriter.state = TypewriterState::Finished;
-    } else {
-        typewriter.play();
-    }
-    if events.is_empty() {
-        commands.entity(entity).remove::<ActiveLineEvents>();
-    } else {
-        commands
-            .entity(entity)
-            .insert(ActiveLineEvents::from_events(events));
-    }
-    if dialogue.take_highlight_dirty() && matches!(machine.view, TerminalView::Vim(_)) {
-        machine.dirty = true;
-    }
-    dialogue.needs_text_update = false;
-}
-
-fn sync_choice_panel(
-    mut commands: Commands,
-    mut dialogue: ResMut<LiveDialogueData>,
-    mut panel_query: Query<
-        (Entity, Option<&Children>, &mut Visibility, &ChoicePanelFont),
-        With<ChoicePanel>,
-    >,
-    child_query: Query<&Children>,
-) {
-    if !dialogue.take_choice_dirty() {
-        return;
-    }
-    let Ok((panel_entity, children, mut visibility, font)) = panel_query.single_mut() else {
-        return;
-    };
-    if let Some(children) = children {
-        for child in children.iter() {
-            despawn_recursive(child, &mut commands, &child_query);
-        }
-    }
-    if let Some(options) = dialogue.pending_choices() {
-        *visibility = Visibility::Visible;
-        commands.entity(panel_entity).with_children(|parent| {
-            for (index, option) in options.iter().enumerate() {
-                parent
-                    .spawn((
-                        Button,
-                        ChoiceButton { index },
-                        Node {
-                            width: Val::Percent(100.0),
-                            padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
-                            border: UiRect::all(Val::Px(1.0)),
-                            ..default()
-                        },
-                        BackgroundColor(Color::srgb(0.15, 0.18, 0.3)),
-                        BorderColor::all(Color::srgb(0.4, 0.5, 0.8)),
-                    ))
-                    .with_children(|button| {
-                        button.spawn((
-                            Text::new(option.label.clone()),
-                            TextFont {
-                                font: font.0.clone(),
-                                font_size: 18.0,
-                                ..default()
-                            },
-                            TextColor(Color::srgb(0.9, 0.9, 1.0)),
-                        ));
-                    });
-            }
-        });
-    } else {
-        *visibility = Visibility::Hidden;
-    }
-}
-
-fn handle_choice_buttons(
-    mut buttons: Query<(&Interaction, &ChoiceButton), (Changed<Interaction>, With<Button>)>,
-    mut dialogue: ResMut<LiveDialogueData>,
-) {
-    if !dialogue.is_waiting_for_choice() {
-        return;
-    }
-    for (interaction, button) in &mut buttons {
-        if *interaction == Interaction::Pressed && dialogue.select_choice(button.index) {
-            break;
-        }
-    }
-}
-
-fn update_dialogue_text_render(
-    mut writer: MessageWriter<RogueAnimationEvent>,
-    mut query: Query<
-        (&Typewriter, &mut Text, Option<&mut ActiveLineEvents>),
-        With<GameDialogueText>,
-    >,
-) {
-    for (typewriter, mut text, events) in &mut query {
-        **text = typewriter.current_text.clone();
-        if let Some(mut active) = events {
-            while let Some(event) = active.events.get(active.next_event) {
-                let required = event.trigger_index.saturating_add(1);
-                if typewriter.current_char_index >= required {
-                    if let Some(animation) = animation_from_label(match &event.action {
-                        LineEventAction::PlayAnim(label) => label,
-                    }) {
-                        writer.write(RogueAnimationEvent { animation });
+            match entry {
+                DialogueStep::Line(line) => {
+                    if current_text_count == state.text_index {
+                         return Some(line.line_number);
                     }
-                    active.next_event += 1;
-                } else {
-                    break;
+                    current_text_count += 1;
+                }
+                DialogueStep::Choice(_) => {
+                    // If we are waiting for a choice, highlighting the choice block 
+                    // (or the last text) might be nice, but for now we just skip.
                 }
             }
         }
-    }
-}
-
-fn monitor_live_example_script(
-    time: Res<Time>,
-    mut watcher: ResMut<LiveDialogueWatcher>,
-    mut dialogue: ResMut<LiveDialogueData>,
-) {
-    if !watcher.timer.tick(time.delta()).just_finished() {
-        return;
-    }
-    let path = live_root_path().join(DEFAULT_FILE);
-    let modified = fs::metadata(&path)
-        .ok()
-        .and_then(|meta| meta.modified().ok());
-    if dialogue.last_modified == modified {
-        return;
-    }
-    match ParsedScript::from_path(&path) {
-        Ok(parsed) => dialogue.apply_parsed(parsed, modified),
-        Err(err) => warn!("无法解析 {}: {}", path.display(), err),
-    }
-}
-
-#[derive(Resource)]
-struct LiveDialogueWatcher {
-    timer: Timer,
-}
-
-impl Default for LiveDialogueWatcher {
-    fn default() -> Self {
-        Self {
-            timer: Timer::from_seconds(0.5, TimerMode::Repeating),
-        }
+        None
     }
 }
 
 #[derive(Clone)]
-struct DialogueLine {
+pub struct DialogueLine {
     text: String,
     events: Vec<LineEvent>,
     line_number: usize,
 }
 
 #[derive(Clone)]
-struct ChoiceOption {
+pub struct ChoiceOption {
     label: String,
     target: ChoiceTarget,
 }
@@ -351,218 +187,25 @@ enum ChoiceTarget {
 }
 
 #[derive(Clone)]
-enum DialogueStep {
+pub enum DialogueStep {
     Line(DialogueLine),
     Choice(Vec<ChoiceOption>),
 }
 
 #[derive(Clone)]
-struct LineEvent {
+pub struct LineEvent {
     trigger_index: usize,
     action: LineEventAction,
 }
 
 #[derive(Clone)]
-enum LineEventAction {
+pub enum LineEventAction {
     PlayAnim(String),
 }
 
 struct ParsedScript {
     is_female: bool,
-    entries: Vec<DialogueStep>,
-}
-
-impl ParsedScript {
-    fn from_path(path: &Path) -> Result<Self, std::io::Error> {
-        let contents = fs::read_to_string(path)?;
-        Ok(parse_script_contents(&contents))
-    }
-}
-
-#[derive(Resource)]
-struct LiveDialogueData {
-    is_female: bool,
-    entries: Vec<DialogueStep>,
-    current_index: usize,
-    pending_line: Option<DialogueLine>,
-    current_line: Option<usize>,
-    pending_choice: Option<Vec<ChoiceOption>>,
-    waiting_for_choice: bool,
-    choice_dirty: bool,
-    highlight_dirty: bool,
-    needs_text_update: bool,
-    needs_gender_sync: bool,
-    finished: bool,
-    last_modified: Option<SystemTime>,
-}
-
-impl Default for LiveDialogueData {
-    fn default() -> Self {
-        let mut data = Self {
-            is_female: false,
-            entries: Vec::new(),
-            current_index: 0,
-            pending_line: Some(DialogueLine {
-                text: DIALOGUE_PLACEHOLDER.to_string(),
-                events: Vec::new(),
-                line_number: 0,
-            }),
-            current_line: None,
-            pending_choice: None,
-            waiting_for_choice: false,
-            choice_dirty: true,
-            highlight_dirty: true,
-            needs_text_update: true,
-            needs_gender_sync: true,
-            finished: false,
-            last_modified: None,
-        };
-        let path = live_root_path().join(DEFAULT_FILE);
-        if let Ok(parsed) = ParsedScript::from_path(&path) {
-            let modified = fs::metadata(&path)
-                .ok()
-                .and_then(|meta| meta.modified().ok());
-            data.apply_parsed(parsed, modified);
-        } else {
-            warn!("初始化对话数据失败：无法读取 {}", path.display());
-        }
-        data
-    }
-}
-
-impl LiveDialogueData {
-    fn apply_parsed(&mut self, parsed: ParsedScript, modified: Option<SystemTime>) {
-        self.is_female = parsed.is_female;
-        self.entries = parsed.entries;
-        self.current_index = 0;
-        self.pending_line = None;
-        self.current_line = None;
-        self.pending_choice = None;
-        self.waiting_for_choice = false;
-        self.choice_dirty = true;
-        self.highlight_dirty = true;
-        self.finished = false;
-        self.needs_gender_sync = true;
-        self.last_modified = modified;
-        self.queue_next_entry();
-    }
-
-    fn queue_next_entry(&mut self) {
-        while self.current_index < self.entries.len() {
-            match &self.entries[self.current_index] {
-                DialogueStep::Line(line) => {
-                    self.current_index += 1;
-                    self.pending_line = Some(line.clone());
-                    self.current_line = (line.line_number > 0).then_some(line.line_number);
-                    self.highlight_dirty = true;
-                    self.pending_choice = None;
-                    self.waiting_for_choice = false;
-                    self.choice_dirty = true;
-                    self.needs_text_update = true;
-                    return;
-                }
-                DialogueStep::Choice(options) => {
-                    self.current_index += 1;
-                    self.pending_choice = Some(options.clone());
-                    self.waiting_for_choice = true;
-                    self.choice_dirty = true;
-                    self.needs_text_update = false;
-                    return;
-                }
-            }
-        }
-        self.pending_line = Some(DialogueLine {
-            text: DIALOGUE_PLACEHOLDER.to_string(),
-            events: Vec::new(),
-            line_number: 0,
-        });
-        self.current_line = None;
-        self.highlight_dirty = true;
-        self.pending_choice = None;
-        self.waiting_for_choice = false;
-        self.choice_dirty = true;
-        self.needs_text_update = true;
-        self.finished = true;
-    }
-
-    fn advance_text(&mut self) -> bool {
-        if self.waiting_for_choice {
-            return false;
-        }
-        if self.current_index >= self.entries.len() {
-            if self.finished {
-                return false;
-            }
-            self.finished = true;
-            self.pending_line = Some(DialogueLine {
-                text: DIALOGUE_FINISHED_LINE.to_string(),
-                events: Vec::new(),
-                line_number: 0,
-            });
-            self.current_line = None;
-            self.highlight_dirty = true;
-            self.needs_text_update = true;
-            return true;
-        }
-        self.queue_next_entry();
-        true
-    }
-
-    fn highlight_line(&self) -> Option<usize> {
-        self.current_line
-    }
-
-    fn take_highlight_dirty(&mut self) -> bool {
-        std::mem::take(&mut self.highlight_dirty)
-    }
-
-    fn take_choice_dirty(&mut self) -> bool {
-        std::mem::take(&mut self.choice_dirty)
-    }
-
-    fn pending_choices(&self) -> Option<&[ChoiceOption]> {
-        self.pending_choice.as_deref()
-    }
-
-    fn is_waiting_for_choice(&self) -> bool {
-        self.waiting_for_choice
-    }
-
-    fn select_choice(&mut self, index: usize) -> bool {
-        if !self.waiting_for_choice {
-            return false;
-        }
-        let Some(options) = self.pending_choice.as_ref() else {
-            return false;
-        };
-        let Some(option) = options.get(index) else {
-            return false;
-        };
-        match &option.target {
-            ChoiceTarget::Return => {
-                self.pending_choice = None;
-                self.waiting_for_choice = false;
-                self.choice_dirty = true;
-                self.pending_line = Some(DialogueLine {
-                    text: DIALOGUE_FINISHED_LINE.to_string(),
-                    events: Vec::new(),
-                    line_number: 0,
-                });
-                self.current_line = None;
-                self.highlight_dirty = true;
-                self.needs_text_update = true;
-                self.finished = true;
-                self.current_index = self.entries.len();
-            }
-            ChoiceTarget::Node(_target) => {
-                self.pending_choice = None;
-                self.waiting_for_choice = false;
-                self.choice_dirty = true;
-                self.queue_next_entry();
-            }
-        }
-        true
-    }
+    entries: Vec<(String, DialogueStep)>,
 }
 
 fn parse_script_contents(contents: &str) -> ParsedScript {
@@ -583,12 +226,24 @@ fn extract_is_female(contents: &str) -> bool {
     false
 }
 
-fn collect_entries(contents: &str, is_female: bool) -> Vec<DialogueStep> {
+fn collect_entries(contents: &str, is_female: bool) -> Vec<(String, DialogueStep)> {
     let mut entries = Vec::new();
     let mut contexts: Vec<ConditionalContext> = Vec::new();
     let mut lines = contents.lines().enumerate().peekable();
+    let mut current_node = String::new();
+
     while let Some((line_number, line)) = lines.next() {
         let trimmed = line.trim();
+
+        if trimmed.starts_with("node ") {
+            // node Start {
+            let parts: Vec<&str> = trimmed.split_whitespace().collect();
+            if parts.len() >= 2 {
+                current_node = parts[1].trim_matches('{').to_string();
+            }
+            continue;
+        }
+
         if trimmed.starts_with("if (isFemale") {
             contexts.push(ConditionalContext::new(is_female));
             continue;
@@ -604,25 +259,32 @@ fn collect_entries(contents: &str, is_female: bool) -> Vec<DialogueStep> {
             continue;
         }
         if trimmed == "}" {
-            contexts.pop();
+            // Could be end of if, or end of node.
+            // If context stack is empty, it's likely end of node, but we don't strictly need to clear current_node
+            // because the next 'node X' will overwrite it.
+            if !contexts.is_empty() {
+                contexts.pop();
+            }
             continue;
         }
         if !contexts.iter().all(|ctx| ctx.value) {
             continue;
         }
         if let Some(text) = parse_text_line(trimmed) {
-            entries.push(DialogueStep::Line(DialogueLine {
+            entries.push((current_node.clone(), DialogueStep::Line(DialogueLine {
                 text,
                 events: Vec::new(),
                 line_number: line_number + 1,
-            }));
+            })));
             continue;
         }
         if trimmed.starts_with("with events") {
-            if let Some(last) = entries.last_mut()
-                && matches!(last, DialogueStep::Line(_))
+            // Attach events to the last entry if it belongs to the same node
+            if let Some((last_node, last_step)) = entries.last_mut()
+                && *last_node == current_node
+                && matches!(last_step, DialogueStep::Line(_))
             {
-                if let DialogueStep::Line(line) = last {
+                if let DialogueStep::Line(line) = last_step {
                     collect_event_entries(&mut lines, line);
                 }
             } else {
@@ -633,13 +295,12 @@ fn collect_entries(contents: &str, is_female: bool) -> Vec<DialogueStep> {
         if trimmed.starts_with("choice") {
             let options = collect_choice_entries(&mut lines);
             if !options.is_empty() {
-                entries.push(DialogueStep::Choice(options));
+                entries.push((current_node.clone(), DialogueStep::Choice(options)));
             }
         }
     }
     entries
 }
-
 fn parse_text_line(line: &str) -> Option<String> {
     if !line.starts_with("text:") {
         return None;
@@ -745,6 +406,276 @@ impl ConditionalContext {
         Self {
             cond_result,
             value: cond_result,
+        }
+    }
+}
+
+#[derive(Resource)]
+struct ScriptWatcher {
+    timer: Timer,
+}
+
+impl Default for ScriptWatcher {
+    fn default() -> Self {
+        Self {
+            timer: Timer::from_seconds(1.0, TimerMode::Repeating),
+        }
+    }
+}
+
+fn monitor_script_changes(
+    time: Res<Time>,
+    mut watcher: ResMut<ScriptWatcher>,
+    mut source: ResMut<LiveScriptSource>,
+) {
+    if !watcher.timer.tick(time.delta()).just_finished() {
+        return;
+    }
+    let path = live_terminal::live_root_path().join(live_terminal::DEFAULT_FILE);
+    let modified = fs::metadata(&path)
+        .ok()
+        .and_then(|meta| meta.modified().ok());
+
+    if source.last_modified != modified {
+        if let Ok(new_source) = LiveScriptSource::from_path(&path) {
+            *source = new_source;
+        }
+    }
+}
+
+fn setup_mortar_integration(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut registry: ResMut<MortarRegistry>,
+    mut events: MessageWriter<MortarEvent>,
+    mut runtime: ResMut<MortarRuntime>,
+    mut source: ResMut<LiveScriptSource>,
+) {
+    // Register functions
+    TerminalFunctions::bind_functions(&mut runtime.functions);
+
+    // Load the live example script
+    let path = format!("live/{}", DEFAULT_FILE);
+    let handle = asset_server.load(&path);
+    registry.register(path.clone(), handle);
+
+    // Parse initial source map
+    let fs_path = live_terminal::live_root_path().join(DEFAULT_FILE);
+    if let Ok(initial_source) = LiveScriptSource::from_path(&fs_path) {
+        *source = initial_source;
+    }
+
+    // Create a hidden proxy entity to receive Mortar text updates.
+    // MortarDialoguePlugin expects a Text component to write into.
+    commands.spawn((
+        Text::new(""),
+        MortarTextTarget,
+        MortarDialogueText::default(),
+        MortarTextProxy,
+        Visibility::Hidden,
+    ));
+
+    // Start the dialogue
+    events.write(MortarEvent::StartNode {
+        path,
+        node: "Start".to_string(),
+    });
+}
+
+fn handle_dialogue_input(
+    mut inputs: MessageReader<KeyboardInput>,
+    machine: Res<TerminalMachine>,
+    runtime: Res<MortarRuntime>,
+    mut events: MessageWriter<MortarEvent>,
+    mut text_query: Query<&mut Typewriter, With<GameDialogueText>>,
+) {
+    if machine.focused {
+        return;
+    }
+
+    // Don't process input if we have active choices
+    if let Some(state) = &runtime.active_dialogue {
+        if state.has_choices() {
+            return;
+        }
+    }
+
+    let Ok(mut typewriter) = text_query.single_mut() else {
+        return;
+    };
+
+    for input in inputs.read() {
+        if input.state != ButtonState::Pressed {
+            continue;
+        }
+        if input.key_code == KeyCode::KeyZ {
+            if typewriter.is_playing() {
+                // Skip typing effect
+                typewriter.current_text = typewriter.source_text.clone();
+                typewriter.current_char_index = typewriter.source_text.chars().count();
+                typewriter.state = TypewriterState::Finished;
+            } else if typewriter.state == TypewriterState::Finished
+                || typewriter.state == TypewriterState::Idle
+            {
+                // Request next text from Mortar
+                events.write(MortarEvent::NextText);
+            }
+        }
+    }
+}
+
+/// Watches the hidden proxy entity. When MortarDialoguePlugin updates it,
+/// we forward the text to the visible Typewriter.
+fn sync_mortar_text_to_terminal(
+    proxy_query: Query<&MortarDialogueText, (With<MortarTextProxy>, Changed<MortarDialogueText>)>,
+    mut terminal_query: Query<&mut Typewriter, With<GameDialogueText>>,
+    mut machine: ResMut<TerminalMachine>,
+) {
+    let Ok(mortar_text) = proxy_query.single() else {
+        return;
+    };
+    let Ok(mut typewriter) = terminal_query.single_mut() else {
+        return;
+    };
+
+    // Start typing the new text
+    *typewriter = Typewriter::new(mortar_text.body.clone(), DIALOGUE_CHAR_SPEED);
+    typewriter.play();
+
+    // Force refresh terminal to update highlight line in the editor
+    machine.dirty = true;
+}
+
+fn sync_choice_panel(
+    mut commands: Commands,
+    runtime: Res<MortarRuntime>,
+    mut panel_query: Query<
+        (Entity, Option<&Children>, &mut Visibility, &ChoicePanelFont),
+        With<ChoicePanel>,
+    >,
+    child_query: Query<&Children>,
+    // Track if we've already built choices for this text index to avoid rebuilding every frame
+    mut last_choice_index: Local<Option<(String, usize)>>,
+) {
+    let Ok((panel_entity, children, mut visibility, font)) = panel_query.single_mut() else {
+        return;
+    };
+
+    let Some(state) = &runtime.active_dialogue else {
+        *visibility = Visibility::Hidden;
+        return;
+    };
+
+    // Check if we have choices active
+    let Some(choices) = state.get_current_choices() else {
+        *visibility = Visibility::Hidden;
+        *last_choice_index = None;
+        return;
+    };
+
+    // Avoid rebuilding if nothing changed
+    let current_key = (state.current_node.clone(), state.text_index);
+    if last_choice_index.as_ref() == Some(&current_key) && *visibility == Visibility::Visible {
+        return;
+    }
+    *last_choice_index = Some(current_key);
+
+    // Clear old choices
+    if let Some(children) = children {
+        for child in children.iter() {
+            despawn_recursive(child, &mut commands, &child_query);
+        }
+    }
+
+    *visibility = Visibility::Visible;
+
+    commands.entity(panel_entity).with_children(|parent| {
+        for (index, option) in choices.iter().enumerate() {
+            parent
+                .spawn((
+                    Button,
+                    ChoiceButton { index },
+                    Node {
+                        width: Val::Percent(100.0),
+                        padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
+                        border: UiRect::all(Val::Px(1.0)),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgb(0.15, 0.18, 0.3)),
+                    BorderColor::all(Color::srgb(0.4, 0.5, 0.8)),
+                ))
+                .with_children(|button| {
+                    button.spawn((
+                        Text::new(option.text.clone()),
+                        TextFont {
+                            font: font.0.clone(),
+                            font_size: 18.0,
+                            ..default()
+                        },
+                        TextColor(Color::srgb(0.9, 0.9, 1.0)),
+                    ));
+                });
+        }
+    });
+}
+
+fn handle_choice_buttons(
+    mut buttons: Query<(&Interaction, &ChoiceButton), (Changed<Interaction>, With<Button>)>,
+    mut events: MessageWriter<MortarEvent>,
+) {
+    for (interaction, button) in &mut buttons {
+        if *interaction == Interaction::Pressed {
+            events.write(MortarEvent::SelectChoice {
+                index: button.index,
+            });
+            events.write(MortarEvent::ConfirmChoice);
+            break; // Only handle one click per frame
+        }
+    }
+}
+
+fn update_dialogue_text_render(
+    mut query: Query<&mut Text, With<GameDialogueText>>,
+    typewriter_query: Query<&Typewriter, (With<GameDialogueText>, Changed<Typewriter>)>,
+) {
+    if let Ok(typewriter) = typewriter_query.single() {
+        if let Ok(mut text) = query.single_mut() {
+            // Update the visible text component from the typewriter state
+            **text = typewriter.current_text.clone();
+        }
+    }
+}
+
+/// Bridges MortarGameEvent (from script) to RogueAnimationEvent (for visuals)
+fn bridge_mortar_events(
+    mut mortar_events: MessageReader<MortarGameEvent>,
+    mut anim_events: MessageWriter<RogueAnimationEvent>,
+    mut preview: Query<&mut RogueSprite, With<RoguePreviewImage>>,
+) {
+    for event in mortar_events.read() {
+        match event.name.as_str() {
+            "play_anim" => {
+                if let Some(anim_name) = event.args.first() {
+                    if let Some(animation) = animation_from_label(anim_name) {
+                        anim_events.write(RogueAnimationEvent { animation });
+                    }
+                }
+            }
+            "set_gender" => {
+                if let Some(arg) = event.args.first() {
+                    let is_female = arg.to_lowercase() == "true";
+                    if let Ok(mut sprite) = preview.single_mut() {
+                        sprite.gender = if is_female {
+                            RogueGender::Female
+                        } else {
+                            RogueGender::Male
+                        };
+                    }
+                }
+            }
+            _ => {
+                // Handle other events if necessary
+            }
         }
     }
 }

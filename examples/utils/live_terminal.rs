@@ -4,7 +4,7 @@ use super::{
     },
     typewriter::{Typewriter, TypewriterState},
 };
-use crate::LiveDialogueData;
+use crate::LiveScriptSource;
 use bevy::{
     ecs::message::MessageReader,
     input::{
@@ -14,6 +14,7 @@ use bevy::{
     prelude::*,
     ui::widget::NodeImageMode,
 };
+use bevy_mortar_bond::MortarRuntime;
 use std::{
     fmt::Display,
     fs,
@@ -1280,14 +1281,15 @@ pub fn refresh_terminal_display(
     display: Query<(Entity, &TerminalFont), With<TerminalDisplay>>,
     children: Query<&Children>,
     cursor: Res<CursorBlink>,
-    dialogue: Res<LiveDialogueData>,
+    source: Res<LiveScriptSource>,
+    runtime: Res<MortarRuntime>,
 ) {
     if !machine.dirty {
         return;
     }
 
     let cursor_visible = machine.focused && cursor.visible();
-    let render = machine.render(cursor_visible, dialogue.highlight_line());
+    let render = machine.render(cursor_visible, source.get_highlight_line(&runtime));
     if let Ok((entity, font)) = display.single() {
         if let Ok(existing_children) = children.get(entity) {
             for child in existing_children.iter() {
