@@ -4,7 +4,9 @@
 
 **bevy_mortar_bond** — A Bevy "bond" (binding) plugin for the [mortar](https://github.com/Bli-AIk/mortar) language.
 
-https://github.com/user-attachments/assets/a132d6ba-43b9-4367-9369-19dc83bdcb5f
+<div><video controls src="https://github.com/user-attachments/assets/9b35cd36-2890-4394-82e0-089d39bcb293" muted="false"></video></div>
+
+<h4 align="center">Want to try it yourself? <br>Clone the repo then `cargo run --example live_terminal`.</h3>
 
 | English | Simplified Chinese          |
 |---------|-----------------------------|
@@ -12,7 +14,7 @@ https://github.com/user-attachments/assets/a132d6ba-43b9-4367-9369-19dc83bdcb5f
 
 ## Introduction
 
-`bevy_mortar_bond` is a Bevy plugin that integrates the Mortar scripting language into the Bevy game engine. It provides a powerful framework for creating dynamic dialogue systems, interactive events, and complex game logic using Mortar scripts.
+`bevy_mortar_bond` is a Bevy plugin that integrates the Mortar scripting languag[example.mp4](example.mp4)e into the Bevy game engine. It provides a powerful framework for creating dynamic dialogue systems, interactive events, and complex game logic using Mortar scripts.
 
 It addresses the problem of integrating a flexible external scripting language for content creators and game designers, allowing users to conveniently define game flow, character interactions, and dynamic scenes.
 

@@ -1,0 +1,36 @@
+pub const isFemale: Boolean = true
+
+node Start {
+    text: "This may be a vivid demo."
+} -> NextNode
+
+node NextNode {
+    text: "Did you see me talking?"
+    choice: [
+        "Right!" -> AttackNode,
+        "NOOOOO!" -> return,
+    ],
+}
+
+node AttackNode {
+    text: "Great! Watch closely!"
+    text: "Look at my sword!"
+    with events: [
+        14, play_anim("attack")
+    ]
+    text: "Ouch, I can't hit you."
+
+    if (isFemale) {
+        text: "Why are you off-screen??"
+    } else {
+        text: "What are you hiding behind the screen for?"
+    }
+
+    text: "You're driving me crazy, just you wait!"
+} -> EndNode
+
+node EndNode {
+    text: "We shall battle another day!"
+}
+
+fn play_anim(anim_name: String)

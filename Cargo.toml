@@ -13,9 +13,9 @@ exclude = [
 
 [dependencies]
 
-bevy = { version = "0.17.2", features = ["wav"] }
+bevy = { version = "0.17.2", features = ["wav", "file_watcher"] }
 
-mortar_compiler = { path = "../../../mortar/crates/mortar_compiler", version = "0.4.0" }
+mortar_compiler = { path = "../../../mortar/crates/mortar_compiler", version = "^0.5.0" }
 
 serde_json = "1.0"
 

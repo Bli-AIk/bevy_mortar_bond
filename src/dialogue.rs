@@ -1,6 +1,7 @@
 use crate::{
-    DialogueRunKind, MortarAsset, MortarEvent, MortarEventTracker, MortarRegistry, MortarRuntime,
-    MortarVariableState, MortarVariableValue, evaluate_if_condition, process_interpolated_text,
+    DialogueRunKind, MortarAsset, MortarAudioSettings, MortarEvent, MortarEventTracker,
+    MortarRegistry, MortarRuntime, MortarVariableState, MortarVariableValue,
+    audio::auto_play_sound_events, evaluate_if_condition, process_interpolated_text,
 };
 use bevy::asset::Assets;
 use bevy::ecs::schedule::SystemSet;
@@ -39,6 +40,7 @@ impl Plugin for MortarDialoguePlugin {
             )
                 .chain(),
         )
+        .init_resource::<MortarAudioSettings>()
         .init_resource::<MortarDialogueVariables>()
         .init_resource::<MortarRunsExecuting>()
         .init_resource::<LoggedConstants>()
@@ -51,6 +53,9 @@ impl Plugin for MortarDialoguePlugin {
                 update_mortar_text_targets.in_set(MortarDialogueSystemSet::UpdateText),
                 trigger_bound_events.in_set(MortarDialogueSystemSet::TriggerEvents),
                 process_pending_run_executions,
+                auto_play_sound_events
+                    .after(MortarDialogueSystemSet::TriggerEvents)
+                    .after(process_pending_run_executions),
             ),
         )
         .add_systems(PostUpdate, clear_runs_executing_flag);
@@ -123,7 +128,7 @@ pub struct MortarGameEvent {
 /// 缓存当前 mortar 文件变量状态的资源。
 #[derive(Resource, Default)]
 pub struct MortarDialogueVariables {
-    pub(crate) state: Option<MortarVariableState>,
+    pub state: Option<MortarVariableState>,
     active_path: Option<String>,
 }
 
@@ -141,12 +146,14 @@ impl MortarDialogueVariables {
         if self.active_path.as_deref() != Some(path) {
             self.state = Some(MortarVariableState::from_variables(
                 &asset.variables,
+                &asset.constants,
                 &asset.enums,
             ));
             self.active_path = Some(path.to_string());
         } else if self.state.is_none() {
             self.state = Some(MortarVariableState::from_variables(
                 &asset.variables,
+                &asset.constants,
                 &asset.enums,
             ));
         }
@@ -236,6 +243,7 @@ fn log_public_constants_once(
 }
 
 fn update_mortar_text_targets(
+    mut asset_events: MessageReader<AssetEvent<MortarAsset>>,
     params: TextUpdateParams,
     mut last_key: Local<Option<(String, String, usize)>>,
     mut skip_next_conditional: Local<bool>,
@@ -250,6 +258,16 @@ fn update_mortar_text_targets(
         runs_executing,
         mut events,
     } = params;
+
+    // Check if any Mortar asset has been modified (hot reloaded)
+    for event in asset_events.read() {
+        if let AssetEvent::Modified { id: _ } = event {
+            // If an asset changed, force a reload of variables
+            info!("Mortar asset modified, reloading variables...");
+            variable_cache.reset();
+            *last_key = None; // Also reset last_key to ensure text re-evaluation
+        }
+    }
 
     if runs_executing.executing {
         return;
@@ -302,6 +320,14 @@ fn update_mortar_text_targets(
                 .get_or_insert_with(MortarVariableState::new)
         };
 
+        // DEBUG: Check isFemale value
+        if let Some(val) = variable_state.get("isFemale") {
+            info!("DEBUG: isFemale = {:?}", val);
+        } else {
+            // It might be fine if not present, but good to know
+            // info!("DEBUG: isFemale not found in variable state");
+        }
+
         if *skip_next_conditional && text_data.condition.is_some() {
             *skip_next_conditional = false;
             *last_key = Some(current_key);
@@ -309,13 +335,15 @@ fn update_mortar_text_targets(
             continue;
         }
 
-        if let Some(condition) = &text_data.condition
-            && !evaluate_if_condition(condition, &runtime.functions, variable_state)
-        {
-            *skip_next_conditional = false;
-            *last_key = Some(current_key.clone());
-            events.write(MortarEvent::NextText);
-            continue;
+        if let Some(condition) = &text_data.condition {
+            let result = evaluate_if_condition(condition, &runtime.functions, variable_state);
+            info!("DEBUG: Evaluating condition {:?} -> {}", condition, result);
+            if !result {
+                *skip_next_conditional = false;
+                *last_key = Some(current_key.clone());
+                events.write(MortarEvent::NextText);
+                continue;
+            }
         }
 
         let mut executed_statements = false;
