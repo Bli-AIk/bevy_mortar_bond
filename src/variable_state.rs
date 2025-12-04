@@ -3,7 +3,7 @@
 //! Mortar 运行时的变量状态管理。
 
 use bevy::prelude::*;
-use mortar_compiler::{Enum, IfCondition, Variable};
+use mortar_compiler::{Constant, Enum, IfCondition, Variable};
 use std::collections::HashMap;
 
 /// Runtime value for a Mortar variable.
@@ -82,11 +82,22 @@ impl MortarVariableState {
         }
     }
 
-    /// Initialize from a list of variable declarations.
+    /// Initialize from a list of variable declarations and constants.
     ///
-    /// 从变量声明列表初始化。
-    pub fn from_variables(variables: &[Variable], enums: &[Enum]) -> Self {
+    /// 从变量声明列表和常量初始化。
+    pub fn from_variables(variables: &[Variable], constants: &[Constant], enums: &[Enum]) -> Self {
         let mut state = Self::new();
+
+        // Initialize constants first
+        for constant in constants {
+            if let Some(parsed_value) = MortarVariableValue::from_json(&constant.value) {
+                state.set(&constant.name, parsed_value);
+            } else {
+                // Fallback for constants if json parsing fails, though unlikely for compiled output
+                // For now, just warn or skip.
+                warn!("Failed to parse value for constant: {}", constant.name);
+            }
+        }
 
         for var in variables {
             // Handle Branch type specially.

@@ -142,9 +142,9 @@ impl LiveScriptSource {
     pub fn get_highlight_line(&self, runtime: &MortarRuntime) -> Option<usize> {
         let state = runtime.active_dialogue.as_ref()?;
         let current_node = &state.current_node;
-        
+
         let mut current_text_count = 0;
-        
+
         for (node_name, entry) in &self.entries {
             if node_name != current_node {
                 continue;
@@ -153,12 +153,12 @@ impl LiveScriptSource {
             match entry {
                 DialogueStep::Line(line) => {
                     if current_text_count == state.text_index {
-                         return Some(line.line_number);
+                        return Some(line.line_number);
                     }
                     current_text_count += 1;
                 }
                 DialogueStep::Choice(_) => {
-                    // If we are waiting for a choice, highlighting the choice block 
+                    // If we are waiting for a choice, highlighting the choice block
                     // (or the last text) might be nice, but for now we just skip.
                 }
             }
@@ -209,10 +209,13 @@ struct ParsedScript {
 }
 
 fn parse_script_contents(contents: &str) -> ParsedScript {
-    // We no longer need to extract is_female because we map ALL text lines 
+    // We no longer need to extract is_female because we map ALL text lines
     // to match the runtime's physical index structure.
     let entries = collect_entries(contents);
-    ParsedScript { is_female: false, entries }
+    ParsedScript {
+        is_female: false,
+        entries,
+    }
 }
 
 fn collect_entries(contents: &str) -> Vec<(String, DialogueStep)> {
@@ -238,14 +241,17 @@ fn collect_entries(contents: &str) -> Vec<(String, DialogueStep)> {
         // To ensure our index matches the runtime's index, we must collect ALL text lines found in the source.
 
         if let Some(text) = parse_text_line(trimmed) {
-            entries.push((current_node.clone(), DialogueStep::Line(DialogueLine {
-                text,
-                events: Vec::new(),
-                line_number: line_number + 1,
-            })));
+            entries.push((
+                current_node.clone(),
+                DialogueStep::Line(DialogueLine {
+                    text,
+                    events: Vec::new(),
+                    line_number: line_number + 1,
+                }),
+            ));
             continue;
         }
-        
+
         if trimmed.starts_with("with events") {
             // Attach events to the last entry if it belongs to the same node
             if let Some((last_node, last_step)) = entries.last_mut()
@@ -260,7 +266,7 @@ fn collect_entries(contents: &str) -> Vec<(String, DialogueStep)> {
             }
             continue;
         }
-        
+
         if trimmed.starts_with("choice") {
             let options = collect_choice_entries(&mut lines);
             if !options.is_empty() {

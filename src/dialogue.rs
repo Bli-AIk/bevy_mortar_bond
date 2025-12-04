@@ -146,12 +146,14 @@ impl MortarDialogueVariables {
         if self.active_path.as_deref() != Some(path) {
             self.state = Some(MortarVariableState::from_variables(
                 &asset.variables,
+                &asset.constants,
                 &asset.enums,
             ));
             self.active_path = Some(path.to_string());
         } else if self.state.is_none() {
             self.state = Some(MortarVariableState::from_variables(
                 &asset.variables,
+                &asset.constants,
                 &asset.enums,
             ));
         }
@@ -317,6 +319,14 @@ fn update_mortar_text_targets(
                 .get_or_insert_with(MortarVariableState::new)
         };
 
+        // DEBUG: Check isFemale value
+        if let Some(val) = variable_state.get("isFemale") {
+            info!("DEBUG: isFemale = {:?}", val);
+        } else {
+            // It might be fine if not present, but good to know
+            // info!("DEBUG: isFemale not found in variable state");
+        }
+
         if *skip_next_conditional && text_data.condition.is_some() {
             *skip_next_conditional = false;
             *last_key = Some(current_key);
@@ -324,13 +334,15 @@ fn update_mortar_text_targets(
             continue;
         }
 
-        if let Some(condition) = &text_data.condition
-            && !evaluate_if_condition(condition, &runtime.functions, variable_state)
-        {
-            *skip_next_conditional = false;
-            *last_key = Some(current_key.clone());
-            events.write(MortarEvent::NextText);
-            continue;
+        if let Some(condition) = &text_data.condition {
+            let result = evaluate_if_condition(condition, &runtime.functions, variable_state);
+            info!("DEBUG: Evaluating condition {:?} -> {}", condition, result);
+            if !result {
+                *skip_next_conditional = false;
+                *last_key = Some(current_key.clone());
+                events.write(MortarEvent::NextText);
+                continue;
+            }
         }
 
         let mut executed_statements = false;
