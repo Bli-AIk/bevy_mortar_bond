@@ -13,7 +13,7 @@ exclude = [
 
 [dependencies]
 
-bevy = { version = "0.17.2", features = ["wav"] }
+bevy = { version = "0.17.2", features = ["wav", "file_watcher"] }
 
 mortar_compiler = { path = "../../../mortar/crates/mortar_compiler", version = "0.4.0" }
 

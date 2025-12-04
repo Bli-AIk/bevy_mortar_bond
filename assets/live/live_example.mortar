@@ -16,7 +16,7 @@ node AttackNode {
     text: "Great! Watch closely!"
     text: "Look at my sword!"
     with events: [
-        0, play_anim("attack")
+        8, play_anim("attack")
     ]
     text: "Ouch, I can't hit you."
 

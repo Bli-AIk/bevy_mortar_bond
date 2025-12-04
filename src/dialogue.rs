@@ -263,6 +263,7 @@ fn update_mortar_text_targets(
     for event in asset_events.read() {
         if let AssetEvent::Modified { id: _ } = event {
             // If an asset changed, force a reload of variables
+            info!("Mortar asset modified, reloading variables...");
             variable_cache.reset();
             *last_key = None; // Also reset last_key to ensure text re-evaluation
         }
