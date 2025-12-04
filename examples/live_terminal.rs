@@ -209,26 +209,14 @@ struct ParsedScript {
 }
 
 fn parse_script_contents(contents: &str) -> ParsedScript {
-    let is_female = extract_is_female(contents);
-    let entries = collect_entries(contents, is_female);
-    ParsedScript { is_female, entries }
+    // We no longer need to extract is_female because we map ALL text lines 
+    // to match the runtime's physical index structure.
+    let entries = collect_entries(contents);
+    ParsedScript { is_female: false, entries }
 }
 
-fn extract_is_female(contents: &str) -> bool {
-    for line in contents.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("pub const isFemale")
-            && let Some(value) = trimmed.split('=').nth(1)
-        {
-            return value.to_ascii_lowercase().contains("true");
-        }
-    }
-    false
-}
-
-fn collect_entries(contents: &str, is_female: bool) -> Vec<(String, DialogueStep)> {
+fn collect_entries(contents: &str) -> Vec<(String, DialogueStep)> {
     let mut entries = Vec::new();
-    let mut contexts: Vec<ConditionalContext> = Vec::new();
     let mut lines = contents.lines().enumerate().peekable();
     let mut current_node = String::new();
 
@@ -244,32 +232,11 @@ fn collect_entries(contents: &str, is_female: bool) -> Vec<(String, DialogueStep
             continue;
         }
 
-        if trimmed.starts_with("if (isFemale") {
-            contexts.push(ConditionalContext::new(is_female));
-            continue;
-        }
-        if trimmed.starts_with("if (!isFemale") {
-            contexts.push(ConditionalContext::new(!is_female));
-            continue;
-        }
-        if trimmed.starts_with("} else {") {
-            if let Some(ctx) = contexts.last_mut() {
-                ctx.value = !ctx.cond_result;
-            }
-            continue;
-        }
-        if trimmed == "}" {
-            // Could be end of if, or end of node.
-            // If context stack is empty, it's likely end of node, but we don't strictly need to clear current_node
-            // because the next 'node X' will overwrite it.
-            if !contexts.is_empty() {
-                contexts.pop();
-            }
-            continue;
-        }
-        if !contexts.iter().all(|ctx| ctx.value) {
-            continue;
-        }
+        // We deliberately IGNORE if/else blocks here.
+        // The Mortar runtime's `text_index` counts ALL text nodes in the compiled asset,
+        // regardless of whether they are executed or skipped at runtime.
+        // To ensure our index matches the runtime's index, we must collect ALL text lines found in the source.
+
         if let Some(text) = parse_text_line(trimmed) {
             entries.push((current_node.clone(), DialogueStep::Line(DialogueLine {
                 text,
@@ -278,6 +245,7 @@ fn collect_entries(contents: &str, is_female: bool) -> Vec<(String, DialogueStep
             })));
             continue;
         }
+        
         if trimmed.starts_with("with events") {
             // Attach events to the last entry if it belongs to the same node
             if let Some((last_node, last_step)) = entries.last_mut()
@@ -292,6 +260,7 @@ fn collect_entries(contents: &str, is_female: bool) -> Vec<(String, DialogueStep
             }
             continue;
         }
+        
         if trimmed.starts_with("choice") {
             let options = collect_choice_entries(&mut lines);
             if !options.is_empty() {
@@ -301,6 +270,8 @@ fn collect_entries(contents: &str, is_female: bool) -> Vec<(String, DialogueStep
     }
     entries
 }
+
+// Removed unused ConditionalContext struct and impl
 fn parse_text_line(line: &str) -> Option<String> {
     if !line.starts_with("text:") {
         return None;
@@ -394,20 +365,6 @@ fn parse_choice_line(line: &str) -> Option<ChoiceOption> {
         label: label_part.to_string(),
         target,
     })
-}
-
-struct ConditionalContext {
-    cond_result: bool,
-    value: bool,
-}
-
-impl ConditionalContext {
-    fn new(cond_result: bool) -> Self {
-        Self {
-            cond_result,
-            value: cond_result,
-        }
-    }
 }
 
 #[derive(Resource)]
