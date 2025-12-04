@@ -41,6 +41,12 @@ use rogue_sprite::{RogueGender, RogueSprite, RogueSpritePlugin};
 use std::{fs, path::Path, time::SystemTime};
 use typewriter::{Typewriter, TypewriterPlugin, TypewriterState};
 
+type ChoiceButtonQuery<'w, 's> = Query<
+    'w,
+    's,
+    (&'static Interaction, &'static ChoiceButton),
+    (Changed<Interaction>, With<Button>),
+>;
 fn main() {
     App::new()
         .init_resource::<TerminalMachine>()
@@ -183,7 +189,7 @@ fn sync_gender_from_variable(
 #[derive(Resource, Default)]
 pub struct LiveScriptSource {
     // Stores (NodeName, Step)
-    pub entries: Vec<(String, DialogueStep)>,
+    pub entries: Vec<(String, usize)>,
     pub last_modified: Option<SystemTime>,
 }
 
@@ -206,23 +212,15 @@ impl LiveScriptSource {
 
         let mut current_text_count = 0;
 
-        for (node_name, entry) in &self.entries {
+        for (node_name, line_number) in &self.entries {
             if node_name != current_node {
                 continue;
             }
 
-            match entry {
-                DialogueStep::Line(line) => {
-                    if current_text_count == state.text_index {
-                        return Some(line.line_number);
-                    }
-                    current_text_count += 1;
-                }
-                DialogueStep::Choice(_) => {
-                    // If we are waiting for a choice, highlighting the choice block
-                    // (or the last text) might be nice, but for now we just skip.
-                }
+            if current_text_count == state.text_index {
+                return Some(*line_number);
             }
+            current_text_count += 1;
         }
         None
     }
@@ -234,58 +232,17 @@ impl live_terminal::ScriptHighlightSource for LiveScriptSource {
     }
 }
 
-#[derive(Clone)]
-pub struct DialogueLine {
-    text: String,
-    events: Vec<LineEvent>,
-    line_number: usize,
-}
-
-#[derive(Clone)]
-pub struct ChoiceOption {
-    label: String,
-    target: ChoiceTarget,
-}
-
-#[derive(Clone)]
-enum ChoiceTarget {
-    Return,
-    Node(String),
-}
-
-#[derive(Clone)]
-pub enum DialogueStep {
-    Line(DialogueLine),
-    Choice(Vec<ChoiceOption>),
-}
-
-#[derive(Clone)]
-pub struct LineEvent {
-    trigger_index: usize,
-    action: LineEventAction,
-}
-
-#[derive(Clone)]
-pub enum LineEventAction {
-    PlayAnim(String),
-}
-
 struct ParsedScript {
-    is_female: bool,
-    entries: Vec<(String, DialogueStep)>,
+    entries: Vec<(String, usize)>,
 }
 
 fn parse_script_contents(contents: &str) -> ParsedScript {
-    // We no longer need to extract is_female because we map ALL text lines
-    // to match the runtime's physical index structure.
-    let entries = collect_entries(contents);
     ParsedScript {
-        is_female: false,
-        entries,
+        entries: collect_entries(contents),
     }
 }
 
-fn collect_entries(contents: &str) -> Vec<(String, DialogueStep)> {
+fn collect_entries(contents: &str) -> Vec<(String, usize)> {
     let mut entries = Vec::new();
     let mut lines = contents.lines().enumerate().peekable();
     let mut current_node = String::new();
@@ -307,38 +264,18 @@ fn collect_entries(contents: &str) -> Vec<(String, DialogueStep)> {
         // regardless of whether they are executed or skipped at runtime.
         // To ensure our index matches the runtime's index, we must collect ALL text lines found in the source.
 
-        if let Some(text) = parse_text_line(trimmed) {
-            entries.push((
-                current_node.clone(),
-                DialogueStep::Line(DialogueLine {
-                    text,
-                    events: Vec::new(),
-                    line_number: line_number + 1,
-                }),
-            ));
+        if parse_text_line(trimmed).is_some() {
+            entries.push((current_node.clone(), line_number + 1));
             continue;
         }
 
         if trimmed.starts_with("with events") {
-            // Attach events to the last entry if it belongs to the same node
-            if let Some((last_node, last_step)) = entries.last_mut()
-                && *last_node == current_node
-                && matches!(last_step, DialogueStep::Line(_))
-            {
-                if let DialogueStep::Line(line) = last_step {
-                    collect_event_entries(&mut lines, line);
-                }
-            } else {
-                consume_event_block(&mut lines);
-            }
+            consume_event_block(&mut lines);
             continue;
         }
 
         if trimmed.starts_with("choice") {
-            let options = collect_choice_entries(&mut lines);
-            if !options.is_empty() {
-                entries.push((current_node.clone(), DialogueStep::Choice(options)));
-            }
+            consume_event_block(&mut lines);
         }
     }
     entries
@@ -357,87 +294,12 @@ fn parse_text_line(line: &str) -> Option<String> {
     Some(content.to_string())
 }
 
-fn collect_event_entries(
-    lines: &mut std::iter::Peekable<std::iter::Enumerate<std::str::Lines<'_>>>,
-    line: &mut DialogueLine,
-) {
-    for (_, line_text) in lines.by_ref() {
-        let trimmed = line_text.trim();
-        if trimmed.starts_with(']') {
-            break;
-        }
-        if trimmed.is_empty() {
-            continue;
-        }
-        if let Some(event) = parse_event_line(trimmed) {
-            line.events.push(event);
-        }
-    }
-}
-
 fn consume_event_block(lines: &mut std::iter::Peekable<std::iter::Enumerate<std::str::Lines<'_>>>) {
     for (_, line) in lines.by_ref() {
         if line.trim().starts_with(']') {
             break;
         }
     }
-}
-
-fn collect_choice_entries(
-    lines: &mut std::iter::Peekable<std::iter::Enumerate<std::str::Lines<'_>>>,
-) -> Vec<ChoiceOption> {
-    let mut options = Vec::new();
-    for (_, line_text) in lines.by_ref() {
-        let trimmed = line_text.trim();
-        if trimmed.starts_with(']') {
-            break;
-        }
-        if trimmed.is_empty() {
-            continue;
-        }
-        if let Some(option) = parse_choice_line(trimmed) {
-            options.push(option);
-        }
-    }
-    options
-}
-
-fn parse_event_line(line: &str) -> Option<LineEvent> {
-    let cleaned = line.trim().trim_end_matches(',');
-    if cleaned.is_empty() {
-        return None;
-    }
-    let mut parts = cleaned.splitn(2, ',');
-    let index_str = parts.next()?.trim();
-    let trigger_index = index_str.parse::<usize>().ok()?;
-    let action = parts.next()?.trim();
-    if let Some(name) = action.strip_prefix("play_anim(") {
-        let label = name.trim().trim_matches(|c| c == '"' || c == ')');
-        return Some(LineEvent {
-            trigger_index,
-            action: LineEventAction::PlayAnim(label.to_string()),
-        });
-    }
-    None
-}
-
-fn parse_choice_line(line: &str) -> Option<ChoiceOption> {
-    let cleaned = line.trim().trim_end_matches(',');
-    let mut parts = cleaned.splitn(2, "->");
-    let label_part = parts.next()?.trim().trim_matches('"');
-    if label_part.is_empty() {
-        return None;
-    }
-    let target_part = parts.next()?.trim().trim_end_matches(',');
-    let target = if target_part.eq_ignore_ascii_case("return") {
-        ChoiceTarget::Return
-    } else {
-        ChoiceTarget::Node(target_part.to_string())
-    };
-    Some(ChoiceOption {
-        label: label_part.to_string(),
-        target,
-    })
 }
 
 #[derive(Resource)]
@@ -457,7 +319,6 @@ fn monitor_script_changes(
     time: Res<Time>,
     mut watcher: ResMut<ScriptWatcher>,
     mut source: ResMut<LiveScriptSource>,
-    registry: Res<MortarRegistry>,
 ) {
     if !watcher.timer.tick(time.delta()).just_finished() {
         return;
@@ -472,10 +333,6 @@ fn monitor_script_changes(
     {
         info!("Detected file change via polling: {:?}", path);
         *source = new_source;
-        // Force reload the asset to ensure the runtime updates
-        // even if the OS file watcher misses the event (e.g. vim atomic save)
-        let registry_key = format!("live/{}", live_terminal::DEFAULT_FILE);
-        if let Some(handle) = registry.get(&registry_key) {}
     }
 }
 
@@ -656,7 +513,7 @@ fn sync_choice_panel(
 }
 
 fn handle_choice_buttons(
-    mut buttons: Query<(&Interaction, &ChoiceButton), (Changed<Interaction>, With<Button>)>,
+    mut buttons: ChoiceButtonQuery<'_, '_>,
     mut events: MessageWriter<MortarEvent>,
 ) {
     for (interaction, button) in &mut buttons {

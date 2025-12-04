@@ -28,7 +28,6 @@ pub const FONT_PATH: &str = "font/Unifont.otf";
 pub const SHELL_COMMANDS: [&str; 2] = ["bevim live_example", "clear"];
 pub const DIALOGUE_CHAR_SPEED: f32 = 0.04;
 pub const DIALOGUE_PLACEHOLDER: &str = "Start editing live_example.mortar to drive the dialogue.";
-pub const DIALOGUE_FINISHED_LINE: &str = "(End of conversation)";
 
 #[derive(Component)]
 pub struct TerminalPanel;
@@ -668,6 +667,7 @@ impl VimEditorState {
         line
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn push_token_with_cursor(
         &self,
         line: &mut StyledLine,

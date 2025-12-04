@@ -68,6 +68,7 @@ impl MortarAssetLoader {
     /// Checks if a `.mortar` file needs to be recompiled.
     ///
     /// 检查 `.mortar` 文件是否需要重新编译。
+    #[allow(dead_code)]
     fn should_recompile(
         source_fs_path: &Path,
         mortared_fs_path: &Path,
@@ -143,6 +144,7 @@ impl MortarAssetLoader {
     /// Loads a pre-compiled `.mortared` file.
     ///
     /// 加载预编译的 `.mortared` 文件。
+    #[allow(dead_code)]
     fn load_mortared_file(
         mortared_fs_path: &Path,
     ) -> Result<MortaredData, Box<dyn std::error::Error + Send + Sync>> {
@@ -158,6 +160,8 @@ impl MortarAssetLoader {
         reader: &mut dyn Reader,
         path: &Path,
     ) -> Result<MortaredData, Box<dyn std::error::Error + Send + Sync>> {
+        #[cfg(not(feature = "dev-logs"))]
+        let _ = path;
         dev_info!("Loading .mortared file: {:?}", path);
 
         let mut bytes = Vec::new();
@@ -170,6 +174,7 @@ impl MortarAssetLoader {
     /// Logs all public constants contained within a Mortar program.
     ///
     /// 记录 Mortar 程序中的所有公开常量。
+    #[cfg_attr(not(feature = "dev-logs"), allow(unused_variables))]
     fn log_public_constants(path: &Path, data: &MortaredData) {
         let public_constants: Vec<_> = data
             .constants
@@ -180,9 +185,14 @@ impl MortarAssetLoader {
             return;
         }
 
+        #[cfg(not(feature = "dev-logs"))]
+        let _ = path;
+
         dev_info!("Public constants exported by {}:", path.display());
 
         for constant in public_constants {
+            #[cfg(not(feature = "dev-logs"))]
+            let _ = constant;
             dev_info!(
                 "    {} ({}): {}",
                 constant.name,
@@ -195,6 +205,7 @@ impl MortarAssetLoader {
     /// Formats a constant value for human-friendly logging output.
     ///
     /// 格式化常量值，便于阅读日志。
+    #[allow(dead_code)]
     fn format_constant_value(value: &serde_json::Value) -> String {
         match value {
             serde_json::Value::String(s) => s.clone(),
@@ -234,6 +245,8 @@ impl AssetLoader for MortarAssetLoader {
         Box::pin(async move {
             let path = load_context.path();
             let asset_path = load_context.asset_path();
+            #[cfg(not(feature = "dev-logs"))]
+            let _ = &asset_path;
 
             let data = match path.extension().and_then(|s| s.to_str()) {
                 Some("mortar") => {
