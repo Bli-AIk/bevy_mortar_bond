@@ -25,9 +25,9 @@ use bevy::{
     window::{PresentMode, WindowResolution},
 };
 use bevy_mortar_bond::{
-    MortarBoolean, MortarDialoguePlugin, MortarDialogueText, MortarEvent, MortarFunctions,
-    MortarGameEvent, MortarPlugin, MortarRegistry, MortarRuntime, MortarTextTarget,
-    mortar_functions,
+    MortarBoolean, MortarDialoguePlugin, MortarDialogueText, MortarDialogueVariables, MortarEvent,
+    MortarFunctions, MortarGameEvent, MortarPlugin, MortarRegistry, MortarRuntime,
+    MortarTextTarget, MortarVariableValue, mortar_functions,
 };
 use live_terminal::{
     ASSET_DIR, ChoiceButton, ChoicePanel, ChoicePanelFont, CursorBlink, DEFAULT_FILE,
@@ -83,6 +83,7 @@ fn main() {
                 bridge_mortar_events,
                 sync_choice_panel,
                 monitor_script_changes,
+                sync_gender_from_variable,
             ),
         )
         .add_systems(
@@ -114,6 +115,29 @@ impl TerminalFunctions {
 
     fn set_gender(_is_female: MortarBoolean) {
         // Handled via events or variable state inspection if needed
+    }
+}
+
+fn sync_gender_from_variable(
+    variables: Res<MortarDialogueVariables>,
+    mut preview: Query<&mut RogueSprite, With<RoguePreviewImage>>,
+) {
+    let Some(state) = &variables.state else {
+        return;
+    };
+
+    if let Some(MortarVariableValue::Boolean(is_female)) = state.get("isFemale") {
+        let target_gender = if *is_female {
+            RogueGender::Female
+        } else {
+            RogueGender::Male
+        };
+
+        if let Ok(mut sprite) = preview.single_mut() {
+            if sprite.gender != target_gender {
+                sprite.gender = target_gender;
+            }
+        }
     }
 }
 

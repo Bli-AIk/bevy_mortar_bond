@@ -128,7 +128,7 @@ pub struct MortarGameEvent {
 /// 缓存当前 mortar 文件变量状态的资源。
 #[derive(Resource, Default)]
 pub struct MortarDialogueVariables {
-    pub(crate) state: Option<MortarVariableState>,
+    pub state: Option<MortarVariableState>,
     active_path: Option<String>,
 }
 
