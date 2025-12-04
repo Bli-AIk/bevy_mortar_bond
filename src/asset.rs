@@ -245,18 +245,14 @@ impl AssetLoader for MortarAssetLoader {
                     let base_path =
                         Self::find_asset_base_path().ok_or("Cannot find assets directory")?;
 
-                    let source_fs_path = base_path.join(path);
-                    let mortared_fs_path = base_path.join(&mortared_path);
-
-                    let recompile =
-                        Self::should_recompile(&source_fs_path, &mortared_fs_path).unwrap_or(true);
-
-                    if recompile {
-                        Self::compile_mortar_source(reader, path, &mortared_path, &base_path)
-                            .await?
-                    } else {
-                        Self::load_mortared_file(&mortared_fs_path)?
-                    }
+                    // Always compile from source to ensure hot reloading gets the latest changes.
+                    // The `reader` provides the current content of the file.
+                    // We still pass paths for writing the .mortared cache, but we don't rely on it for reading.
+                    //
+                    // 始终从源代码编译以确保热重载获取最新更改。
+                    // `reader` 提供了文件的当前内容。
+                    // 我们仍然传递路径用于写入 .mortared 缓存，但不依赖它进行读取。
+                    Self::compile_mortar_source(reader, path, &mortared_path, &base_path).await?
                 }
                 Some("mortared") => Self::load_mortared_direct(reader, path).await?,
                 _ => return Err("Unsupported file extension".into()),

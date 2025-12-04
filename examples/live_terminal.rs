@@ -26,8 +26,8 @@ use bevy::{
 };
 use bevy_mortar_bond::{
     MortarBoolean, MortarDialoguePlugin, MortarDialogueText, MortarDialogueVariables, MortarEvent,
-    MortarFunctions, MortarGameEvent, MortarPlugin, MortarRegistry, MortarRuntime,
-    MortarTextTarget, MortarVariableValue, mortar_functions,
+    MortarEventBinding, MortarFunctions, MortarGameEvent, MortarPlugin, MortarRegistry,
+    MortarRuntime, MortarTextTarget, MortarVariableValue, mortar_functions,
 };
 use live_terminal::{
     ASSET_DIR, ChoiceButton, ChoicePanel, ChoicePanelFont, CursorBlink, DEFAULT_FILE,
@@ -80,6 +80,7 @@ fn main() {
                 handle_dialogue_input,
                 handle_choice_buttons,
                 sync_mortar_text_to_terminal,
+                sync_typewriter_progress,
                 bridge_mortar_events,
                 sync_choice_panel,
                 monitor_script_changes,
@@ -116,6 +117,20 @@ impl TerminalFunctions {
     fn set_gender(_is_female: MortarBoolean) {
         // Handled via events or variable state inspection if needed
     }
+}
+
+fn sync_typewriter_progress(
+    typewriter_query: Query<&Typewriter, With<GameDialogueText>>,
+    mut binding_query: Query<&mut MortarEventBinding, With<MortarTextProxy>>,
+) {
+    let Ok(typewriter) = typewriter_query.single() else {
+        return;
+    };
+    let Ok(mut binding) = binding_query.single_mut() else {
+        return;
+    };
+
+    binding.current_index = typewriter.current_char_index as f32;
 }
 
 fn sync_gender_from_variable(
