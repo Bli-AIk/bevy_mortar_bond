@@ -43,18 +43,21 @@ impl Typewriter {
         self.timer.reset();
     }
 
+    #[allow(dead_code)]
     pub fn pause(&mut self) {
         if self.state == TypewriterState::Playing {
             self.state = TypewriterState::Paused;
         }
     }
 
+    #[allow(dead_code)]
     pub fn resume(&mut self) {
         if self.state == TypewriterState::Paused {
             self.state = TypewriterState::Playing;
         }
     }
 
+    #[allow(dead_code)]
     pub fn stop(&mut self) {
         self.state = TypewriterState::Idle;
         self.current_char_index = 0;
@@ -62,11 +65,13 @@ impl Typewriter {
         self.timer.reset();
     }
 
+    #[allow(dead_code)]
     pub fn restart(&mut self) {
         self.stop();
         self.play();
     }
 
+    #[allow(dead_code)]
     pub fn is_finished(&self) -> bool {
         self.state == TypewriterState::Finished
     }
@@ -75,6 +80,7 @@ impl Typewriter {
         self.state == TypewriterState::Playing
     }
 
+    #[allow(dead_code)]
     pub fn progress(&self) -> f32 {
         let total = self.source_text.chars().count();
         if total == 0 {

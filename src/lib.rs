@@ -38,6 +38,7 @@ use std::collections::HashMap;
 #[macro_use]
 mod debug;
 mod asset;
+mod audio;
 mod binder;
 mod dialogue;
 mod system;
@@ -47,6 +48,7 @@ mod variable_state;
 mod tests;
 
 pub use asset::{MortarAsset, MortarAssetLoader};
+pub use audio::MortarAudioSettings;
 pub use bevy_mortar_bond_macros::{MortarFunctions, mortar_functions};
 pub use binder::{
     MortarBoolean, MortarFunctionRegistry, MortarNumber, MortarString, MortarValue, MortarVoid,

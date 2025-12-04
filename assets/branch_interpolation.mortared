@@ -105,7 +105,7 @@
                 "actions": [
                   {
                     "args": [
-                      "random-sound-1-80941.wav"
+                      "audio/random-sound-1-80941.wav"
                     ],
                     "type": "play_sound"
                   }
@@ -122,7 +122,7 @@
                 "actions": [
                   {
                     "args": [
-                      "random-sound-1-80941.wav"
+                      "audio/random-sound-1-80941.wav"
                     ],
                     "type": "play_sound"
                   }

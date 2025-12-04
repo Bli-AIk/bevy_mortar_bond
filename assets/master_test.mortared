@@ -1,7 +1,7 @@
 {
   "metadata": {
     "version": "0.4.0",
-    "generated_at": "2025-11-23T11:27:31.674141590Z"
+    "generated_at": "2025-12-04T09:36:03.110189322Z"
   },
   "variables": [
     {
@@ -374,7 +374,7 @@
                 {
                   "type": "play_sound",
                   "args": [
-                    "vibrating-thud-39536.wav"
+                    "audio/vibrating-thud-39536.wav"
                   ]
                 }
               ]
@@ -399,7 +399,7 @@
                 {
                   "type": "play_sound",
                   "args": [
-                    "random-sound-1-80941.wav"
+                    "audio/random-sound-1-80941.wav"
                   ]
                 }
               ]
@@ -744,7 +744,7 @@
       "action": {
         "type": "play_sound",
         "args": [
-          "\"random-sound-1-80941.wav\""
+          "\"audio/random-sound-1-80941.wav\""
         ]
       }
     }

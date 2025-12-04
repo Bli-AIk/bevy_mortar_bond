@@ -1,0 +1,123 @@
+{
+  "metadata": {
+    "version": "0.5.0",
+    "generated_at": "2025-12-04T22:45:04.663652184Z"
+  },
+  "constants": [
+    {
+      "name": "isFemale",
+      "type": "Boolean",
+      "value": true,
+      "public": true
+    }
+  ],
+  "nodes": [
+    {
+      "name": "Start",
+      "content": [
+        {
+          "type": "text",
+          "value": "This may be a vivid demo."
+        }
+      ],
+      "next": "NextNode"
+    },
+    {
+      "name": "NextNode",
+      "content": [
+        {
+          "type": "text",
+          "value": "Did you see me talking?"
+        },
+        {
+          "type": "choice",
+          "options": [
+            {
+              "text": "Right!",
+              "next": "AttackNode"
+            },
+            {
+              "text": "NOOOOO!",
+              "action": "return"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AttackNode",
+      "content": [
+        {
+          "type": "text",
+          "value": "Great! Watch closely!"
+        },
+        {
+          "type": "text",
+          "value": "Look at my sword!",
+          "events": [
+            {
+              "index": 14.0,
+              "actions": [
+                {
+                  "type": "play_anim",
+                  "args": [
+                    "attack"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "value": "Ouch, I can't hit you."
+        },
+        {
+          "type": "text",
+          "value": "Why are you off-screen??",
+          "condition": {
+            "type": "identifier",
+            "value": "isFemale"
+          }
+        },
+        {
+          "type": "text",
+          "value": "What are you hiding behind the screen for?",
+          "condition": {
+            "type": "unary",
+            "operator": "!",
+            "operand": {
+              "type": "identifier",
+              "value": "isFemale"
+            }
+          }
+        },
+        {
+          "type": "text",
+          "value": "You're driving me crazy, just you wait!"
+        }
+      ],
+      "next": "EndNode"
+    },
+    {
+      "name": "EndNode",
+      "content": [
+        {
+          "type": "text",
+          "value": "We shall battle another day!"
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "name": "play_anim",
+      "params": [
+        {
+          "name": "anim_name",
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

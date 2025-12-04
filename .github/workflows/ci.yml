@@ -28,7 +28,7 @@ jobs:
         with:
           repository: Bli-AIk/mortar
           path: external/mortar
-          ref: develop
+          ref: main
       - name: Prepare path dependencies
         run: |
           rm -rf ../../../mortar
@@ -89,7 +89,7 @@ jobs:
         with:
           repository: Bli-AIk/mortar
           path: external/mortar
-          ref: develop
+          ref: main
       - name: Prepare path dependencies
         run: |
           rm -rf ../../../mortar

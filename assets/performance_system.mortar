@@ -31,7 +31,7 @@ event TPLeft {
 
 event PlaySound {
     index: 20
-    action: play_sound("random-sound-1-80941.wav")
+    action: play_sound("audio/random-sound-1-80941.wav")
     duration: 0.0
 }
 

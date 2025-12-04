@@ -13,8 +13,8 @@ mod utils;
 
 use bevy::prelude::*;
 use bevy_mortar_bond::{
-    MortarDialoguePlugin, MortarEvent, MortarFunctions, MortarGameEvent, MortarNumber,
-    MortarPlugin, MortarRegistry, MortarRuntime, MortarString, mortar_functions,
+    MortarAudioSettings, MortarDialoguePlugin, MortarEvent, MortarFunctions, MortarGameEvent,
+    MortarNumber, MortarPlugin, MortarRegistry, MortarRuntime, MortarString, mortar_functions,
 };
 use std::time::Duration;
 use utils::typewriter::TypewriterPlugin;
@@ -63,12 +63,16 @@ impl DialogueFiles {
 fn main() {
     App::new()
         .add_plugins((
-            DefaultPlugins,
+            DefaultPlugins.set(ImagePlugin::default_nearest()),
             MortarPlugin,
             MortarDialoguePlugin,
             TypewriterPlugin,
             DialogueUiPlugin,
         ))
+        .insert_resource(MortarAudioSettings {
+            auto_play_sound_events: false,
+            ..default()
+        })
         .init_resource::<DialogueFiles>()
         .add_systems(
             Startup,
@@ -220,7 +224,7 @@ fn handle_game_events(
             "play_sound" => {
                 if let Some(path) = event.args.first() {
                     let audio_source = asset_server.load::<AudioSource>(path.clone());
-                    commands.spawn(AudioPlayer::new(audio_source));
+                    commands.spawn((AudioPlayer::new(audio_source), PlaybackSettings::DESPAWN));
                 }
             }
             _ => {

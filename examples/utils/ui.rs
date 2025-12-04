@@ -156,7 +156,7 @@ type ChoiceUiState = Option<ChoiceUiSnapshot>;
 ///
 /// 创建对话 UI 布局。
 pub fn setup_dialogue_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let font = asset_server.load("Unifont.otf");
+    let font = asset_server.load("font/Unifont.otf");
 
     commands
         .spawn(Node {
@@ -643,7 +643,7 @@ fn manage_choice_buttons(
             return;
         }
 
-        let font = resources.asset_server.load("Unifont.otf");
+        let font = resources.asset_server.load("font/Unifont.otf");
         let function_decls = resources
             .registry
             .get(&state.mortar_path)
