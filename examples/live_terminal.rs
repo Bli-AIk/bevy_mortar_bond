@@ -93,7 +93,7 @@ fn main() {
                 update_dialogue_text_render,
                 apply_animation_events,
                 revert_animation_to_idle,
-                refresh_terminal_display,
+                refresh_terminal_display::<LiveScriptSource>,
                 update_focus_visuals,
             ),
         )
@@ -203,6 +203,12 @@ impl LiveScriptSource {
             }
         }
         None
+    }
+}
+
+impl live_terminal::ScriptHighlightSource for LiveScriptSource {
+    fn highlight_line(&self, runtime: &MortarRuntime) -> Option<usize> {
+        self.get_highlight_line(runtime)
     }
 }
 

@@ -4,7 +4,6 @@ use super::{
     },
     typewriter::{Typewriter, TypewriterState},
 };
-use crate::LiveScriptSource;
 use bevy::{
     ecs::message::MessageReader,
     input::{
@@ -22,7 +21,6 @@ use std::{
     path::{Component, Path, PathBuf},
     time::Duration,
 };
-
 pub const DEFAULT_FILE: &str = "live_example.mortar";
 pub const ASSET_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets");
 pub const LIVE_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/live");
@@ -63,6 +61,10 @@ pub struct ChoicePanelFont(pub Handle<Font>);
 
 #[derive(Component)]
 pub struct AnimationRevertTimer(pub Timer);
+
+pub trait ScriptHighlightSource {
+    fn highlight_line(&self, runtime: &MortarRuntime) -> Option<usize>;
+}
 
 #[derive(Resource)]
 pub struct TerminalMachine {
@@ -1274,14 +1276,13 @@ pub fn handle_keyboard_controls(
         }
     }
 }
-
-pub fn refresh_terminal_display(
+pub fn refresh_terminal_display<S: ScriptHighlightSource + Resource>(
     mut commands: Commands,
     mut machine: ResMut<TerminalMachine>,
     display: Query<(Entity, &TerminalFont), With<TerminalDisplay>>,
     children: Query<&Children>,
     cursor: Res<CursorBlink>,
-    source: Res<LiveScriptSource>,
+    source: Res<S>,
     runtime: Res<MortarRuntime>,
 ) {
     if !machine.dirty {
@@ -1289,7 +1290,8 @@ pub fn refresh_terminal_display(
     }
 
     let cursor_visible = machine.focused && cursor.visible();
-    let render = machine.render(cursor_visible, source.get_highlight_line(&runtime));
+    let highlight_line = source.as_ref().highlight_line(&runtime);
+    let render = machine.render(cursor_visible, highlight_line);
     if let Ok((entity, font)) = display.single() {
         if let Ok(existing_children) = children.get(entity) {
             for child in existing_children.iter() {
