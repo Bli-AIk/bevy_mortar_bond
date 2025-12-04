@@ -96,8 +96,7 @@ fn main() {
                 handle_keyboard_controls,
                 handle_dialogue_input,
                 handle_choice_buttons,
-                sync_mortar_text_to_terminal
-                    .in_set(LiveTerminalSystemSet::CopyMortarText),
+                sync_mortar_text_to_terminal.in_set(LiveTerminalSystemSet::CopyMortarText),
                 sync_typewriter_progress.in_set(LiveTerminalSystemSet::SyncEventBinding),
                 bridge_mortar_events.after(MortarDialogueSystemSet::TriggerEvents),
                 sync_choice_panel,
