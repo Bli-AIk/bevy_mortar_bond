@@ -1,0 +1,44 @@
+{
+  "metadata": {
+    "version": "0.4.0",
+    "generated_at": "2025-11-25T09:26:29.907941179Z"
+  },
+  "constants": [
+    {
+      "name": "welcome_message",
+      "type": "String",
+      "value": "欢迎来到冒险！",
+      "public": true
+    },
+    {
+      "name": "continue_label",
+      "type": "String",
+      "value": "继续",
+      "public": true
+    },
+    {
+      "name": "exit_label",
+      "type": "String",
+      "value": "退出",
+      "public": true
+    },
+    {
+      "name": "nothing",
+      "type": "String",
+      "value": "看不见我……",
+      "public": false
+    }
+  ],
+  "nodes": [
+    {
+      "name": "Start",
+      "content": [
+        {
+          "type": "text",
+          "value": "你应该能在终端看到三个键值对被输出。"
+        }
+      ]
+    }
+  ],
+  "functions": []
+}

@@ -16,6 +16,20 @@
 //! 2. Call `trigger_at_index()` with current progress index
 //! 3. Handle returned [`MortarEventAction`]s in your game systems
 //!
+//! # ECS 架构
+//!
+//! 本库遵循 ECS（实体组件系统）设计理念。
+//!
+//! ## 核心组件
+//!
+//! - [`MortarEventTracker`]：按索引跟踪文本事件并管理触发状态
+//!
+//! ## 使用方式
+//!
+//! 1. 将 [`MortarEventTracker`] 添加到包含文本事件的实体
+//! 2. 使用当前进度索引调用 `trigger_at_index()`
+//! 3. 在游戏系统中处理返回的 [`MortarEventAction`]
+//!
 
 use bevy::prelude::*;
 use mortar_compiler::{Choice, Node};
@@ -25,6 +39,7 @@ use std::collections::HashMap;
 mod debug;
 mod asset;
 mod binder;
+mod dialogue;
 mod system;
 mod variable_state;
 
@@ -35,6 +50,10 @@ pub use asset::{MortarAsset, MortarAssetLoader};
 pub use bevy_mortar_bond_macros::{MortarFunctions, mortar_functions};
 pub use binder::{
     MortarBoolean, MortarFunctionRegistry, MortarNumber, MortarString, MortarValue, MortarVoid,
+};
+pub use dialogue::{
+    MortarDialoguePlugin, MortarDialogueSystemSet, MortarDialogueText, MortarDialogueVariables,
+    MortarEventBinding, MortarGameEvent, MortarRunsExecuting, MortarTextTarget,
 };
 pub use variable_state::{MortarVariableState, MortarVariableValue};
 
@@ -250,7 +269,9 @@ impl DialogueState {
     ///
     /// 创建一个新的对话状态。
     pub fn new(mortar_path: String, node_name: String, node_data: Node) -> Self {
-        // Parse content array to extract texts and choices
+        // Parse content array to extract texts and choices.
+        //
+        // 解析内容数组以提取文本和选项。
         let mut text_items = Vec::new();
         let mut text_to_content_index = Vec::new();
         let mut choice_content_index = None;
@@ -260,7 +281,9 @@ impl DialogueState {
             if let Some(type_str) = content_value.get("type").and_then(|v| v.as_str()) {
                 match type_str {
                     "text" => {
-                        // Extract text data
+                        // Extract text data.
+                        //
+                        // 提取文本数据。
                         let value = content_value
                             .get("value")
                             .and_then(|v| v.as_str())
@@ -290,7 +313,9 @@ impl DialogueState {
                         text_to_content_index.push(content_idx);
                     }
                     "choice" => {
-                        // Extract choices
+                        // Extract choices.
+                        //
+                        // 提取选项数据。
                         if let Some(options_value) = content_value.get("options") {
                             match serde_json::from_value::<Vec<Choice>>(options_value.clone()) {
                                 Ok(parsed_choices) => {
@@ -307,7 +332,9 @@ impl DialogueState {
                         }
                     }
                     "run_event" | "run_timeline" => {
-                        // These will be processed directly from content when needed
+                        // These will be processed directly from content when needed.
+                        //
+                        // 这些内容会在需要时直接从 content 中处理。
                     }
                     _ => {}
                 }
@@ -337,7 +364,9 @@ impl DialogueState {
     pub fn get_current_choices(&self) -> Option<&Vec<Choice>> {
         let mut choices = self.choices.as_ref()?;
 
-        // Navigate through nested choices using the stack
+        // Navigate through nested choices using the stack.
+        //
+        // 使用堆栈穿过嵌套的选择。
         for &index in &self.choice_stack {
             if let Some(choice) = choices.get(index) {
                 if let Some(nested) = &choice.choice {
@@ -381,7 +410,9 @@ impl DialogueState {
     ///
     /// 已弃用：使用 get_current_choices 代替。
     pub fn get_choices(&self) -> Option<&Vec<Choice>> {
-        // If choices have been broken (by break action), don't show them
+        // If choices have been broken (by break action), don't show them.
+        //
+        // 如果选项被 break 操作破坏，则不再展示它们。
         if self.choices_broken {
             return None;
         }
@@ -417,22 +448,34 @@ impl DialogueState {
         variable_state: &MortarVariableState,
         functions: &MortarFunctionRegistry,
     ) -> Option<&TextData> {
-        // Find the appropriate text based on conditions
+        // Find the appropriate text based on conditions.
+        //
+        // 根据条件查找合适的文本。
         let text_data = self.text_items.get(self.text_index)?;
 
-        // If there's no condition, return the text as-is
+        // If there's no condition, return the text as-is.
+        //
+        // 如果没有条件，直接返回文本。
         if text_data.condition.is_none() {
             return Some(text_data);
         }
 
-        // If there's a condition, check it
+        // If there's a condition, check it.
+        //
+        // 如果存在条件，则执行检查。
         if let Some(condition) = &text_data.condition {
             return if evaluate_if_condition(condition, functions, variable_state) {
                 Some(text_data)
             } else {
-                // Condition failed, try to find else branch
-                // The else branch should be the next text with no condition or matching structure
-                // For now, we'll return None to skip this text
+                // Condition failed, try to find else branch.
+                //
+                // 条件失败时尝试寻找 else 分支。
+                // The else branch should be the next text with no condition or matching structure.
+                //
+                // else 分支应该是下一个没有条件或结构匹配的文本。
+                // For now, we'll return None to skip this text.
+                //
+                // 当前直接返回 None 以跳过此文本。
                 None
             };
         }
@@ -452,7 +495,9 @@ impl DialogueState {
     /// 检查在choice位置之前是否还有更多文本。
     pub fn has_next_text_before_choice(&self) -> bool {
         if let Some(choice_content_idx) = self.choice_content_index {
-            // Check if the next text would be after the choice position
+            // Check if the next text would be after the choice position.
+            //
+            // 检查下一段文本是否会出现在选项位置之后。
             if self.text_index + 1 < self.text_items.len() {
                 let next_text_content_idx = self.text_to_content_index[self.text_index + 1];
                 next_text_content_idx < choice_content_idx
@@ -500,7 +545,9 @@ impl DialogueState {
 
             match type_str {
                 "run_event" => {
-                    // Run items with index_override are treated as text events (handled inline)
+                    // Run items with index_override are treated as text events (handled inline).
+                    //
+                    // 带有 index_override 的 run 项会被视为文本事件（就地处理）。
                     if content_value.get("index_override").is_some() {
                         continue;
                     }
@@ -559,7 +606,9 @@ impl DialogueState {
     ) -> Vec<DialogueRunDescriptor> {
         let mut runs = Vec::new();
 
-        // Look for run_event and run_timeline items at the specified content position
+        // Look for run_event and run_timeline items at the specified content position.
+        //
+        // 在指定内容位置查找 run_event 与 run_timeline 项。
         for (idx, content_value) in self.node_data.content.iter().enumerate() {
             if idx == content_position
                 && !self.executed_content_indices.contains(&idx)
@@ -713,7 +762,9 @@ pub fn evaluate_if_condition(
             }
         }
         "binary" => {
-            // Recursively evaluate left and right
+            // Recursively evaluate left and right.
+            //
+            // 递归计算左右表达式。
             let left_result = evaluate_if_condition(
                 condition.left.as_ref().unwrap().as_ref(),
                 functions,
@@ -729,7 +780,9 @@ pub fn evaluate_if_condition(
                 Some("&&") => left_result && right_result,
                 Some("||") => left_result || right_result,
                 _ => {
-                    // For comparison operators, delegate to variable_state
+                    // For comparison operators, delegate to variable_state.
+                    //
+                    // 对比较运算符委托给 variable_state。
                     variable_state.evaluate_condition(condition)
                 }
             }
@@ -749,7 +802,9 @@ pub fn evaluate_if_condition(
             }
         }
         _ => {
-            // For other types, use variable_state's evaluation
+            // For other types, use variable_state's evaluation.
+            //
+            // 对其他类型使用 variable_state 的求值逻辑。
             variable_state.evaluate_condition(condition)
         }
     }
@@ -763,18 +818,24 @@ pub fn evaluate_condition(
     functions: &MortarFunctionRegistry,
     _function_decls: &[mortar_compiler::Function],
 ) -> bool {
-    // Parse arguments
+    // Parse arguments.
+    //
+    // 解析参数。
     let args: Vec<MortarValue> = condition
         .args
         .iter()
         .map(|arg| MortarValue::parse(arg))
         .collect();
 
-    // Call the function
+    // Call the function.
+    //
+    // 调用函数。
     if let Some(value) = functions.call(&condition.condition_type, &args) {
         value.is_truthy()
     } else {
-        // Function not found - default to false
+        // Function not found - default to false.
+        //
+        // 未找到函数时默认返回 false。
         warn!(
             "Condition function '{}' not bound, defaulting to false",
             condition.condition_type
@@ -792,7 +853,9 @@ pub fn process_interpolated_text(
     function_decls: &[mortar_compiler::Function],
     variable_state: &MortarVariableState,
 ) -> String {
-    // If there are no interpolated parts, return the original text
+    // If there are no interpolated parts, return the original text.
+    //
+    // 如果没有插值片段，则直接返回原始文本。
     let Some(parts) = &text_data.interpolated_parts else {
         return text_data.value.clone();
     };
@@ -804,20 +867,28 @@ pub fn process_interpolated_text(
                 result.push_str(&part.content);
             }
             "expression" => {
-                // Extract function name and call it
+                // Extract function name and call it.
+                //
+                // 提取函数名并执行调用。
                 if let Some(func_name) = &part.function_name {
-                    // Parse arguments
+                    // Parse arguments.
+                    //
+                    // 解析参数。
                     let args: Vec<MortarValue> = part
                         .args
                         .iter()
                         .map(|arg| MortarValue::parse(arg))
                         .collect();
 
-                    // Call the function
+                    // Call the function.
+                    //
+                    // 调用函数。
                     if let Some(value) = functions.call(func_name, &args) {
                         result.push_str(&value.to_display_string());
                     } else {
-                        // Function not found - get default value based on return type
+                        // Function not found - get default value based on return type.
+                        //
+                        // 未找到函数时，根据返回类型获取默认值。
                         let return_type = function_decls
                             .iter()
                             .find(|f| f.name == *func_name)
@@ -832,28 +903,40 @@ pub fn process_interpolated_text(
                         result.push_str(&default_value);
                     }
                 } else {
-                    // No function name, keep the placeholder
+                    // No function name, keep the placeholder.
+                    //
+                    // 没有函数名时保留占位符。
                     result.push_str(&part.content);
                 }
             }
             "placeholder" => {
-                // Extract variable name from placeholder (e.g., "{status}" -> "status")
+                // Extract variable name from placeholder (e.g., "{status}" -> "status").
+                //
+                // 从占位符中提取变量名（如 "{status}" -> "status"）。
                 let var_name = part.content.trim_matches(|c| c == '{' || c == '}');
 
-                // First try to get as a regular variable
+                // First try to get as a regular variable.
+                //
+                // 优先尝试作为普通变量获取。
                 if let Some(value) = variable_state.get(var_name) {
                     result.push_str(&value.to_display_string());
                 } else if let Some(branch_text) = variable_state.get_branch_text(var_name) {
-                    // Try to get as a branch variable
+                    // Try to get as a branch variable.
+                    //
+                    // 尝试作为分支变量获取。
                     result.push_str(&branch_text);
                 } else {
-                    // Variable not found, keep placeholder
+                    // Variable not found, keep placeholder.
+                    //
+                    // 未找到变量时保留占位符。
                     warn!("Variable '{}' not found, keeping placeholder", var_name);
                     result.push_str(&part.content);
                 }
             }
             _ => {
-                // Unknown type, keep the content
+                // Unknown type, keep the content.
+                //
+                // 未知类型则保留原内容。
                 result.push_str(&part.content);
             }
         }
@@ -887,15 +970,14 @@ impl MortarEventTracker {
     /// 检查并触发给定索引处的事件，返回需要处理的动作。
     pub fn trigger_at_index(
         &mut self,
-        current_index: usize,
+        current_index: f32,
         runtime: &MortarRuntime,
     ) -> Vec<MortarEventAction> {
         let mut actions_to_process = Vec::new();
+        let current_index = current_index as f64;
 
         for (event_idx, event) in self.events.iter().enumerate() {
-            let event_index = event.index as usize;
-
-            if current_index >= event_index && !self.fired_events.contains(&event_idx) {
+            if current_index >= event.index && !self.fired_events.contains(&event_idx) {
                 self.fired_events.push(event_idx);
 
                 debug!(
@@ -903,7 +985,9 @@ impl MortarEventTracker {
                     event.index, event.actions
                 );
 
-                // Call mortar functions
+                // Call mortar functions.
+                //
+                // 调用 mortar 函数。
                 for action in &event.actions {
                     let args: Vec<MortarValue> = action
                         .args
@@ -920,7 +1004,9 @@ impl MortarEventTracker {
                         warn!("Event function '{}' not found", action.action_type);
                     }
 
-                    // Collect actions for user to handle
+                    // Collect actions for user to handle.
+                    //
+                    // 收集需要用户处理的动作。
                     actions_to_process.push(MortarEventAction {
                         action_name: action.action_type.clone(),
                         args: action.args.clone(),

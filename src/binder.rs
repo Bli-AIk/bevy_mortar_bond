@@ -16,10 +16,24 @@
 //! use bevy_mortar_bond::{MortarString, MortarNumber, MortarBoolean};
 //!
 //! // Clear, type-safe function signature
+//!
+//! // 清晰且类型安全的函数签名
 //! fn create_message(verb: MortarString, obj: MortarString, level: MortarNumber) -> String {
 //!     format!("{}{}{}", verb.as_str(), obj.as_str(), "!".repeat(level.as_usize()))
 //! }
 //! ```
+//!
+//! # 类型系统
+//!
+//! Mortar 为函数参数提供强类型封装：
+//! - [`MortarString`] —— 表示字符串值
+//! - [`MortarNumber`] —— 表示数值（f64）
+//! - [`MortarBoolean`] —— 表示布尔值
+//! - [`MortarVoid`] —— 表示空返回值
+//!
+//! # 示例
+//!
+//! 上述代码展示了如何编写一个类型安全且语义清晰的 Mortar 函数。
 
 use std::collections::HashMap;
 
@@ -155,17 +169,23 @@ impl MortarValue {
     ///
     /// 将字符串参数解析为 MortarValue。
     pub fn parse(s: &str) -> Self {
-        // Try to parse as number first
+        // Try to parse as number first.
+        //
+        // 优先尝试解析为数字。
         if let Ok(n) = s.parse::<f64>() {
             return MortarValue::Number(MortarNumber(n));
         }
-        // Try to parse as boolean
+        // Try to parse as boolean.
+        //
+        // 尝试解析为布尔值。
         match s {
             "true" => return MortarValue::Boolean(MortarBoolean(true)),
             "false" => return MortarValue::Boolean(MortarBoolean(false)),
             _ => {}
         }
-        // Default to string (remove quotes if present)
+        // Default to string (remove quotes if present).
+        //
+        // 否则视为字符串（如有引号则移除）。
         let trimmed = s.trim();
         if (trimmed.starts_with('"') && trimmed.ends_with('"'))
             || (trimmed.starts_with('\'') && trimmed.ends_with('\''))
@@ -177,7 +197,9 @@ impl MortarValue {
     }
 }
 
-// From implementations for specific types
+// From implementations for specific types.
+//
+// 针对特定类型的 From 实现。
 impl From<String> for MortarString {
     fn from(s: String) -> Self {
         MortarString(s)
@@ -214,7 +236,9 @@ impl From<bool> for MortarBoolean {
     }
 }
 
-// From implementations for MortarValue
+// From implementations for MortarValue.
+//
+// MortarValue 的 From 实现。
 impl From<MortarString> for MortarValue {
     fn from(s: MortarString) -> Self {
         MortarValue::String(s)
@@ -318,7 +342,9 @@ impl MortarFunctionRegistry {
     }
 }
 
-// TryFrom implementations for specific types
+// TryFrom implementations for specific types.
+//
+// 针对特定类型的 TryFrom 实现。
 impl TryFrom<MortarValue> for MortarString {
     type Error = ();
 
@@ -355,7 +381,9 @@ impl TryFrom<MortarValue> for MortarBoolean {
     }
 }
 
-// TryFrom implementations for common types
+// TryFrom implementations for common types.
+//
+// 常见类型的 TryFrom 实现。
 impl TryFrom<MortarValue> for String {
     type Error = ();
 
