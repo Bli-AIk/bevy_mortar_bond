@@ -241,6 +241,7 @@ fn log_public_constants_once(
 }
 
 fn update_mortar_text_targets(
+    mut asset_events: MessageReader<AssetEvent<MortarAsset>>,
     params: TextUpdateParams,
     mut last_key: Local<Option<(String, String, usize)>>,
     mut skip_next_conditional: Local<bool>,
@@ -255,6 +256,15 @@ fn update_mortar_text_targets(
         runs_executing,
         mut events,
     } = params;
+
+    // Check if any Mortar asset has been modified (hot reloaded)
+    for event in asset_events.read() {
+        if let AssetEvent::Modified { id: _ } = event {
+            // If an asset changed, force a reload of variables
+            variable_cache.reset();
+            *last_key = None; // Also reset last_key to ensure text re-evaluation
+        }
+    }
 
     if runs_executing.executing {
         return;
