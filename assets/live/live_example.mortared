@@ -1,7 +1,7 @@
 {
   "metadata": {
     "version": "0.4.0",
-    "generated_at": "2025-12-04T09:36:48.164161307Z"
+    "generated_at": "2025-12-04T09:55:26.486049388Z"
   },
   "constants": [
     {
@@ -56,7 +56,7 @@
           "value": "Look at my sword!",
           "events": [
             {
-              "index": 8.0,
+              "index": 14.0,
               "actions": [
                 {
                   "type": "play_anim",

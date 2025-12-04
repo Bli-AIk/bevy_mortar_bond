@@ -25,9 +25,10 @@ use bevy::{
     window::{PresentMode, WindowResolution},
 };
 use bevy_mortar_bond::{
-    MortarBoolean, MortarDialoguePlugin, MortarDialogueText, MortarDialogueVariables, MortarEvent,
-    MortarEventBinding, MortarFunctions, MortarGameEvent, MortarPlugin, MortarRegistry,
-    MortarRuntime, MortarTextTarget, MortarVariableValue, mortar_functions,
+    MortarBoolean, MortarDialoguePlugin, MortarDialogueSystemSet, MortarDialogueText,
+    MortarDialogueVariables, MortarEvent, MortarEventBinding, MortarFunctions, MortarGameEvent,
+    MortarPlugin, MortarRegistry, MortarRuntime, MortarString, MortarTextTarget,
+    MortarVariableValue, mortar_functions,
 };
 use live_terminal::{
     ASSET_DIR, ChoiceButton, ChoicePanel, ChoicePanelFont, CursorBlink, DEFAULT_FILE,
@@ -70,6 +71,16 @@ fn main() {
         ))
         .init_resource::<LiveScriptSource>()
         .init_resource::<ScriptWatcher>()
+        .configure_sets(
+            Update,
+            (
+                LiveTerminalSystemSet::CopyMortarText,
+                LiveTerminalSystemSet::SyncEventBinding,
+            )
+                .chain()
+                .after(MortarDialogueSystemSet::UpdateText)
+                .before(MortarDialogueSystemSet::TriggerEvents),
+        )
         .add_systems(Startup, (setup_ui, setup_mortar_integration))
         .add_systems(
             Update,
@@ -79,9 +90,10 @@ fn main() {
                 handle_keyboard_controls,
                 handle_dialogue_input,
                 handle_choice_buttons,
-                sync_mortar_text_to_terminal,
-                sync_typewriter_progress,
-                bridge_mortar_events,
+                sync_mortar_text_to_terminal
+                    .in_set(LiveTerminalSystemSet::CopyMortarText),
+                sync_typewriter_progress.in_set(LiveTerminalSystemSet::SyncEventBinding),
+                bridge_mortar_events.after(MortarDialogueSystemSet::TriggerEvents),
                 sync_choice_panel,
                 monitor_script_changes,
                 sync_gender_from_variable,
@@ -105,6 +117,12 @@ fn main() {
 #[derive(Component)]
 struct MortarTextProxy;
 
+#[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
+enum LiveTerminalSystemSet {
+    CopyMortarText,
+    SyncEventBinding,
+}
+
 #[derive(MortarFunctions)]
 struct TerminalFunctions;
 
@@ -116,6 +134,10 @@ impl TerminalFunctions {
 
     fn set_gender(_is_female: MortarBoolean) {
         // Handled via events or variable state inspection if needed
+    }
+
+    fn play_anim(anim_name: MortarString) {
+        info!("Requested animation '{}'", anim_name.as_str());
     }
 }
 
