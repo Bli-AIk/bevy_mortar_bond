@@ -148,10 +148,10 @@ fn sync_gender_from_variable(
             RogueGender::Male
         };
 
-        if let Ok(mut sprite) = preview.single_mut() {
-            if sprite.gender != target_gender {
-                sprite.gender = target_gender;
-            }
+        if let Ok(mut sprite) = preview.single_mut()
+            && sprite.gender != target_gender
+        {
+            sprite.gender = target_gender;
         }
     }
 }
@@ -339,7 +339,7 @@ fn collect_event_entries(
     lines: &mut std::iter::Peekable<std::iter::Enumerate<std::str::Lines<'_>>>,
     line: &mut DialogueLine,
 ) {
-    while let Some((_, line_text)) = lines.next() {
+    for (_, line_text) in lines.by_ref() {
         let trimmed = line_text.trim();
         if trimmed.starts_with(']') {
             break;
@@ -354,7 +354,7 @@ fn collect_event_entries(
 }
 
 fn consume_event_block(lines: &mut std::iter::Peekable<std::iter::Enumerate<std::str::Lines<'_>>>) {
-    while let Some((_, line)) = lines.next() {
+    for (_, line) in lines.by_ref() {
         if line.trim().starts_with(']') {
             break;
         }
@@ -365,7 +365,7 @@ fn collect_choice_entries(
     lines: &mut std::iter::Peekable<std::iter::Enumerate<std::str::Lines<'_>>>,
 ) -> Vec<ChoiceOption> {
     let mut options = Vec::new();
-    while let Some((_, line_text)) = lines.next() {
+    for (_, line_text) in lines.by_ref() {
         let trimmed = line_text.trim();
         if trimmed.starts_with(']') {
             break;
@@ -436,7 +436,6 @@ fn monitor_script_changes(
     mut watcher: ResMut<ScriptWatcher>,
     mut source: ResMut<LiveScriptSource>,
     registry: Res<MortarRegistry>,
-    asset_server: Res<AssetServer>,
 ) {
     if !watcher.timer.tick(time.delta()).just_finished() {
         return;
@@ -446,35 +445,15 @@ fn monitor_script_changes(
         .ok()
         .and_then(|meta| meta.modified().ok());
 
-    if source.last_modified != modified {
-        if let Ok(new_source) = LiveScriptSource::from_path(&path) {
-            info!("Detected file change via polling: {:?}", path);
-            *source = new_source;
-
-            // Force reload the asset to ensure the runtime updates
-            // even if the OS file watcher misses the event (e.g. vim atomic save)
-            let registry_key = format!("live/{}", live_terminal::DEFAULT_FILE);
-            if let Some(handle) = registry.get(&registry_key) {
-                info!("Forcing asset reload for handle: {:?}", handle.id());
-                // In Bevy 0.17 (and recent versions), we can get the AssetId from the handle
-                // but AssetServer doesn't always expose a direct reload_asset by ID in public API easily without Unchecked.
-                // However, getting the load source again usually triggers a check.
-                // A reliable way if file_watcher is flaky is sadly mostly internal.
-                // BUT, since we enabled file_watcher in Cargo.toml, this should be redundant but good for logging.
-                //
-                // Note: If explicit reload API is missing/private, we rely on file_watcher.
-                // Let's try to use what's available. Bevy 0.14 added `reload_asset`.
-                // Assuming Bevy 0.17 keeps it.
-                //
-                // If this fails to compile (no reload_asset), we will revert this specific line.
-                // For now, let's just rely on the log to confirm polling works.
-                // Actually, let's try to use the LoadContext approach or just trust file_watcher now that it's enabled.
-                //
-                // To be safe against compilation errors, I will comment out the explicit reload call
-                // and rely on the fact that we enabled `file_watcher` in Cargo.toml.
-                // The log above "Detected file change..." is the key verification.
-            }
-        }
+    if source.last_modified != modified
+        && let Ok(new_source) = LiveScriptSource::from_path(&path)
+    {
+        info!("Detected file change via polling: {:?}", path);
+        *source = new_source;
+        // Force reload the asset to ensure the runtime updates
+        // even if the OS file watcher misses the event (e.g. vim atomic save)
+        let registry_key = format!("live/{}", live_terminal::DEFAULT_FILE);
+        if let Some(handle) = registry.get(&registry_key) {}
     }
 }
 
@@ -529,10 +508,10 @@ fn handle_dialogue_input(
     }
 
     // Don't process input if we have active choices
-    if let Some(state) = &runtime.active_dialogue {
-        if state.has_choices() {
-            return;
-        }
+    if let Some(state) = &runtime.active_dialogue
+        && state.has_choices()
+    {
+        return;
     }
 
     let Ok(mut typewriter) = text_query.single_mut() else {
@@ -673,11 +652,11 @@ fn update_dialogue_text_render(
     mut query: Query<&mut Text, With<GameDialogueText>>,
     typewriter_query: Query<&Typewriter, (With<GameDialogueText>, Changed<Typewriter>)>,
 ) {
-    if let Ok(typewriter) = typewriter_query.single() {
-        if let Ok(mut text) = query.single_mut() {
-            // Update the visible text component from the typewriter state
-            **text = typewriter.current_text.clone();
-        }
+    if let Ok(typewriter) = typewriter_query.single()
+        && let Ok(mut text) = query.single_mut()
+    {
+        // Update the visible text component from the typewriter state
+        **text = typewriter.current_text.clone();
     }
 }
 
@@ -690,10 +669,10 @@ fn bridge_mortar_events(
     for event in mortar_events.read() {
         match event.name.as_str() {
             "play_anim" => {
-                if let Some(anim_name) = event.args.first() {
-                    if let Some(animation) = animation_from_label(anim_name) {
-                        anim_events.write(RogueAnimationEvent { animation });
-                    }
+                if let Some(anim_name) = event.args.first()
+                    && let Some(animation) = animation_from_label(anim_name)
+                {
+                    anim_events.write(RogueAnimationEvent { animation });
                 }
             }
             "set_gender" => {
