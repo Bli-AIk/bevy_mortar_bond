@@ -91,11 +91,11 @@ CI与覆盖率工作流仅依赖`GITHUB_TOKEN`，无需额外Secrets。
 所有工作流会把 `Bli-AIk/mortar` 检出至 `external/mortar` 并复制到 `../../../mortar`，以保持与主仓库一致的目录结构。
 ### Actions版本
 
-- `actions/checkout@v4`: 仓库检出
+- `actions/checkout@v6`: 仓库检出
 - `dtolnay/rust-toolchain@stable`: Rust安装
-- `actions/cache@v4`: 依赖缓存
+- `actions/cache@v5`: 依赖缓存
 - `rustsec/audit-check@v1`: 安全审计
 - `codecov/codecov-action@v5`: 覆盖率报告
-- `peter-evans/create-pull-request@v7`: 自动PR
+- `peter-evans/create-pull-request@v8`: 自动PR
 
 所有Actions都锁定到特定版本以确保安全性和可重现性。
