@@ -76,6 +76,7 @@ impl Typewriter {
         self.state == TypewriterState::Finished
     }
 
+    #[allow(dead_code)]
     pub fn is_playing(&self) -> bool {
         self.state == TypewriterState::Playing
     }
