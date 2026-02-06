@@ -21,18 +21,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-        with:
-          submodules: true
-      - name: Checkout mortar dependency
-        uses: actions/checkout@v6
-        with:
-          repository: Bli-AIk/mortar
-          path: external/mortar
-          ref: main
-      - name: Prepare path dependencies
-        run: |
-          rm -rf ../../../mortar
-          cp -R external/mortar ../../../mortar
 
       - name: Install Bevy Dependencies
         run: |
@@ -54,15 +42,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        uses: Swatinem/rust-cache@v2
 
       - name: Check formatting
         run: cargo fmt --package bevy_mortar_bond -- --check
@@ -82,18 +62,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-        with:
-          submodules: true
-      - name: Checkout mortar dependency
-        uses: actions/checkout@v6
-        with:
-          repository: Bli-AIk/mortar
-          path: external/mortar
-          ref: main
-      - name: Prepare path dependencies
-        run: |
-          rm -rf ../../../mortar
-          cp -R external/mortar ../../../mortar
       - name: Generate lockfile
         run: cargo generate-lockfile
       - uses: rustsec/audit-check@v2
