@@ -30,13 +30,20 @@ In the future, it may also support more advanced scripting features and integrat
 *   **Dialogue System Foundation**: Offers core utilities and examples for building dynamic and branching dialogue systems.
 *   **Bindable Event Indexes**: The `MortarEventBinding` component lets you drive events from any index source (typewriter effects, audio cues, etc.), and the examples include a built-in ECS typewriter utility so you can keep everything self-contained.
 
+## Bevy Version Support
+
+| `bevy` | `bevy_mortar_bond` |
+|--------|--------------------|
+| 0.18   | 0.3.0              |
+| 0.17   | < 0.3.0            |
+
 ## Usage
 
 1.  **Add to Cargo.toml**:
 
     ```toml
     [dependencies]
-    bevy_mortar_bond = "0.1.0"
+    bevy_mortar_bond = "0.3.0"
     ```
 
 2.  **Basic Usage**:
@@ -75,7 +82,7 @@ This project uses the following crates:
 
 | Crate                                                                 | Version | Description                                |
 |-----------------------------------------------------------------------|---------|--------------------------------------------|
-| [bevy](https://crates.io/crates/bevy)                                 | 0.17.2  | Game Engine                                |
+| [bevy](https://crates.io/crates/bevy)                                 | 0.18    | Game Engine                                |
 | [mortar_compiler](https://github.com/Bli-AIk/mortar)                  | Local   | Mortar Language Compiler                   |
 | [serde_json](https://crates.io/crates/serde_json)                     | 1.0     | JSON Serialization/Deserialization         |
 | bevy_mortar_bond_macros                                               | Local   | bevy_mortar_bond Macros                    |
