@@ -24,7 +24,7 @@ pub struct MortarAsset {
 /// An asset loader for `.mortar` and `.mortared` files.
 ///
 /// 用于 `.mortar` 和 `.mortared` 文件的资源加载器。
-#[derive(Default)]
+#[derive(Default, bevy::prelude::TypePath)]
 pub struct MortarAssetLoader;
 
 impl MortarAssetLoader {
@@ -243,12 +243,11 @@ impl AssetLoader for MortarAssetLoader {
         load_context: &mut LoadContext<'_>,
     ) -> impl ConditionalSendFuture<Output = Result<Self::Asset, Self::Error>> {
         Box::pin(async move {
-            let path = load_context.path();
-            let asset_path = load_context.asset_path();
-            #[cfg(not(feature = "dev-logs"))]
-            let _ = &asset_path;
+            // In Bevy 0.18, path() returns &AssetPath
+            let asset_path = load_context.path().clone();
+            let path = asset_path.path().to_path_buf();
 
-            let data = match path.extension().and_then(|s| s.to_str()) {
+            let data = match path.extension().and_then(std::ffi::OsStr::to_str) {
                 Some("mortar") => {
                     let mortared_path = path.with_extension("mortared");
 
@@ -265,9 +264,9 @@ impl AssetLoader for MortarAssetLoader {
                     // 始终从源代码编译以确保热重载获取最新更改。
                     // `reader` 提供了文件的当前内容。
                     // 我们仍然传递路径用于写入 .mortared 缓存，但不依赖它进行读取。
-                    Self::compile_mortar_source(reader, path, &mortared_path, &base_path).await?
+                    Self::compile_mortar_source(reader, &path, &mortared_path, &base_path).await?
                 }
-                Some("mortared") => Self::load_mortared_direct(reader, path).await?,
+                Some("mortared") => Self::load_mortared_direct(reader, &path).await?,
                 _ => return Err("Unsupported file extension".into()),
             };
 
@@ -278,7 +277,7 @@ impl AssetLoader for MortarAssetLoader {
                 data.functions.len(),
                 data.variables.len()
             );
-            Self::log_public_constants(path, &data);
+            Self::log_public_constants(&path, &data);
 
             Ok(MortarAsset { data })
         })

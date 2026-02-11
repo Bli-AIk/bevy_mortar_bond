@@ -13,7 +13,7 @@ exclude = [
 
 [dependencies]
 
-bevy = { version = "0.17.2", features = ["wav", "file_watcher"] }
+bevy = { version = "0.18", features = ["wav", "file_watcher"] }
 
 mortar_compiler = "0.5.0"
 
