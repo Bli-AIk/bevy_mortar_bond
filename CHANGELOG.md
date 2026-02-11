@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/Bli-AIk/bevy_mortar_bond/compare/v0.2.1...v0.3.0) - 2026-02-11
+
+### Added
+
+- [**breaking**] upgrade to bevy 0.18
+
+### Documentation
+
+- *(readme)* update Bevy version support and dependencies
+
 ## [0.2.1](https://github.com/Bli-AIk/bevy_mortar_bond/compare/v0.2.0...v0.2.1) - 2026-02-06
 
 ### Miscellaneous Tasks
