@@ -76,6 +76,7 @@ impl Plugin for MortarPlugin {
             .init_resource::<MortarRegistry>()
             .init_resource::<MortarRuntime>()
             .add_message::<MortarEvent>()
+            .add_message::<MortarDialogueFinished>()
             .add_systems(
                 Update,
                 (
@@ -883,6 +884,35 @@ impl MortarEvent {
             target: Some(entity),
         }
     }
+}
+
+/// Event emitted when a Mortar dialogue finishes naturally (not via StopDialogue).
+///
+/// 当 Mortar 对话自然结束时发出的事件（非通过 StopDialogue）。
+///
+/// This event is useful for downstream systems to know when a dialogue
+/// has completed, e.g., to emit FRE events or trigger game state changes.
+///
+/// 此事件对下游系统很有用，可以知道对话何时完成，
+/// 例如发出 FRE 事件或触发游戏状态变化。
+#[derive(Message, Debug, Clone)]
+pub struct MortarDialogueFinished {
+    /// The entity whose dialogue finished.
+    /// None for primary dialogue using Entity::PLACEHOLDER.
+    ///
+    /// 对话结束的实体。
+    /// 使用 Entity::PLACEHOLDER 的主对话为 None。
+    pub entity: Option<Entity>,
+
+    /// The path of the mortar file that was playing.
+    ///
+    /// 正在播放的 mortar 文件路径。
+    pub mortar_path: String,
+
+    /// The node that finished.
+    ///
+    /// 结束的节点。
+    pub node: String,
 }
 
 /// Gets default return value based on type.
