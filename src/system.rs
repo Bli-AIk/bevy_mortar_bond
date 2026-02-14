@@ -1,6 +1,6 @@
 use crate::{DialogueState, MortarAsset, MortarEvent, MortarRegistry, MortarRuntime};
-use bevy::asset::Assets;
-use bevy::log::warn;
+use bevy::asset::{AssetServer, Assets};
+use bevy::log::{info, warn};
 use bevy::prelude::{MessageReader, MessageWriter, Res, ResMut};
 
 /// Processes Mortar events.
@@ -9,22 +9,35 @@ use bevy::prelude::{MessageReader, MessageWriter, Res, ResMut};
 pub fn process_mortar_events_system(
     mut events: MessageReader<MortarEvent>,
     mut runtime: ResMut<MortarRuntime>,
-    registry: Res<MortarRegistry>,
+    mut registry: ResMut<MortarRegistry>,
     assets: Res<Assets<MortarAsset>>,
+    asset_server: Res<AssetServer>,
 ) {
     for event in events.read() {
         match event {
             MortarEvent::StartNode { path, node } => {
-                let Some(handle) = registry.get(path) else {
-                    warn!("Mortar path '{}' not registered", path);
-                    continue;
+                // Clone path and node to avoid lifetime issues
+                // 克隆 path 和 node 以避免生命周期问题
+                let path = path.clone();
+                let node = node.clone();
+
+                // Auto-register mortar file if not already registered
+                // 如果 mortar 文件未注册，则自动注册
+                let handle = if let Some(h) = registry.get(&path) {
+                    h.clone()
+                } else {
+                    info!("Auto-loading mortar file: {}", path);
+                    let handle = asset_server.load::<MortarAsset>(&path);
+                    registry.register(path.clone(), handle.clone());
+                    handle
                 };
-                let Some(asset) = assets.get(handle) else {
+
+                let Some(asset) = assets.get(&handle) else {
                     dev_info!("Asset '{}' not loaded yet, waiting...", path);
-                    runtime.pending_start = Some((path.clone(), node.clone()));
+                    runtime.pending_start = Some((path, node));
                     continue;
                 };
-                let Some(node_data) = asset.data.nodes.iter().find(|n| n.name == *node) else {
+                let Some(node_data) = asset.data.nodes.iter().find(|n| n.name == node) else {
                     warn!("Node '{}' not found in '{}'", node, path);
                     continue;
                 };
