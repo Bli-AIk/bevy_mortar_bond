@@ -529,11 +529,11 @@ fn handle_continue_button(
             continue;
         }
 
-        if let Some(state) = &runtime.active_dialogue {
+        if let Some(state) = runtime.primary_dialogue() {
             if let Some(choice_index) = state.selected_choice {
                 info!("Example: Confirming choice selection");
                 let finish_kind = determine_choice_finish_kind(state, choice_index);
-                events.write(MortarEvent::ConfirmChoice);
+                events.write(MortarEvent::ConfirmChoice { target: None });
                 match finish_kind {
                     ChoiceFinishKind::Immediate => {
                         info!("Example: Choice ends dialogue immediately");
@@ -545,7 +545,7 @@ fn handle_continue_button(
                     }
                     ChoiceFinishKind::NeedsNextText => {
                         info!("Example: Choice ends dialogue after break; advancing");
-                        events.write(MortarEvent::NextText);
+                        events.write(MortarEvent::NextText { target: None });
                         show_finished_message(
                             &mut dialogue_text_query,
                             &mut text_query,
@@ -558,11 +558,11 @@ fn handle_continue_button(
             }
 
             if state.has_next_text() {
-                events.write(MortarEvent::NextText);
+                events.write(MortarEvent::NextText { target: None });
             } else if state.has_choices() && !state.choices_broken {
                 info!("Example: Waiting for choice resolution before finishing");
             } else {
-                events.write(MortarEvent::NextText);
+                events.write(MortarEvent::NextText { target: None });
                 info!("Example: Dialogue finished; showing end message");
                 show_finished_message(
                     &mut dialogue_text_query,
@@ -592,6 +592,7 @@ fn handle_choice_buttons(
             info!("Example: Choice button {} pressed", choice_button.index);
             events.write(MortarEvent::SelectChoice {
                 index: choice_button.index,
+                target: None,
             });
         }
     }
@@ -616,15 +617,12 @@ fn manage_choice_buttons(
         return;
     };
 
-    let current_state = runtime
-        .active_dialogue
-        .as_ref()
-        .map(|state| ChoiceUiSnapshot {
-            mortar_path: state.mortar_path.clone(),
-            node_name: state.current_node.clone(),
-            choice_stack: state.choice_stack.clone(),
-            choices_broken: state.choices_broken,
-        });
+    let current_state = runtime.primary_dialogue().map(|state| ChoiceUiSnapshot {
+        mortar_path: state.mortar_path.clone(),
+        node_name: state.current_node.clone(),
+        choice_stack: state.choice_stack.clone(),
+        choices_broken: state.choices_broken,
+    });
 
     if *last_state == current_state && !button_query.is_empty() {
         return;
@@ -636,7 +634,7 @@ fn manage_choice_buttons(
         commands.entity(entity).despawn();
     }
 
-    if let Some(state) = &runtime.active_dialogue
+    if let Some(state) = runtime.primary_dialogue()
         && let Some(choices) = state.get_choices()
     {
         let should_show_choices = !state.has_next_text_before_choice();
@@ -725,7 +723,7 @@ fn update_choice_button_styles(
         return;
     }
 
-    let Some(state) = &runtime.active_dialogue else {
+    let Some(state) = runtime.primary_dialogue() else {
         return;
     };
 
@@ -774,7 +772,7 @@ fn update_button_states(
         *bg_color = BackgroundColor(Color::srgb(0.2, 0.4, 0.6));
         *border_color = BorderColor::all(Color::srgb(0.4, 0.6, 0.8));
 
-        if let Some(state) = &runtime.active_dialogue {
+        if let Some(state) = runtime.primary_dialogue() {
             if state.has_choices() && !state.has_next_text() {
                 if state.selected_choice.is_some() {
                     *visibility = Visibility::Visible;
@@ -809,14 +807,13 @@ fn handle_reload_button(
             let path = dialogue_files.current().to_string();
             info!("Example: Reload file: {}", &path);
 
-            events.write(MortarEvent::StopDialogue);
+            events.write(MortarEvent::StopDialogue { target: None });
 
             let handle = asset_server.load(&path);
             registry.register(path.clone(), handle);
 
             let start_node = runtime
-                .active_dialogue
-                .as_ref()
+                .primary_dialogue()
                 .map(|state| state.current_node.clone())
                 .unwrap_or_else(|| "Start".to_string());
 
@@ -824,6 +821,7 @@ fn handle_reload_button(
             events.write(MortarEvent::StartNode {
                 path,
                 node: start_node,
+                target: None,
             });
         }
     }
@@ -841,7 +839,7 @@ fn handle_switch_file_button(
 ) {
     for interaction in &interaction_query {
         if *interaction == Interaction::Pressed {
-            events.write(MortarEvent::StopDialogue);
+            events.write(MortarEvent::StopDialogue { target: None });
 
             dialogue_files.next();
             let path = dialogue_files.current().to_string();
@@ -855,6 +853,7 @@ fn handle_switch_file_button(
             events.write(MortarEvent::StartNode {
                 path,
                 node: START_NODE.to_string(),
+                target: None,
             });
         }
     }

@@ -180,6 +180,7 @@ fn load_initial_dialogue(
     events.write(MortarEvent::StartNode {
         path,
         node: START_NODE.to_string(),
+        target: None,
     });
 }
 
