@@ -350,7 +350,6 @@ impl CursorBlink {
     }
 }
 
-
 pub fn setup_ui(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -743,5 +742,3 @@ pub fn animation_from_label(label: &str) -> Option<RogueAnimation> {
         _ => None,
     }
 }
-
-
