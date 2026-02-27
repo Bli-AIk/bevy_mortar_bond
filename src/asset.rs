@@ -105,7 +105,7 @@ impl MortarAssetLoader {
         reader: &mut dyn Reader,
         source_path: &Path,
         mortared_path: &Path,
-        base_path: &Path,
+        base_path: Option<&Path>,
     ) -> Result<MortaredData, Box<dyn std::error::Error + Send + Sync>> {
         dev_info!("Compiling .mortar file: {:?}", source_path);
 
@@ -130,12 +130,14 @@ impl MortarAssetLoader {
         let program = parse_result?;
         let json = Serializer::serialize_to_json(&program, true)?;
 
-        // Write the compiled file.
+        // Write the compiled file (skip if no base_path, e.g. on Android).
         //
-        // 写入编译后的文件。
-        let write_path = base_path.join(mortared_path);
-        if let Err(e) = std::fs::write(&write_path, json.as_bytes()) {
-            warn!("Failed to write .mortared file to {:?}: {}", write_path, e);
+        // 写入编译后的文件（如果没有 base_path 则跳过，例如在 Android 上）。
+        if let Some(base_path) = base_path {
+            let write_path = base_path.join(mortared_path);
+            if let Err(e) = std::fs::write(&write_path, json.as_bytes()) {
+                warn!("Failed to write .mortared file to {:?}: {}", write_path, e);
+            }
         }
 
         Deserializer::from_json(&json).map_err(Into::into)
@@ -251,11 +253,10 @@ impl AssetLoader for MortarAssetLoader {
                 Some("mortar") => {
                     let mortared_path = path.with_extension("mortared");
 
-                    // Find the actual assets directory.
+                    // Find the actual assets directory (optional, only used for cache writing).
                     //
-                    // 查找实际的 `assets` 目录。
-                    let base_path =
-                        Self::find_asset_base_path().ok_or("Cannot find assets directory")?;
+                    // 查找实际的 `assets` 目录（可选，仅用于缓存写入）。
+                    let base_path = Self::find_asset_base_path();
 
                     // Always compile from source to ensure hot reloading gets the latest changes.
                     // The `reader` provides the current content of the file.
@@ -264,7 +265,8 @@ impl AssetLoader for MortarAssetLoader {
                     // 始终从源代码编译以确保热重载获取最新更改。
                     // `reader` 提供了文件的当前内容。
                     // 我们仍然传递路径用于写入 .mortared 缓存，但不依赖它进行读取。
-                    Self::compile_mortar_source(reader, &path, &mortared_path, &base_path).await?
+                    Self::compile_mortar_source(reader, &path, &mortared_path, base_path.as_deref())
+                        .await?
                 }
                 Some("mortared") => Self::load_mortared_direct(reader, &path).await?,
                 _ => return Err("Unsupported file extension".into()),
