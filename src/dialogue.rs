@@ -206,7 +206,7 @@ fn log_public_constants_once(
     assets: Res<Assets<MortarAsset>>,
     mut logged: ResMut<LoggedConstants>,
 ) {
-    let Some(state) = &runtime.active_dialogue else {
+    let Some(state) = runtime.primary_dialogue_state() else {
         return;
     };
 
@@ -273,7 +273,7 @@ fn update_mortar_text_targets(
         return;
     }
 
-    if runtime.active_dialogue.is_none() {
+    if !runtime.has_active_dialogues() {
         variable_cache.reset();
         for (_, mut text) in &mut texts {
             **text = "等待加载对话...".to_string();
@@ -287,7 +287,7 @@ fn update_mortar_text_targets(
     }
 
     for (entity, mut text) in &mut texts {
-        let Some(state) = &runtime.active_dialogue else {
+        let Some(state) = runtime.primary_dialogue_state() else {
             **text = "等待加载对话...".to_string();
             *last_key = None;
             continue;
@@ -331,7 +331,7 @@ fn update_mortar_text_targets(
         if *skip_next_conditional && text_data.condition.is_some() {
             *skip_next_conditional = false;
             *last_key = Some(current_key);
-            events.write(MortarEvent::NextText);
+            events.write(MortarEvent::next_text());
             continue;
         }
 
@@ -341,7 +341,7 @@ fn update_mortar_text_targets(
             if !result {
                 *skip_next_conditional = false;
                 *last_key = Some(current_key.clone());
-                events.write(MortarEvent::NextText);
+                events.write(MortarEvent::next_text());
                 continue;
             }
         }
@@ -370,7 +370,7 @@ fn update_mortar_text_targets(
                 *skip_next_conditional = true;
             }
             *last_key = Some(current_key);
-            events.write(MortarEvent::NextText);
+            events.write(MortarEvent::next_text());
             continue;
         }
 
@@ -548,7 +548,7 @@ fn process_run_statements_after_text(
         return;
     }
 
-    let Some(state) = &mut runtime.active_dialogue else {
+    let Some(state) = runtime.primary_dialogue_state_mut() else {
         return;
     };
 
@@ -562,6 +562,7 @@ fn process_run_statements_after_text(
     }
 
     let run_items = state.collect_run_items_from(start_search_idx);
+    let mortar_path = state.mortar_path.clone();
     let mut run_sequence = Vec::new();
     let mut content_indices_to_mark = Vec::new();
 
@@ -575,11 +576,13 @@ fn process_run_statements_after_text(
     }
 
     if run_sequence.is_empty() {
-        state.pending_run_position = None;
+        if let Some(state) = runtime.primary_dialogue_state_mut() {
+            state.pending_run_position = None;
+        }
         return;
     }
 
-    let Some(handle) = registry.get(&state.mortar_path) else {
+    let Some(handle) = registry.get(&mortar_path) else {
         return;
     };
     let Some(asset) = assets.get(handle) else {
@@ -631,7 +634,7 @@ fn process_run_statements_after_text(
         }
     }
 
-    if let Some(state) = &mut runtime.active_dialogue {
+    if let Some(state) = runtime.primary_dialogue_state_mut() {
         for idx in content_indices_to_mark {
             state.mark_content_executed(idx);
         }
@@ -654,7 +657,7 @@ fn process_pending_run_executions(
             if pending.remaining_runs.is_empty() {
                 commands.entity(entity).despawn();
                 runs_executing.executing = false;
-                if runtime.active_dialogue.is_some() {
+                if runtime.has_active_dialogues() {
                     runtime.set_changed();
                 }
                 continue;
@@ -705,7 +708,7 @@ fn process_pending_run_executions(
             } else {
                 commands.entity(entity).despawn();
                 runs_executing.executing = false;
-                if let Some(_state) = &runtime.active_dialogue {
+                if runtime.has_active_dialogues() {
                     runtime.set_changed();
                 }
             }
@@ -720,7 +723,7 @@ fn clear_runs_executing_flag(
 ) {
     if runs_executing.executing && pending_runs_query.is_empty() {
         runs_executing.executing = false;
-        if runtime.active_dialogue.is_some() {
+        if runtime.has_active_dialogues() {
             runtime.set_changed();
         }
     }
