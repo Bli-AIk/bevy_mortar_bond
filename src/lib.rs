@@ -76,6 +76,7 @@ impl Plugin for MortarPlugin {
             .init_resource::<MortarRegistry>()
             .init_resource::<MortarRuntime>()
             .add_message::<MortarEvent>()
+            .add_message::<MortarDialogueFinished>()
             .add_systems(
                 Update,
                 (
@@ -113,34 +114,130 @@ impl MortarRegistry {
 }
 
 /// The runtime state for the Mortar system.
+/// Now supports multiple concurrent dialogue controllers.
 ///
 /// Mortar 运行时状态。
+/// 现在支持多个并发对话控制器。
 #[derive(Resource)]
 pub struct MortarRuntime {
-    /// The currently active dialogue state.
+    /// Active dialogue states keyed by controller entity.
+    /// Each `MortarController` entity can have its own independent dialogue state.
     ///
-    /// 当前激活的对话状态。
-    pub active_dialogue: Option<DialogueState>,
-    /// A node that is pending to be started (path, node).
+    /// 按控制器实体索引的活跃对话状态。
+    /// 每个 `MortarController` 实体可以有自己独立的对话状态。
+    pub active_dialogues: HashMap<Entity, DialogueState>,
+    /// The "primary" dialogue entity - receives input by default.
+    /// This is the most recently started dialogue.
     ///
-    /// 等待启动的节点 (path, node)。
-    pub pending_start: Option<(String, String)>,
-    /// Pending jump to another node (path, node).
+    /// "主"对话实体 - 默认接收输入。
+    /// 这是最近启动的对话。
+    pub primary_dialogue: Option<Entity>,
+    /// Pending start requests keyed by controller entity (path, node).
     ///
-    /// 等待跳转到另一个节点 (path, node)。
-    pub pending_jump: Option<(String, String)>,
+    /// 按控制器实体索引的待启动请求 (path, node)。
+    pub pending_starts: HashMap<Entity, (String, String)>,
+    /// Pending jump requests keyed by controller entity (path, node).
+    ///
+    /// 按控制器实体索引的待跳转请求 (path, node)。
+    pub pending_jumps: HashMap<Entity, (String, String)>,
     /// The function registry for calling Mortar functions.
     ///
     /// 调用 Mortar 函数的函数注册表。
     pub functions: MortarFunctionRegistry,
 }
 
+impl MortarRuntime {
+    /// Get the active dialogue for a specific controller entity.
+    ///
+    /// 获取特定控制器实体的活跃对话。
+    pub fn get_dialogue(&self, entity: Entity) -> Option<&DialogueState> {
+        self.active_dialogues.get(&entity)
+    }
+
+    /// Get mutable active dialogue for a specific controller entity.
+    ///
+    /// 获取特定控制器实体的可变活跃对话。
+    pub fn get_dialogue_mut(&mut self, entity: Entity) -> Option<&mut DialogueState> {
+        self.active_dialogues.get_mut(&entity)
+    }
+
+    /// Get the primary (default input) dialogue state.
+    ///
+    /// 获取主（默认输入）对话状态。
+    pub fn primary_dialogue_state(&self) -> Option<&DialogueState> {
+        self.primary_dialogue
+            .and_then(|e| self.active_dialogues.get(&e))
+    }
+
+    /// Get mutable primary dialogue state.
+    ///
+    /// 获取可变主对话状态。
+    pub fn primary_dialogue_state_mut(&mut self) -> Option<&mut DialogueState> {
+        self.primary_dialogue
+            .and_then(|e| self.active_dialogues.get_mut(&e))
+    }
+
+    /// Get the primary (default input) dialogue.
+    ///
+    /// 获取主（默认输入）对话。
+    pub fn primary_dialogue(&self) -> Option<&DialogueState> {
+        self.primary_dialogue_state()
+    }
+
+    /// Get mutable primary dialogue.
+    ///
+    /// 获取可变主对话。
+    pub fn primary_dialogue_mut(&mut self) -> Option<&mut DialogueState> {
+        self.primary_dialogue_state_mut()
+    }
+
+    /// Check if there are any active dialogues.
+    ///
+    /// 检查是否有任何活跃对话。
+    pub fn has_active_dialogues(&self) -> bool {
+        !self.active_dialogues.is_empty()
+    }
+
+    /// Get number of active dialogues.
+    ///
+    /// 获取活跃对话数量。
+    pub fn active_dialogue_count(&self) -> usize {
+        self.active_dialogues.len()
+    }
+
+    // Backwards compatibility: access to single active_dialogue
+    // These are deprecated but allow gradual migration
+    // 向后兼容：访问单个 active_dialogue
+    // 这些已弃用但允许渐进式迁移
+
+    /// [Deprecated] Get the first active dialogue (for backwards compatibility).
+    /// Use `primary_dialogue()` or `get_dialogue(entity)` instead.
+    ///
+    /// [已弃用] 获取第一个活跃对话（用于向后兼容）。
+    /// 请改用 `primary_dialogue()` 或 `get_dialogue(entity)`。
+    #[deprecated(note = "Use primary_dialogue() or get_dialogue(entity) instead")]
+    pub fn active_dialogue(&self) -> Option<&DialogueState> {
+        self.primary_dialogue()
+    }
+
+    /// [Deprecated] Get mutable first active dialogue (for backwards compatibility).
+    /// Use `primary_dialogue_mut()` or `get_dialogue_mut(entity)` instead.
+    ///
+    /// [已弃用] 获取可变第一个活跃对话（用于向后兼容）。
+    /// 请改用 `primary_dialogue_mut()` 或 `get_dialogue_mut(entity)`。
+    #[deprecated(note = "Use primary_dialogue_mut() or get_dialogue_mut(entity) instead")]
+    pub fn active_dialogue_mut(&mut self) -> Option<&mut DialogueState> {
+        self.primary_dialogue_mut()
+    }
+}
+
 impl Default for MortarRuntime {
     fn default() -> Self {
         Self {
-            active_dialogue: None,
-            pending_start: None,
-            pending_jump: None,
+            active_dialogues: HashMap::new(),
+            primary_dialogue: None,
+            pending_starts: HashMap::new(),
+            pending_jumps: HashMap::new(),
             functions: MortarFunctionRegistry::new(),
         }
     }
@@ -684,30 +781,138 @@ impl DialogueState {
 }
 
 /// The event system for Mortar.
+/// Events without a target entity operate on the primary dialogue.
 ///
 /// Mortar 事件系统。
+/// 没有目标实体的事件作用于主对话。
 #[derive(Message, Debug, Clone)]
 pub enum MortarEvent {
     /// Starts a node: (mortar_path, node_name).
+    /// If target is None, creates a new primary dialogue.
     ///
     /// 启动一个节点：(mortar_path, node_name)。
-    StartNode { path: String, node: String },
+    /// 如果 target 为 None，创建新的主对话。
+    StartNode {
+        path: String,
+        node: String,
+        /// Optional target controller entity. If None, creates primary dialogue.
+        /// 可选的目标控制器实体。如果为 None，创建主对话。
+        target: Option<Entity>,
+    },
     /// Advances to the next text.
+    /// Operates on target entity or primary dialogue if None.
     ///
     /// 步进到下一条文本。
-    NextText,
+    /// 作用于目标实体或主对话（如果为 None）。
+    NextText {
+        /// Optional target controller entity.
+        /// 可选的目标控制器实体。
+        target: Option<Entity>,
+    },
     /// Selects a choice (marks it as selected without confirming).
     ///
     /// 选中一个选项（标记为已选，但不确认）。
-    SelectChoice { index: usize },
+    SelectChoice {
+        index: usize,
+        /// Optional target controller entity.
+        /// 可选的目标控制器实体。
+        target: Option<Entity>,
+    },
     /// Confirms the currently selected choice and proceeds.
     ///
     /// 确认当前选中的选项并继续。
-    ConfirmChoice,
-    /// Stops the current dialogue.
+    ConfirmChoice {
+        /// Optional target controller entity.
+        /// 可选的目标控制器实体。
+        target: Option<Entity>,
+    },
+    /// Stops a dialogue.
+    /// If target is None, stops all dialogues.
     ///
-    /// 停止当前对话。
-    StopDialogue,
+    /// 停止对话。
+    /// 如果 target 为 None，停止所有对话。
+    StopDialogue {
+        /// Optional target controller entity. If None, stops all.
+        /// 可选的目标控制器实体。如果为 None，停止所有。
+        target: Option<Entity>,
+    },
+}
+
+impl MortarEvent {
+    /// Create a StartNode event without target (primary dialogue).
+    pub fn start_node(path: impl Into<String>, node: impl Into<String>) -> Self {
+        Self::StartNode {
+            path: path.into(),
+            node: node.into(),
+            target: None,
+        }
+    }
+
+    /// Create a StartNode event with specific target entity.
+    pub fn start_node_for(
+        entity: Entity,
+        path: impl Into<String>,
+        node: impl Into<String>,
+    ) -> Self {
+        Self::StartNode {
+            path: path.into(),
+            node: node.into(),
+            target: Some(entity),
+        }
+    }
+
+    /// Create a NextText event without target (primary dialogue).
+    pub fn next_text() -> Self {
+        Self::NextText { target: None }
+    }
+
+    /// Create a NextText event with specific target entity.
+    pub fn next_text_for(entity: Entity) -> Self {
+        Self::NextText {
+            target: Some(entity),
+        }
+    }
+
+    /// Create a StopDialogue event without target (stops all).
+    pub fn stop_dialogue() -> Self {
+        Self::StopDialogue { target: None }
+    }
+
+    /// Create a StopDialogue event for specific entity.
+    pub fn stop_dialogue_for(entity: Entity) -> Self {
+        Self::StopDialogue {
+            target: Some(entity),
+        }
+    }
+}
+
+/// Event emitted when a Mortar dialogue finishes naturally (not via StopDialogue).
+///
+/// 当 Mortar 对话自然结束时发出的事件（非通过 StopDialogue）。
+///
+/// This event is useful for downstream systems to know when a dialogue
+/// has completed, e.g., to emit FRE events or trigger game state changes.
+///
+/// 此事件对下游系统很有用，可以知道对话何时完成，
+/// 例如发出 FRE 事件或触发游戏状态变化。
+#[derive(Message, Debug, Clone)]
+pub struct MortarDialogueFinished {
+    /// The entity whose dialogue finished.
+    /// None for primary dialogue using Entity::PLACEHOLDER.
+    ///
+    /// 对话结束的实体。
+    /// 使用 Entity::PLACEHOLDER 的主对话为 None。
+    pub entity: Option<Entity>,
+
+    /// The path of the mortar file that was playing.
+    ///
+    /// 正在播放的 mortar 文件路径。
+    pub mortar_path: String,
+
+    /// The node that finished.
+    ///
+    /// 结束的节点。
+    pub node: String,
 }
 
 /// Gets default return value based on type.

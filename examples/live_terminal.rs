@@ -206,7 +206,7 @@ impl LiveScriptSource {
     /// Heuristic to find the source line number for the current runtime state.
     /// This matches the parsed entries for the current node against the runtime's text index.
     pub fn get_highlight_line(&self, runtime: &MortarRuntime) -> Option<usize> {
-        let state = runtime.active_dialogue.as_ref()?;
+        let state = runtime.primary_dialogue()?;
         let current_node = &state.current_node;
 
         let mut current_text_count = 0;
@@ -371,6 +371,7 @@ fn setup_mortar_integration(
     events.write(MortarEvent::StartNode {
         path,
         node: "Start".to_string(),
+        target: None,
     });
 }
 
@@ -386,7 +387,7 @@ fn handle_dialogue_input(
     }
 
     // Don't process input if we have active choices
-    if let Some(state) = &runtime.active_dialogue
+    if let Some(state) = runtime.primary_dialogue()
         && state.has_choices()
     {
         return;
@@ -410,7 +411,7 @@ fn handle_dialogue_input(
                 || typewriter.state == TypewriterState::Idle
             {
                 // Request next text from Mortar
-                events.write(MortarEvent::NextText);
+                events.write(MortarEvent::NextText { target: None });
             }
         }
     }
@@ -453,7 +454,7 @@ fn sync_choice_panel(
         return;
     };
 
-    let Some(state) = &runtime.active_dialogue else {
+    let Some(state) = runtime.primary_dialogue() else {
         *visibility = Visibility::Hidden;
         return;
     };
@@ -519,8 +520,9 @@ fn handle_choice_buttons(
         if *interaction == Interaction::Pressed {
             events.write(MortarEvent::SelectChoice {
                 index: button.index,
+                target: None,
             });
-            events.write(MortarEvent::ConfirmChoice);
+            events.write(MortarEvent::ConfirmChoice { target: None });
             break; // Only handle one click per frame
         }
     }

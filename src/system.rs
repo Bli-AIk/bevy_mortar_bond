@@ -1,25 +1,31 @@
-use crate::{DialogueState, MortarAsset, MortarEvent, MortarRegistry, MortarRuntime};
+use crate::{
+    DialogueState, MortarAsset, MortarDialogueFinished, MortarEvent, MortarRegistry, MortarRuntime,
+};
 use bevy::asset::{AssetServer, Assets};
 use bevy::log::{info, warn};
-use bevy::prelude::{MessageReader, MessageWriter, Res, ResMut};
+use bevy::prelude::{Entity, MessageReader, MessageWriter, Res, ResMut};
 
 /// Processes Mortar events.
+/// Now supports multi-controller architecture with optional target entities.
 ///
 /// 处理 Mortar 事件。
+/// 现在支持多控制器架构和可选的目标实体。
 pub fn process_mortar_events_system(
     mut events: MessageReader<MortarEvent>,
     mut runtime: ResMut<MortarRuntime>,
     mut registry: ResMut<MortarRegistry>,
     assets: Res<Assets<MortarAsset>>,
     asset_server: Res<AssetServer>,
+    mut finished_events: MessageWriter<MortarDialogueFinished>,
 ) {
     for event in events.read() {
         match event {
-            MortarEvent::StartNode { path, node } => {
+            MortarEvent::StartNode { path, node, target } => {
                 // Clone path and node to avoid lifetime issues
                 // 克隆 path 和 node 以避免生命周期问题
                 let path = path.clone();
                 let node = node.clone();
+                let target_entity = *target;
 
                 // Auto-register mortar file if not already registered
                 // 如果 mortar 文件未注册，则自动注册
@@ -34,7 +40,15 @@ pub fn process_mortar_events_system(
 
                 let Some(asset) = assets.get(&handle) else {
                     dev_info!("Asset '{}' not loaded yet, waiting...", path);
-                    runtime.pending_start = Some((path, node));
+                    if let Some(entity) = target_entity {
+                        runtime.pending_starts.insert(entity, (path, node));
+                    } else {
+                        // For primary dialogue, use a placeholder entity
+                        // This will be replaced when the asset loads
+                        runtime
+                            .pending_starts
+                            .insert(Entity::PLACEHOLDER, (path, node));
+                    }
                     continue;
                 };
                 let Some(node_data) = asset.data.nodes.iter().find(|n| n.name == node) else {
@@ -42,53 +56,117 @@ pub fn process_mortar_events_system(
                     continue;
                 };
                 let state = DialogueState::new(path.clone(), node.clone(), node_data.clone());
-                runtime.active_dialogue = Some(state);
-                runtime.pending_start = None;
-                dev_info!("Started node: {} in {}", node, path);
+
+                // Determine which entity to use
+                let entity = target_entity.unwrap_or(Entity::PLACEHOLDER);
+                runtime.active_dialogues.insert(entity, state);
+                runtime.primary_dialogue = Some(entity);
+                runtime.pending_starts.remove(&entity);
+                dev_info!("Started node: {} in {} for entity {:?}", node, path, entity);
             }
-            MortarEvent::NextText => {
-                let Some(state) = &mut runtime.active_dialogue else {
+            MortarEvent::NextText { target } => {
+                let entity = target.or(runtime.primary_dialogue);
+                let Some(entity) = entity else {
                     continue;
                 };
 
-                // Mark the content slot right after the current text for run execution.
-                //
-                // 标记当前文本之后的内容槽位，以便执行 run 语句。
-                state.pending_run_position = state
-                    .current_text_content_index()
-                    .map(|content_idx| content_idx + 1);
+                // Extract needed data first to avoid borrow conflicts
+                let (
+                    should_continue,
+                    has_choices,
+                    choices_broken,
+                    next_node_info,
+                    mortar_path,
+                    current_node,
+                ) = {
+                    let Some(state) = runtime.active_dialogues.get_mut(&entity) else {
+                        continue;
+                    };
 
-                if state.next_text() {
+                    // Mark the content slot right after the current text for run execution.
+                    //
+                    // 标记当前文本之后的内容槽位，以便执行 run 语句。
+                    state.pending_run_position = state
+                        .current_text_content_index()
+                        .map(|content_idx| content_idx + 1);
+
+                    if state.next_text() {
+                        (true, false, false, None, String::new(), String::new())
+                    } else {
+                        dev_info!("Reached end of node: {}", state.current_node);
+                        let has_choices = state.has_choices();
+                        let choices_broken = state.choices_broken;
+                        let next_node = state.get_next_node().map(|s| s.to_string());
+                        let path = state.mortar_path.clone();
+                        let node = state.current_node.clone();
+                        (false, has_choices, choices_broken, next_node, path, node)
+                    }
+                };
+
+                if should_continue {
                     continue;
                 }
-
-                dev_info!("Reached end of node: {}", state.current_node);
 
                 // Check if has choices and choices are not broken.
                 //
                 // 检查是否存在选项且未被 break。
-                if state.has_choices() && !state.choices_broken {
+                if has_choices && !choices_broken {
                     dev_info!("Node has choices, waiting for user selection");
                     continue;
                 }
 
-                if let Some(next_node) = state.get_next_node() {
+                if let Some(next_node) = next_node_info {
                     if next_node == "return" {
-                        dev_info!("Return instruction, stopping dialogue");
-                        runtime.active_dialogue = None;
+                        dev_info!(
+                            "Return instruction, stopping dialogue for entity {:?}",
+                            entity
+                        );
+                        runtime.active_dialogues.remove(&entity);
+                        if runtime.primary_dialogue == Some(entity) {
+                            runtime.primary_dialogue = None;
+                        }
+                        // Emit finished event
+                        finished_events.write(MortarDialogueFinished {
+                            entity: if entity == Entity::PLACEHOLDER {
+                                None
+                            } else {
+                                Some(entity)
+                            },
+                            mortar_path: mortar_path.clone(),
+                            node: current_node.clone(),
+                        });
                     } else {
                         dev_info!("Auto-jumping to next node: {}", next_node);
-                        let path = state.mortar_path.clone();
-                        runtime.pending_jump = Some((path, next_node.to_string()));
+                        runtime
+                            .pending_jumps
+                            .insert(entity, (mortar_path, next_node));
                     }
                 } else {
-                    dev_info!("Node ended without next or choices");
-                    runtime.active_dialogue = None;
+                    dev_info!("Node ended without next or choices for entity {:?}", entity);
+                    runtime.active_dialogues.remove(&entity);
+                    if runtime.primary_dialogue == Some(entity) {
+                        runtime.primary_dialogue = None;
+                    }
+                    // Emit finished event
+                    finished_events.write(MortarDialogueFinished {
+                        entity: if entity == Entity::PLACEHOLDER {
+                            None
+                        } else {
+                            Some(entity)
+                        },
+                        mortar_path,
+                        node: current_node,
+                    });
                 }
             }
-            MortarEvent::SelectChoice { index } => {
-                let Some(state) = &mut runtime.active_dialogue else {
+            MortarEvent::SelectChoice { index, target } => {
+                let entity = target.or(runtime.primary_dialogue);
+                let Some(entity) = entity else {
                     warn!("No active dialogue to select choice from");
+                    continue;
+                };
+                let Some(state) = runtime.active_dialogues.get_mut(&entity) else {
+                    warn!("No active dialogue for entity {:?}", entity);
                     continue;
                 };
                 let Some(choices) = state.get_choices() else {
@@ -107,31 +185,64 @@ pub fn process_mortar_events_system(
                 );
                 state.selected_choice = Some(*index);
             }
-            MortarEvent::ConfirmChoice => {
-                let Some(state) = &mut runtime.active_dialogue else {
+            MortarEvent::ConfirmChoice { target } => {
+                let entity = target.or(runtime.primary_dialogue);
+                let Some(entity) = entity else {
                     warn!("No active dialogue to confirm choice from");
                     continue;
                 };
-                let Some(choice_index) = state.selected_choice else {
-                    warn!("No choice selected to confirm");
-                    continue;
+
+                // Extract data needed for event emission before mutable operations
+                let (choice_index, choices_clone, mortar_path, current_node) = {
+                    let Some(state) = runtime.active_dialogues.get(&entity) else {
+                        warn!("No active dialogue for entity {:?}", entity);
+                        continue;
+                    };
+                    let Some(choice_index) = state.selected_choice else {
+                        warn!("No choice selected to confirm");
+                        continue;
+                    };
+                    let Some(choices) = state.get_choices() else {
+                        warn!("No choices available in current node");
+                        continue;
+                    };
+                    (
+                        choice_index,
+                        choices.clone(),
+                        state.mortar_path.clone(),
+                        state.current_node.clone(),
+                    )
                 };
-                let Some(choices) = state.get_choices() else {
-                    warn!("No choices available in current node");
-                    continue;
-                };
-                let Some(choice) = choices.get(choice_index) else {
+
+                let Some(choice) = choices_clone.get(choice_index) else {
                     warn!("Invalid choice index: {}", choice_index);
                     continue;
                 };
 
                 dev_info!("Choice confirmed: {} - {}", choice_index, choice.text);
 
+                // Helper to emit finished event
+                let emit_finished = |events: &mut MessageWriter<MortarDialogueFinished>| {
+                    events.write(MortarDialogueFinished {
+                        entity: if entity == Entity::PLACEHOLDER {
+                            None
+                        } else {
+                            Some(entity)
+                        },
+                        mortar_path: mortar_path.clone(),
+                        node: current_node.clone(),
+                    });
+                };
+
                 if let Some(action) = &choice.action {
                     match action.as_str() {
                         "return" => {
                             dev_info!("Choice action is return, stopping dialogue");
-                            runtime.active_dialogue = None;
+                            runtime.active_dialogues.remove(&entity);
+                            if runtime.primary_dialogue == Some(entity) {
+                                runtime.primary_dialogue = None;
+                            }
+                            emit_finished(&mut finished_events);
                             continue;
                         }
                         "break" => {
@@ -139,20 +250,26 @@ pub fn process_mortar_events_system(
                             // Clear the choice stack and selection.
                             //
                             // 清空选择栈和当前选中项。
-                            state.clear_choice_stack();
-                            // Mark choices as broken so they won't be shown anymore.
-                            //
-                            // 标记选项为已破坏，使其不再显示。
-                            state.choices_broken = true;
-                            // Advance to next text.
-                            //
-                            // 前进到下一段文本。
-                            state.next_text();
+                            if let Some(state) = runtime.active_dialogues.get_mut(&entity) {
+                                state.clear_choice_stack();
+                                // Mark choices as broken so they won't be shown anymore.
+                                //
+                                // 标记选项为已破坏，使其不再显示。
+                                state.choices_broken = true;
+                                // Advance to next text.
+                                //
+                                // 前进到下一段文本。
+                                state.next_text();
+                            }
                             continue;
                         }
                         _ => {
                             dev_info!("Unknown choice action: {}", action);
-                            runtime.active_dialogue = None;
+                            runtime.active_dialogues.remove(&entity);
+                            if runtime.primary_dialogue == Some(entity) {
+                                runtime.primary_dialogue = None;
+                            }
+                            emit_finished(&mut finished_events);
                             continue;
                         }
                     }
@@ -163,28 +280,54 @@ pub fn process_mortar_events_system(
                 // 检查该选项是否包含嵌套的子选项。
                 if choice.choice.is_some() {
                     dev_info!("Choice has nested choices, entering nested level");
-                    state.push_choice(choice_index);
+                    if let Some(state) = runtime.active_dialogues.get_mut(&entity) {
+                        state.push_choice(choice_index);
+                    }
                     continue;
                 }
 
-                if let Some(next_node) = &choice.next {
+                let next_node_info = choice.next.clone();
+
+                if let Some(next_node) = next_node_info {
                     if next_node == "return" {
                         dev_info!("Choice leads to return, stopping dialogue");
-                        runtime.active_dialogue = None;
+                        runtime.active_dialogues.remove(&entity);
+                        if runtime.primary_dialogue == Some(entity) {
+                            runtime.primary_dialogue = None;
+                        }
+                        emit_finished(&mut finished_events);
                     } else {
                         dev_info!("Choice leads to node: {}", next_node);
-                        let path = state.mortar_path.clone();
-                        runtime.pending_jump = Some((path, next_node.clone()));
+                        runtime
+                            .pending_jumps
+                            .insert(entity, (mortar_path, next_node));
                     }
                 } else {
                     dev_info!("Choice has no next node or action, stopping dialogue");
-                    runtime.active_dialogue = None;
+                    runtime.active_dialogues.remove(&entity);
+                    if runtime.primary_dialogue == Some(entity) {
+                        runtime.primary_dialogue = None;
+                    }
+                    emit_finished(&mut finished_events);
                 }
             }
-            MortarEvent::StopDialogue => {
-                runtime.active_dialogue = None;
-                runtime.pending_start = None;
-                dev_info!("Dialogue stopped");
+            MortarEvent::StopDialogue { target } => {
+                if let Some(entity) = target {
+                    runtime.active_dialogues.remove(entity);
+                    runtime.pending_starts.remove(entity);
+                    runtime.pending_jumps.remove(entity);
+                    if runtime.primary_dialogue == Some(*entity) {
+                        runtime.primary_dialogue = None;
+                    }
+                    dev_info!("Dialogue stopped for entity {:?}", entity);
+                } else {
+                    // Stop all dialogues
+                    runtime.active_dialogues.clear();
+                    runtime.pending_starts.clear();
+                    runtime.pending_jumps.clear();
+                    runtime.primary_dialogue = None;
+                    dev_info!("All dialogues stopped");
+                }
             }
         }
     }
@@ -198,23 +341,35 @@ pub fn check_pending_start_system(
     registry: Res<MortarRegistry>,
     assets: Res<Assets<MortarAsset>>,
 ) {
-    let Some((path, node)) = runtime.pending_start.clone() else {
-        return;
-    };
-    let Some(handle) = registry.get(&path) else {
-        return;
-    };
-    let Some(asset) = assets.get(handle) else {
-        return;
-    };
-    let Some(node_data) = asset.data.nodes.iter().find(|n| n.name == node) else {
-        return;
-    };
+    // Collect entities to process (avoid borrowing issues)
+    let pending: Vec<(Entity, String, String)> = runtime
+        .pending_starts
+        .iter()
+        .map(|(e, (p, n))| (*e, p.clone(), n.clone()))
+        .collect();
 
-    let state = DialogueState::new(path.clone(), node.clone(), node_data.clone());
-    runtime.active_dialogue = Some(state);
-    runtime.pending_start = None;
-    dev_info!("Started pending node: {} in {}", node, path);
+    for (entity, path, node) in pending {
+        let Some(handle) = registry.get(&path) else {
+            continue;
+        };
+        let Some(asset) = assets.get(handle) else {
+            continue;
+        };
+        let Some(node_data) = asset.data.nodes.iter().find(|n| n.name == node) else {
+            continue;
+        };
+
+        let state = DialogueState::new(path.clone(), node.clone(), node_data.clone());
+        runtime.active_dialogues.insert(entity, state);
+        runtime.primary_dialogue = Some(entity);
+        runtime.pending_starts.remove(&entity);
+        dev_info!(
+            "Started pending node: {} in {} for entity {:?}",
+            node,
+            path,
+            entity
+        );
+    }
 }
 
 /// Handles pending jumps to other nodes.
@@ -224,8 +379,24 @@ pub fn handle_pending_jump_system(
     mut runtime: ResMut<MortarRuntime>,
     mut event_writer: MessageWriter<MortarEvent>,
 ) {
-    if let Some((path, node)) = runtime.pending_jump.take() {
-        dev_info!("Processing pending jump to: {} in {}", node, path);
-        event_writer.write(MortarEvent::StartNode { path, node });
+    // Collect pending jumps to process
+    let jumps: Vec<(Entity, String, String)> = runtime
+        .pending_jumps
+        .drain()
+        .map(|(e, (p, n))| (e, p, n))
+        .collect();
+
+    for (entity, path, node) in jumps {
+        dev_info!(
+            "Processing pending jump to: {} in {} for entity {:?}",
+            node,
+            path,
+            entity
+        );
+        event_writer.write(MortarEvent::StartNode {
+            path,
+            node,
+            target: Some(entity),
+        });
     }
 }
