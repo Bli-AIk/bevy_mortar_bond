@@ -409,8 +409,8 @@ fn parse_node_content(
             let Some(options_value) = content_value.get("options") else {
                 return;
             };
-            let Ok(parsed_choices) =
-                serde_json::from_value::<Vec<Choice>>(options_value.clone()).inspect_err(|err| {
+            let Ok(parsed_choices) = serde_json::from_value::<Vec<Choice>>(options_value.clone())
+                .inspect_err(|err| {
                     warn!(
                         "Failed to parse choice options at content index {}: {}",
                         content_idx, err

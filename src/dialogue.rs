@@ -777,16 +777,16 @@ fn execute_run_by_name(
     for stmt in &timeline_def.statements {
         match stmt.stmt_type.as_str() {
             "run" => {
-                let Some(event_name) = &stmt.event_name else { continue };
+                let Some(event_name) = &stmt.event_name else {
+                    continue;
+                };
                 let duration = stmt.duration.filter(|_| !stmt.ignore_duration);
-                timeline_sequence.push((
-                    event_name.clone(),
-                    duration,
-                    stmt.ignore_duration,
-                ));
+                timeline_sequence.push((event_name.clone(), duration, stmt.ignore_duration));
             }
             "wait" => {
-                let Some(duration) = stmt.duration else { continue };
+                let Some(duration) = stmt.duration else {
+                    continue;
+                };
                 timeline_sequence.push(("__WAIT__".to_string(), Some(duration), false));
             }
             _ => {}
