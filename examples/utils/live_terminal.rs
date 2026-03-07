@@ -290,15 +290,15 @@ impl TerminalMachine {
                 };
                 let result = save_buffer(editor);
                 match result {
-                    Ok(path) => {
+                    Ok(ref path) => {
                         editor.set_status(format!("written {}", path.display()));
-                        if quit {
-                            self.exit_vim_with_message("wrote changes and closed bevim");
-                        }
                     }
-                    Err(err) => {
+                    Err(ref err) => {
                         editor.set_status(format!("write failed: {}", err));
                     }
+                }
+                if quit && result.is_ok() {
+                    self.exit_vim_with_message("wrote changes and closed bevim");
                 }
                 self.dirty = true;
             }
@@ -348,6 +348,116 @@ impl CursorBlink {
     pub fn visible(&self) -> bool {
         self.visible
     }
+}
+
+fn spawn_line_segments(
+    line_parent: &mut ChildSpawnerCommands,
+    segments: &[StyledSegment],
+    font: &Handle<Font>,
+) {
+    for segment in segments {
+        let mut child = line_parent.spawn((
+            Text::new(&segment.text),
+            TextFont {
+                font: font.clone(),
+                font_size: 18.0,
+                ..default()
+            },
+            TextColor(segment.color),
+        ));
+        if let Some(bg) = segment.background {
+            child.insert(TextBackgroundColor(bg));
+        }
+    }
+}
+
+fn build_game_column(column: &mut ChildSpawnerCommands, font: &Handle<Font>, rogue_sheet: &RogueSpritesheet) {
+    let mut initial_typewriter =
+        Typewriter::new(DIALOGUE_PLACEHOLDER, DIALOGUE_CHAR_SPEED);
+    initial_typewriter.current_text = DIALOGUE_PLACEHOLDER.to_string();
+    initial_typewriter.current_char_index = DIALOGUE_PLACEHOLDER.chars().count();
+    initial_typewriter.state = TypewriterState::Finished;
+
+    column
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                padding: UiRect::all(Val::Px(12.0)),
+                border: UiRect::all(Val::Px(2.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgb(0.08, 0.08, 0.12)),
+            BorderColor::all(Color::srgb(0.4, 0.5, 0.7)),
+        ))
+        .with_child((
+            Text::new(DIALOGUE_PLACEHOLDER),
+            TextFont {
+                font: font.clone(),
+                font_size: 20.0,
+                ..default()
+            },
+            TextColor(Color::srgb(0.9, 0.9, 1.0)),
+            GameDialogueText,
+            initial_typewriter,
+        ));
+
+    column.spawn((
+        Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(8.0),
+            padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
+            border: UiRect::all(Val::Px(2.0)),
+            ..default()
+        },
+        BackgroundColor(Color::srgb(0.06, 0.06, 0.09)),
+        BorderColor::all(Color::srgb(0.35, 0.35, 0.45)),
+        ChoicePanel,
+        Visibility::Hidden,
+        ChoicePanelFont(font.clone()),
+    ));
+
+    let sprite = RogueSprite::new(RogueGender::Male, RogueAnimation::Idle);
+    let mut image = rogue_sheet.image_node(&sprite);
+    image.image_mode = NodeImageMode::Stretch;
+
+    column
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_grow: 1.0,
+                align_items: AlignItems::Stretch,
+                justify_content: JustifyContent::Center,
+                border: UiRect::all(Val::Px(2.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgb(0.06, 0.06, 0.09)),
+            BorderColor::all(Color::srgb(0.3, 0.3, 0.4)),
+        ))
+        .with_children(|preview_box| {
+            preview_box
+                .spawn((
+                    Node {
+                        width: Val::Percent(100.0),
+                        height: Val::Percent(100.0),
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
+                        ..default()
+                    },
+                    BackgroundColor(Color::NONE),
+                ))
+                .with_child((
+                    RoguePreviewImage,
+                    sprite,
+                    RogueAnimationState::default(),
+                    image,
+                    Node {
+                        width: Val::Px(192.0),
+                        height: Val::Px(192.0),
+                        ..default()
+                    },
+                ));
+        });
 }
 
 pub fn setup_ui(
@@ -425,99 +535,7 @@ pub fn setup_ui(
                             BackgroundColor(Color::NONE),
                         ))
                         .with_children(|column| {
-                            column
-                                .spawn((
-                                    Node {
-                                        width: Val::Percent(100.0),
-                                        padding: UiRect::all(Val::Px(12.0)),
-                                        border: UiRect::all(Val::Px(2.0)),
-                                        ..default()
-                                    },
-                                    BackgroundColor(Color::srgb(0.08, 0.08, 0.12)),
-                                    BorderColor::all(Color::srgb(0.4, 0.5, 0.7)),
-                                ))
-                                .with_children(|dialogue_box| {
-                                    let mut initial_typewriter =
-                                        Typewriter::new(DIALOGUE_PLACEHOLDER, DIALOGUE_CHAR_SPEED);
-                                    initial_typewriter.current_text =
-                                        DIALOGUE_PLACEHOLDER.to_string();
-                                    initial_typewriter.current_char_index =
-                                        DIALOGUE_PLACEHOLDER.chars().count();
-                                    initial_typewriter.state = TypewriterState::Finished;
-                                    dialogue_box.spawn((
-                                        Text::new(DIALOGUE_PLACEHOLDER),
-                                        TextFont {
-                                            font: font.clone(),
-                                            font_size: 20.0,
-                                            ..default()
-                                        },
-                                        TextColor(Color::srgb(0.9, 0.9, 1.0)),
-                                        GameDialogueText,
-                                        initial_typewriter,
-                                    ));
-                                });
-
-                            column.spawn((
-                                Node {
-                                    width: Val::Percent(100.0),
-                                    flex_direction: FlexDirection::Column,
-                                    row_gap: Val::Px(8.0),
-                                    padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
-                                    border: UiRect::all(Val::Px(2.0)),
-                                    ..default()
-                                },
-                                BackgroundColor(Color::srgb(0.06, 0.06, 0.09)),
-                                BorderColor::all(Color::srgb(0.35, 0.35, 0.45)),
-                                ChoicePanel,
-                                Visibility::Hidden,
-                                ChoicePanelFont(font.clone()),
-                            ));
-
-                            column
-                                .spawn((
-                                    Node {
-                                        width: Val::Percent(100.0),
-                                        flex_grow: 1.0,
-                                        align_items: AlignItems::Stretch,
-                                        justify_content: JustifyContent::Center,
-                                        border: UiRect::all(Val::Px(2.0)),
-                                        ..default()
-                                    },
-                                    BackgroundColor(Color::srgb(0.06, 0.06, 0.09)),
-                                    BorderColor::all(Color::srgb(0.3, 0.3, 0.4)),
-                                ))
-                                .with_children(|preview_box| {
-                                    preview_box
-                                        .spawn((
-                                            Node {
-                                                width: Val::Percent(100.0),
-                                                height: Val::Percent(100.0),
-                                                align_items: AlignItems::Center,
-                                                justify_content: JustifyContent::Center,
-                                                ..default()
-                                            },
-                                            BackgroundColor(Color::NONE),
-                                        ))
-                                        .with_children(|center| {
-                                            let sprite = RogueSprite::new(
-                                                RogueGender::Male,
-                                                RogueAnimation::Idle,
-                                            );
-                                            let mut image = rogue_sheet.image_node(&sprite);
-                                            image.image_mode = NodeImageMode::Stretch;
-                                            center.spawn((
-                                                RoguePreviewImage,
-                                                sprite,
-                                                RogueAnimationState::default(),
-                                                image,
-                                                Node {
-                                                    width: Val::Px(192.0),
-                                                    height: Val::Px(192.0),
-                                                    ..default()
-                                                },
-                                            ));
-                                        });
-                                });
+                            build_game_column(column, &font, &rogue_sheet);
                         });
 
                     game_panel.spawn((
@@ -572,10 +590,8 @@ pub fn handle_keyboard_controls(
         }
         blink.reset();
         if let Some(text) = &input.text {
-            for ch in text.chars() {
-                if !ch.is_control() {
-                    machine.handle_text_character(ch);
-                }
+            for ch in text.chars().filter(|c| !c.is_control()) {
+                machine.handle_text_character(ch);
             }
         }
         match input.key_code {
@@ -607,40 +623,29 @@ pub fn refresh_terminal_display<S: ScriptHighlightSource + Resource>(
     let cursor_visible = machine.focused && cursor.visible();
     let highlight_line = source.as_ref().highlight_line(&runtime);
     let render = machine.render(cursor_visible, highlight_line);
-    if let Ok((entity, font)) = display.single() {
-        if let Ok(existing_children) = children.get(entity) {
-            for child in existing_children.iter() {
-                despawn_recursive(child, &mut commands, &children);
-            }
+    let Ok((entity, font)) = display.single() else {
+        machine.dirty = false;
+        return;
+    };
+    if let Ok(existing_children) = children.get(entity) {
+        for child in existing_children.iter() {
+            despawn_recursive(child, &mut commands, &children);
         }
-        commands.entity(entity).with_children(|parent| {
-            for line in render.lines {
-                parent
-                    .spawn(Node {
-                        width: Val::Percent(100.0),
-                        flex_direction: FlexDirection::Row,
-                        column_gap: Val::Px(2.0),
-                        ..default()
-                    })
-                    .with_children(|line_parent| {
-                        for segment in line.segments {
-                            let mut child = line_parent.spawn((
-                                Text::new(segment.text),
-                                TextFont {
-                                    font: font.0.clone(),
-                                    font_size: 18.0,
-                                    ..default()
-                                },
-                                TextColor(segment.color),
-                            ));
-                            if let Some(bg) = segment.background {
-                                child.insert(TextBackgroundColor(bg));
-                            }
-                        }
-                    });
-            }
-        });
     }
+    commands.entity(entity).with_children(|parent| {
+        for line in render.lines {
+            parent
+                .spawn(Node {
+                    width: Val::Percent(100.0),
+                    flex_direction: FlexDirection::Row,
+                    column_gap: Val::Px(2.0),
+                    ..default()
+                })
+                .with_children(|line_parent| {
+                    spawn_line_segments(line_parent, &line.segments, &font.0);
+                });
+        }
+    });
 
     machine.dirty = false;
 }

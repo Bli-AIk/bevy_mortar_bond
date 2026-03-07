@@ -71,6 +71,112 @@ impl Default for MortarVariableState {
     }
 }
 
+/// Parse a Branch variable definition from its JSON value.
+fn parse_branch_variable(var: &Variable) -> Option<(String, BranchDef)> {
+    let obj = var.value.as_ref()?.as_object()?;
+
+    let enum_type = obj
+        .get("enum_type")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    let mut cases = Vec::new();
+
+    if let Some(cases_array) = obj.get("cases").and_then(|v| v.as_array()) {
+        for case in cases_array {
+            if let Some(case_obj) = case.as_object() {
+                let condition = case_obj
+                    .get("condition")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+
+                let text = case_obj
+                    .get("text")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+
+                cases.push(BranchCase { condition, text });
+            }
+        }
+    }
+
+    Some((var.name.clone(), BranchDef { enum_type, cases }))
+}
+
+/// Resolve default variable value based on type name.
+fn default_variable_value(var_type: &str, enums: &[Enum]) -> Option<MortarVariableValue> {
+    match var_type {
+        "String" => Some(MortarVariableValue::String(String::new())),
+        "Number" => Some(MortarVariableValue::Number(0.0)),
+        "Boolean" | "Bool" => Some(MortarVariableValue::Boolean(false)),
+        enum_type_name => {
+            let enum_def = enums.iter().find(|e| e.name == enum_type_name)?;
+            let first_member = enum_def.variants.first()?;
+            Some(MortarVariableValue::String(format!(
+                "{}.{}",
+                enum_def.name, first_member
+            )))
+        }
+    }
+}
+
+/// Find the matching case from a JSON cases array based on enum or boolean conditions.
+fn find_matching_case<'a>(
+    state: &MortarVariableState,
+    enum_type: Option<&str>,
+    cases: &'a [serde_json::Value],
+) -> Option<&'a serde_json::Value> {
+    if let Some(enum_var_name) = enum_type {
+        let enum_value = state.get(enum_var_name)?;
+        let enum_member = enum_value.to_display_string();
+        let member_name =
+            enum_member.rfind('.').map_or(&*enum_member, |pos| &enum_member[pos + 1..]);
+        cases.iter().find(|case| {
+            case.get("condition")
+                .and_then(|c| c.as_str())
+                .map(|c| c == member_name)
+                .unwrap_or(false)
+        })
+    } else {
+        cases.iter().find(|case| {
+            case.get("condition")
+                .and_then(|c| c.as_str())
+                .and_then(|cond_name| state.get(cond_name))
+                .map(|v| matches!(v, MortarVariableValue::Boolean(true)))
+                .unwrap_or(false)
+        })
+    }
+}
+
+/// Resolve branch text by evaluating enum or boolean conditions.
+fn resolve_branch_text(state: &MortarVariableState, branch: &BranchDef) -> Option<String> {
+    let Some(enum_var_name) = &branch.enum_type else {
+        // Boolean-based branch: check each condition.
+        for case in &branch.cases {
+            if let Some(MortarVariableValue::Boolean(true)) = state.get(&case.condition) {
+                return Some(case.text.clone());
+            }
+        }
+        return None;
+    };
+
+    // Get the enum variable value (stored as "EnumName.member").
+    let enum_value = state.get(enum_var_name)?;
+    let enum_member = enum_value.to_display_string();
+    // Extract the member name after the dot.
+    let member_name =
+        enum_member.rfind('.').map_or(&*enum_member, |pos| &enum_member[pos + 1..]);
+
+    // Find the case that matches the enum member.
+    branch
+        .cases
+        .iter()
+        .find(|case| case.condition == member_name)
+        .map(|case| case.text.clone())
+}
+
 impl MortarVariableState {
     /// Create a new empty variable state.
     ///
@@ -94,101 +200,33 @@ impl MortarVariableState {
                 state.set(&constant.name, parsed_value);
             } else {
                 // Fallback for constants if json parsing fails, though unlikely for compiled output
-                // For now, just warn or skip.
                 warn!("Failed to parse value for constant: {}", constant.name);
             }
         }
 
         for var in variables {
             // Handle Branch type specially.
-            //
-            // 针对 Branch 类型做特殊处理。
             if var.var_type == "Branch" {
-                if let Some(value) = &var.value
-                    && let Some(obj) = value.as_object()
-                {
-                    let enum_type = obj
-                        .get("enum_type")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string());
-
-                    let mut cases = Vec::new();
-
-                    if let Some(cases_array) = obj.get("cases").and_then(|v| v.as_array()) {
-                        for case in cases_array {
-                            if let Some(case_obj) = case.as_object() {
-                                let condition = case_obj
-                                    .get("condition")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("")
-                                    .to_string();
-
-                                let text = case_obj
-                                    .get("text")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("")
-                                    .to_string();
-
-                                cases.push(BranchCase { condition, text });
-                            }
-                        }
-                    }
-
-                    state
-                        .branches
-                        .insert(var.name.clone(), BranchDef { enum_type, cases });
-                }
-
+                state.branches.extend(parse_branch_variable(var));
                 continue;
             }
 
             // Try to parse the value.
-            //
-            // 尝试解析该值。
-            if let Some(value) = &var.value {
-                if let Some(parsed_value) = MortarVariableValue::from_json(value) {
-                    state.set(&var.name, parsed_value);
-                }
-            } else {
-                // Set default value based on type.
-                //
-                // 根据类型设置默认值。
-                let default_value = match var.var_type.as_str() {
-                    "String" => MortarVariableValue::String(String::new()),
-
-                    "Number" => MortarVariableValue::Number(0.0),
-
-                    "Boolean" | "Bool" => MortarVariableValue::Boolean(false),
-
-                    // Non-primitive type, check if it's a known enum.
-                    //
-                    // 对非原始类型检查其是否为已知枚举。
-                    enum_type_name => {
-                        if let Some(enum_def) = enums.iter().find(|e| e.name == enum_type_name) {
-                            if let Some(first_member) = enum_def.variants.first() {
-                                // Default to the first member of the enum.
-                                //
-                                // 默认使用该枚举的首个成员。
-                                let enum_value = format!("{}.{}", enum_def.name, first_member);
-
-                                MortarVariableValue::String(enum_value)
-                            } else {
-                                // Enum has no members, skip.
-                                //
-                                // 枚举没有成员则跳过。
-                                continue;
-                            }
-                        } else {
-                            // Unknown type, skip.
-                            //
-                            // 类型未知则跳过。
-                            continue;
-                        }
-                    }
-                };
-
-                state.set(&var.name, default_value);
+            if let Some(parsed) = var.value.as_ref().and_then(MortarVariableValue::from_json) {
+                state.set(&var.name, parsed);
+                continue;
             }
+
+            // Value exists but couldn't be parsed, skip.
+            if var.value.is_some() {
+                continue;
+            }
+
+            // Set default value based on type.
+            let Some(default_value) = default_variable_value(&var.var_type, enums) else {
+                continue;
+            };
+            state.set(&var.name, default_value);
         }
 
         state
@@ -279,41 +317,7 @@ impl MortarVariableState {
         let enum_type = value.get("enum_type").and_then(|v| v.as_str());
 
         // Determine which case matches.
-        //
-        // 确定匹配的分支。
-        let matching_case = if let Some(enum_var_name) = enum_type {
-            // Enum-based branch.
-            //
-            // 基于枚举的分支。
-            if let Some(enum_value) = self.get(enum_var_name) {
-                let enum_member = enum_value.to_display_string();
-                let member_name = if let Some(dot_pos) = enum_member.rfind('.') {
-                    &enum_member[dot_pos + 1..]
-                } else {
-                    &enum_member
-                };
-
-                cases.iter().find(|case| {
-                    case.get("condition")
-                        .and_then(|c| c.as_str())
-                        .map(|c| c == member_name)
-                        .unwrap_or(false)
-                })
-            } else {
-                None
-            }
-        } else {
-            // Boolean-based branch.
-            //
-            // 基于布尔值的分支。
-            cases.iter().find(|case| {
-                case.get("condition")
-                    .and_then(|c| c.as_str())
-                    .and_then(|cond_name| self.get(cond_name))
-                    .map(|v| matches!(v, MortarVariableValue::Boolean(true)))
-                    .unwrap_or(false)
-            })
-        }?;
+        let matching_case = find_matching_case(self, enum_type, cases)?;
 
         // Extract events from the matching case.
         //
@@ -340,48 +344,7 @@ impl MortarVariableState {
     /// 通过评估条件获取分支变量的文本。
     pub fn get_branch_text(&self, name: &str) -> Option<String> {
         let branch = self.branches.get(name)?;
-
-        // If enum-based branch, check the enum variable value.
-        //
-        // 若为枚举分支，则检查对应的枚举变量值。
-        if let Some(enum_var_name) = &branch.enum_type {
-            // Get the enum variable value (it's stored as "EnumName.member").
-            //
-            // 获取枚举变量值（格式为 "EnumName.member"）。
-            if let Some(enum_value) = self.get(enum_var_name) {
-                let enum_member = enum_value.to_display_string();
-                // Extract the member name after the dot.
-                //
-                // 提取点号后的成员名称。
-                let member_name = if let Some(dot_pos) = enum_member.rfind('.') {
-                    &enum_member[dot_pos + 1..]
-                } else {
-                    &enum_member
-                };
-
-                // Find the case that matches the enum member.
-                //
-                // 查找与该枚举成员匹配的分支。
-                for case in &branch.cases {
-                    if case.condition == member_name {
-                        return Some(case.text.clone());
-                    }
-                }
-            }
-        } else {
-            // Boolean-based branch: check each condition.
-            //
-            // 布尔分支：依次检查条件。
-            for case in &branch.cases {
-                if let Some(condition_value) = self.get(&case.condition)
-                    && let MortarVariableValue::Boolean(true) = condition_value
-                {
-                    return Some(case.text.clone());
-                }
-            }
-        }
-
-        None
+        resolve_branch_text(self, branch)
     }
 
     /// Evaluate a condition.

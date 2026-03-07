@@ -249,13 +249,11 @@ impl VimEditorState {
             if ch == '"' {
                 let start = idx;
                 idx += 1;
-                while idx < chars.len() {
-                    let c = chars[idx];
-                    idx += 1;
-                    if c == '"' {
-                        break;
-                    }
-                }
+                let end = chars[idx..]
+                    .iter()
+                    .position(|&c| c == '"')
+                    .map_or(chars.len(), |p| idx + p + 1);
+                idx = end;
                 self.push_token_with_cursor(
                     &mut line,
                     chars,
@@ -271,9 +269,10 @@ impl VimEditorState {
 
             if ch.is_ascii_alphabetic() || ch == '_' {
                 let start = idx;
-                while idx < chars.len() && (chars[idx].is_alphanumeric() || chars[idx] == '_') {
-                    idx += 1;
-                }
+                idx += chars[idx..]
+                    .iter()
+                    .take_while(|c| c.is_alphanumeric() || **c == '_')
+                    .count();
                 let word_color = match chars[start..idx].iter().collect::<String>().as_str() {
                     "node" | "text" | "choice" | "return" => Color::srgb(0.6, 0.8, 1.0),
                     _ => Color::srgb(0.9, 0.9, 0.9),
@@ -404,11 +403,12 @@ impl VimEditorState {
             return;
         }
         if self.cursor_col > 0 {
-            if let Some(line) = self.buffer.get_mut(self.cursor_row) {
-                self.cursor_col -= 1;
-                if self.cursor_col < line.len() {
-                    line.remove(self.cursor_col);
-                }
+            let Some(line) = self.buffer.get_mut(self.cursor_row) else {
+                return;
+            };
+            self.cursor_col -= 1;
+            if self.cursor_col < line.len() {
+                line.remove(self.cursor_col);
             }
         } else if self.cursor_row > 0 {
             let tail = self.buffer.remove(self.cursor_row);
