@@ -508,6 +508,27 @@ pub fn button_interaction_system(
     }
 }
 
+
+fn apply_choice_finish(
+    finish_kind: ChoiceFinishKind,
+    events: &mut MessageWriter<MortarEvent>,
+    dialogue_text_query: &mut Query<&mut MortarDialogueText, With<DialogueText>>,
+    text_query: &mut Query<&mut Text, With<DialogueText>>,
+    typewriter_query: &mut Query<&mut Typewriter, With<DialogueText>>,
+) {
+    match finish_kind {
+        ChoiceFinishKind::Immediate => {
+            info!("Example: Choice ends dialogue immediately");
+            show_finished_message(dialogue_text_query, text_query, typewriter_query);
+        }
+        ChoiceFinishKind::NeedsNextText => {
+            info!("Example: Choice ends dialogue after break; advancing");
+            events.write(MortarEvent::NextText { target: None });
+            show_finished_message(dialogue_text_query, text_query, typewriter_query);
+        }
+        ChoiceFinishKind::None => {}
+    }
+}
 /// Handles clicks on the "Continue" button.
 ///
 /// 处理“继续”按钮点击。
@@ -529,48 +550,36 @@ fn handle_continue_button(
             continue;
         }
 
-        if let Some(state) = runtime.primary_dialogue() {
-            if let Some(choice_index) = state.selected_choice {
-                info!("Example: Confirming choice selection");
-                let finish_kind = determine_choice_finish_kind(state, choice_index);
-                events.write(MortarEvent::ConfirmChoice { target: None });
-                match finish_kind {
-                    ChoiceFinishKind::Immediate => {
-                        info!("Example: Choice ends dialogue immediately");
-                        show_finished_message(
-                            &mut dialogue_text_query,
-                            &mut text_query,
-                            &mut typewriter_query,
-                        );
-                    }
-                    ChoiceFinishKind::NeedsNextText => {
-                        info!("Example: Choice ends dialogue after break; advancing");
-                        events.write(MortarEvent::NextText { target: None });
-                        show_finished_message(
-                            &mut dialogue_text_query,
-                            &mut text_query,
-                            &mut typewriter_query,
-                        );
-                    }
-                    ChoiceFinishKind::None => {}
-                }
-                continue;
-            }
+        let Some(state) = runtime.primary_dialogue() else {
+            show_finished_message(
+                &mut dialogue_text_query,
+                &mut text_query,
+                &mut typewriter_query,
+            );
+            continue;
+        };
 
-            if state.has_next_text() {
-                events.write(MortarEvent::NextText { target: None });
-            } else if state.has_choices() && !state.choices_broken {
-                info!("Example: Waiting for choice resolution before finishing");
-            } else {
-                events.write(MortarEvent::NextText { target: None });
-                info!("Example: Dialogue finished; showing end message");
-                show_finished_message(
-                    &mut dialogue_text_query,
-                    &mut text_query,
-                    &mut typewriter_query,
-                );
-            }
+        if let Some(choice_index) = state.selected_choice {
+            info!("Example: Confirming choice selection");
+            let finish_kind = determine_choice_finish_kind(state, choice_index);
+            events.write(MortarEvent::ConfirmChoice { target: None });
+            apply_choice_finish(
+                finish_kind,
+                &mut events,
+                &mut dialogue_text_query,
+                &mut text_query,
+                &mut typewriter_query,
+            );
+            continue;
+        }
+
+        if state.has_next_text() {
+            events.write(MortarEvent::NextText { target: None });
+        } else if state.has_choices() && !state.choices_broken {
+            info!("Example: Waiting for choice resolution before finishing");
         } else {
+            events.write(MortarEvent::NextText { target: None });
+            info!("Example: Dialogue finished; showing end message");
             show_finished_message(
                 &mut dialogue_text_query,
                 &mut text_query,
@@ -696,17 +705,15 @@ fn manage_choice_buttons(
                         BorderColor::all(border_color),
                         ChoiceButton { index },
                     ))
-                    .with_children(|parent| {
-                        parent.spawn((
-                            Text::new(&choice.text),
-                            TextFont {
-                                font: font.clone(),
-                                font_size: 20.0,
-                                ..default()
-                            },
-                            TextColor(text_color),
-                        ));
-                    });
+                    .with_child((
+                        Text::new(&choice.text),
+                        TextFont {
+                            font: font.clone(),
+                            font_size: 20.0,
+                            ..default()
+                        },
+                        TextColor(text_color),
+                    ));
             });
         }
     }
@@ -772,17 +779,21 @@ fn update_button_states(
         *bg_color = BackgroundColor(Color::srgb(0.2, 0.4, 0.6));
         *border_color = BorderColor::all(Color::srgb(0.4, 0.6, 0.8));
 
-        if let Some(state) = runtime.primary_dialogue() {
-            if state.has_choices() && !state.has_next_text() {
-                if state.selected_choice.is_some() {
-                    *visibility = Visibility::Visible;
-                    **text = "确认选择".to_string();
-                } else {
-                    *visibility = Visibility::Hidden;
-                }
+        let Some(state) = runtime.primary_dialogue() else {
+            *visibility = Visibility::Visible;
+            **text = "继续".to_string();
+            continue;
+        };
+
+        if state.has_choices() && !state.has_next_text() {
+            let has_selection = state.selected_choice.is_some();
+            *visibility = if has_selection {
+                Visibility::Visible
             } else {
-                *visibility = Visibility::Visible;
-                **text = "继续".to_string();
+                Visibility::Hidden
+            };
+            if has_selection {
+                **text = "确认选择".to_string();
             }
         } else {
             *visibility = Visibility::Visible;

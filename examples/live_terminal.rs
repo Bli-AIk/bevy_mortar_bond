@@ -556,16 +556,18 @@ fn bridge_mortar_events(
                 }
             }
             "set_gender" => {
-                if let Some(arg) = event.args.first() {
-                    let is_female = arg.to_lowercase() == "true";
-                    if let Ok(mut sprite) = preview.single_mut() {
-                        sprite.gender = if is_female {
-                            RogueGender::Female
-                        } else {
-                            RogueGender::Male
-                        };
-                    }
-                }
+                let Some(arg) = event.args.first() else {
+                    continue;
+                };
+                let is_female = arg.to_lowercase() == "true";
+                let Ok(mut sprite) = preview.single_mut() else {
+                    continue;
+                };
+                sprite.gender = if is_female {
+                    RogueGender::Female
+                } else {
+                    RogueGender::Male
+                };
             }
             _ => {
                 // Handle other events if necessary

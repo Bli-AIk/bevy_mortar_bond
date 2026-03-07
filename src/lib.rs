@@ -363,81 +363,180 @@ pub type DialogueRunDescriptor = (
     bool,
 );
 
+/// Parses a single content entry from a node into text or choice data.
+fn parse_node_content(
+    content_idx: usize,
+    content_value: &serde_json::Value,
+    text_items: &mut Vec<TextData>,
+    text_to_content_index: &mut Vec<usize>,
+    choice_content_index: &mut Option<usize>,
+    choices: &mut Option<Vec<Choice>>,
+) {
+    let Some(type_str) = content_value.get("type").and_then(|v| v.as_str()) else {
+        return;
+    };
+    match type_str {
+        "text" => {
+            let value = content_value
+                .get("value")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let interpolated_parts = content_value
+                .get("interpolated_parts")
+                .and_then(|v| serde_json::from_value(v.clone()).ok());
+            let condition = content_value
+                .get("condition")
+                .and_then(|v| serde_json::from_value(v.clone()).ok());
+            let pre_statements = content_value
+                .get("pre_statements")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .unwrap_or_default();
+            let events = content_value
+                .get("events")
+                .and_then(|v| serde_json::from_value(v.clone()).ok());
+
+            text_items.push(TextData {
+                value,
+                interpolated_parts,
+                condition,
+                pre_statements,
+                events,
+            });
+            text_to_content_index.push(content_idx);
+        }
+        "choice" => {
+            let Some(options_value) = content_value.get("options") else {
+                return;
+            };
+            let Ok(parsed_choices) =
+                serde_json::from_value::<Vec<Choice>>(options_value.clone()).inspect_err(|err| {
+                    warn!(
+                        "Failed to parse choice options at content index {}: {}",
+                        content_idx, err
+                    );
+                })
+            else {
+                return;
+            };
+            *choices = Some(parsed_choices);
+            *choice_content_index = Some(content_idx);
+        }
+        _ => {}
+    }
+}
+
+/// Collects consecutive pending run statements starting at the given content index.
+fn collect_consecutive_runs(
+    content: &[serde_json::Value],
+    start_index: usize,
+    executed: &[usize],
+) -> Vec<DialogueRunItem> {
+    let mut runs = Vec::new();
+    for (idx, content_value) in content.iter().enumerate().skip(start_index) {
+        if executed.contains(&idx) {
+            continue;
+        }
+        let Some(type_str) = content_value.get("type").and_then(|v| v.as_str()) else {
+            break;
+        };
+        match type_str {
+            "run_event" if content_value.get("index_override").is_some() => continue,
+            "run_event" => {
+                let Some(name) = content_value.get("name").and_then(|v| v.as_str()) else {
+                    continue;
+                };
+                let ignore_duration = content_value
+                    .get("ignore_duration")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                runs.push(DialogueRunItem {
+                    content_index: idx,
+                    name: name.to_string(),
+                    kind: DialogueRunKind::Event,
+                    ignore_duration,
+                });
+            }
+            "run_timeline" => {
+                let Some(name) = content_value.get("name").and_then(|v| v.as_str()) else {
+                    continue;
+                };
+                runs.push(DialogueRunItem {
+                    content_index: idx,
+                    name: name.to_string(),
+                    kind: DialogueRunKind::Timeline,
+                    ignore_duration: false,
+                });
+            }
+            _ => break,
+        }
+    }
+    runs
+}
+
+/// Collects run descriptors at a specific content position.
+fn collect_runs_at_position(
+    content: &[serde_json::Value],
+    content_position: usize,
+    executed: &[usize],
+) -> Vec<DialogueRunDescriptor> {
+    let mut runs = Vec::new();
+    for (idx, content_value) in content.iter().enumerate() {
+        if idx != content_position || executed.contains(&idx) {
+            continue;
+        }
+        let Some(type_str) = content_value.get("type").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        match type_str {
+            "run_event" => {
+                let Some(name) = content_value.get("name").and_then(|v| v.as_str()) else {
+                    continue;
+                };
+                let args = content_value
+                    .get("args")
+                    .and_then(|v| serde_json::from_value(v.clone()).ok())
+                    .unwrap_or_default();
+                let index_override = content_value
+                    .get("index_override")
+                    .and_then(|v| serde_json::from_value(v.clone()).ok());
+                let ignore_duration = content_value
+                    .get("ignore_duration")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                runs.push((idx, name.to_string(), args, index_override, ignore_duration));
+            }
+            "run_timeline" => {
+                let Some(name) = content_value.get("name").and_then(|v| v.as_str()) else {
+                    continue;
+                };
+                runs.push((idx, name.to_string(), vec![], None, false));
+            }
+            _ => {}
+        }
+    }
+    runs
+}
+
 impl DialogueState {
     /// Creates a new dialogue state.
     ///
     /// 创建一个新的对话状态。
     pub fn new(mortar_path: String, node_name: String, node_data: Node) -> Self {
-        // Parse content array to extract texts and choices.
-        //
-        // 解析内容数组以提取文本和选项。
         let mut text_items = Vec::new();
         let mut text_to_content_index = Vec::new();
         let mut choice_content_index = None;
         let mut choices = None;
 
         for (content_idx, content_value) in node_data.content.iter().enumerate() {
-            if let Some(type_str) = content_value.get("type").and_then(|v| v.as_str()) {
-                match type_str {
-                    "text" => {
-                        // Extract text data.
-                        //
-                        // 提取文本数据。
-                        let value = content_value
-                            .get("value")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string();
-                        let interpolated_parts = content_value
-                            .get("interpolated_parts")
-                            .and_then(|v| serde_json::from_value(v.clone()).ok());
-                        let condition = content_value
-                            .get("condition")
-                            .and_then(|v| serde_json::from_value(v.clone()).ok());
-                        let pre_statements = content_value
-                            .get("pre_statements")
-                            .and_then(|v| serde_json::from_value(v.clone()).ok())
-                            .unwrap_or_default();
-                        let events = content_value
-                            .get("events")
-                            .and_then(|v| serde_json::from_value(v.clone()).ok());
-
-                        text_items.push(TextData {
-                            value,
-                            interpolated_parts,
-                            condition,
-                            pre_statements,
-                            events,
-                        });
-                        text_to_content_index.push(content_idx);
-                    }
-                    "choice" => {
-                        // Extract choices.
-                        //
-                        // 提取选项数据。
-                        if let Some(options_value) = content_value.get("options") {
-                            match serde_json::from_value::<Vec<Choice>>(options_value.clone()) {
-                                Ok(parsed_choices) => {
-                                    choices = Some(parsed_choices);
-                                    choice_content_index = Some(content_idx);
-                                }
-                                Err(err) => {
-                                    warn!(
-                                        "Failed to parse choice options at content index {}: {}",
-                                        content_idx, err
-                                    );
-                                }
-                            }
-                        }
-                    }
-                    "run_event" | "run_timeline" => {
-                        // These will be processed directly from content when needed.
-                        //
-                        // 这些内容会在需要时直接从 content 中处理。
-                    }
-                    _ => {}
-                }
-            }
+            parse_node_content(
+                content_idx,
+                content_value,
+                &mut text_items,
+                &mut text_to_content_index,
+                &mut choice_content_index,
+                &mut choices,
+            );
         }
 
         Self {
@@ -467,15 +566,9 @@ impl DialogueState {
         //
         // 使用堆栈穿过嵌套的选择。
         for &index in &self.choice_stack {
-            if let Some(choice) = choices.get(index) {
-                if let Some(nested) = &choice.choice {
-                    choices = nested;
-                } else {
-                    return None; // Invalid path
-                }
-            } else {
-                return None; // Invalid index
-            }
+            let choice = choices.get(index)?;
+            let nested = choice.choice.as_ref()?;
+            choices = nested;
         }
 
         Some(choices)
@@ -631,53 +724,11 @@ impl DialogueState {
     ///
     /// 收集从指定内容索引开始的连续 run 语句。
     pub fn collect_run_items_from(&self, start_index: usize) -> Vec<DialogueRunItem> {
-        let mut runs = Vec::new();
-
-        for (idx, content_value) in self.node_data.content.iter().enumerate().skip(start_index) {
-            if self.executed_content_indices.contains(&idx) {
-                continue;
-            }
-
-            let Some(type_str) = content_value.get("type").and_then(|v| v.as_str()) else {
-                break;
-            };
-
-            match type_str {
-                "run_event" => {
-                    // Run items with index_override are treated as text events (handled inline).
-                    //
-                    // 带有 index_override 的 run 项会被视为文本事件（就地处理）。
-                    if content_value.get("index_override").is_some() {
-                        continue;
-                    }
-                    if let Some(name) = content_value.get("name").and_then(|v| v.as_str()) {
-                        let ignore_duration = content_value
-                            .get("ignore_duration")
-                            .and_then(|v| v.as_bool())
-                            .unwrap_or(false);
-                        runs.push(DialogueRunItem {
-                            content_index: idx,
-                            name: name.to_string(),
-                            kind: DialogueRunKind::Event,
-                            ignore_duration,
-                        });
-                    }
-                }
-                "run_timeline" => {
-                    if let Some(name) = content_value.get("name").and_then(|v| v.as_str()) {
-                        runs.push(DialogueRunItem {
-                            content_index: idx,
-                            name: name.to_string(),
-                            kind: DialogueRunKind::Timeline,
-                            ignore_duration: false,
-                        });
-                    }
-                }
-                _ => break,
-            }
-        }
-
-        runs
+        collect_consecutive_runs(
+            &self.node_data.content,
+            start_index,
+            &self.executed_content_indices,
+        )
     }
 
     /// Checks if the current node has choices.
@@ -703,50 +754,11 @@ impl DialogueState {
         &self,
         content_position: usize,
     ) -> Vec<DialogueRunDescriptor> {
-        let mut runs = Vec::new();
-
-        // Look for run_event and run_timeline items at the specified content position.
-        //
-        // 在指定内容位置查找 run_event 与 run_timeline 项。
-        for (idx, content_value) in self.node_data.content.iter().enumerate() {
-            if idx == content_position
-                && !self.executed_content_indices.contains(&idx)
-                && let Some(type_str) = content_value.get("type").and_then(|v| v.as_str())
-            {
-                match type_str {
-                    "run_event" => {
-                        if let Some(name) = content_value.get("name").and_then(|v| v.as_str()) {
-                            let args = content_value
-                                .get("args")
-                                .and_then(|v| serde_json::from_value(v.clone()).ok())
-                                .unwrap_or_default();
-                            let index_override = content_value
-                                .get("index_override")
-                                .and_then(|v| serde_json::from_value(v.clone()).ok());
-                            let ignore_duration = content_value
-                                .get("ignore_duration")
-                                .and_then(|v| v.as_bool())
-                                .unwrap_or(false);
-                            runs.push((
-                                idx,
-                                name.to_string(),
-                                args,
-                                index_override,
-                                ignore_duration,
-                            ));
-                        }
-                    }
-                    "run_timeline" => {
-                        if let Some(name) = content_value.get("name").and_then(|v| v.as_str()) {
-                            runs.push((idx, name.to_string(), vec![], None, false));
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        runs
+        collect_runs_at_position(
+            &self.node_data.content,
+            content_position,
+            &self.executed_content_indices,
+        )
     }
 
     /// Marks a content item at the given index as executed.
@@ -937,34 +949,25 @@ pub fn evaluate_if_condition(
 ) -> bool {
     match condition.cond_type.as_str() {
         "func_call" => {
-            let func_name = if let Some(operand) = &condition.operand {
-                operand.value.clone()
-            } else {
-                None
-            };
-
-            if let Some(func_name) = func_name {
-                let args: Vec<MortarValue> = if let Some(right) = &condition.right {
-                    if let Some(value) = &right.value {
-                        value.split_whitespace().map(MortarValue::parse).collect()
-                    } else {
-                        vec![]
-                    }
-                } else {
-                    vec![]
-                };
-
-                if let Some(value) = functions.call(&func_name, &args) {
-                    value.is_truthy()
-                } else {
-                    warn!(
-                        "Condition function '{}' not bound, defaulting to false",
-                        func_name
-                    );
-                    false
-                }
-            } else {
+            let func_name = condition.operand.as_ref().and_then(|op| op.value.clone());
+            let Some(func_name) = func_name else {
                 warn!("Function call condition missing function_name");
+                return false;
+            };
+            let args: Vec<MortarValue> = condition
+                .right
+                .as_ref()
+                .and_then(|r| r.value.as_ref())
+                .map(|v| v.split_whitespace().map(MortarValue::parse).collect())
+                .unwrap_or_default();
+
+            if let Some(value) = functions.call(&func_name, &args) {
+                value.is_truthy()
+            } else {
+                warn!(
+                    "Condition function '{}' not bound, defaulting to false",
+                    func_name
+                );
                 false
             }
         }
@@ -1074,46 +1077,31 @@ pub fn process_interpolated_text(
                 result.push_str(&part.content);
             }
             "expression" => {
-                // Extract function name and call it.
-                //
-                // 提取函数名并执行调用。
-                if let Some(func_name) = &part.function_name {
-                    // Parse arguments.
-                    //
-                    // 解析参数。
-                    let args: Vec<MortarValue> = part
-                        .args
-                        .iter()
-                        .map(|arg| MortarValue::parse(arg))
-                        .collect();
-
-                    // Call the function.
-                    //
-                    // 调用函数。
-                    if let Some(value) = functions.call(func_name, &args) {
-                        result.push_str(&value.to_display_string());
-                    } else {
-                        // Function not found - get default value based on return type.
-                        //
-                        // 未找到函数时，根据返回类型获取默认值。
-                        let return_type = function_decls
-                            .iter()
-                            .find(|f| f.name == *func_name)
-                            .and_then(|f| f.return_type.as_deref())
-                            .unwrap_or("void");
-
-                        let default_value = get_default_return_value(return_type);
-                        warn!(
-                            "Function '{}' not bound, using default return value: {}",
-                            func_name, default_value
-                        );
-                        result.push_str(&default_value);
-                    }
-                } else {
-                    // No function name, keep the placeholder.
-                    //
-                    // 没有函数名时保留占位符。
+                let Some(func_name) = &part.function_name else {
                     result.push_str(&part.content);
+                    continue;
+                };
+                let args: Vec<MortarValue> = part
+                    .args
+                    .iter()
+                    .map(|arg| MortarValue::parse(arg))
+                    .collect();
+
+                if let Some(value) = functions.call(func_name, &args) {
+                    result.push_str(&value.to_display_string());
+                } else {
+                    let return_type = function_decls
+                        .iter()
+                        .find(|f| f.name == *func_name)
+                        .and_then(|f| f.return_type.as_deref())
+                        .unwrap_or("void");
+
+                    let default_value = get_default_return_value(return_type);
+                    warn!(
+                        "Function '{}' not bound, using default return value: {}",
+                        func_name, default_value
+                    );
+                    result.push_str(&default_value);
                 }
             }
             "placeholder" => {
@@ -1152,6 +1140,50 @@ pub fn process_interpolated_text(
     result
 }
 
+/// Fires events whose index has been reached, returning the resulting actions.
+fn fire_events(
+    events: &[mortar_compiler::Event],
+    fired_events: &mut Vec<usize>,
+    current_index: f64,
+    functions: &MortarFunctionRegistry,
+) -> Vec<MortarEventAction> {
+    let mut actions_to_process = Vec::new();
+    for (event_idx, event) in events.iter().enumerate() {
+        if current_index < event.index || fired_events.contains(&event_idx) {
+            continue;
+        }
+        fired_events.push(event_idx);
+
+        debug!(
+            "Mortar event triggered at index {}: {:?}",
+            event.index, event.actions
+        );
+
+        for action in &event.actions {
+            let args: Vec<MortarValue> = action
+                .args
+                .iter()
+                .map(|arg| MortarValue::parse(arg))
+                .collect();
+
+            if let Some(result) = functions.call(&action.action_type, &args) {
+                debug!(
+                    "Event function '{}' returned: {:?}",
+                    action.action_type, result
+                );
+            } else {
+                warn!("Event function '{}' not found", action.action_type);
+            }
+
+            actions_to_process.push(MortarEventAction {
+                action_name: action.action_type.clone(),
+                args: action.args.clone(),
+            });
+        }
+    }
+    actions_to_process
+}
+
 /// Component to track mortar text events and their firing state.
 ///
 /// 追踪 mortar 文本事件及其触发状态的组件。
@@ -1180,49 +1212,12 @@ impl MortarEventTracker {
         current_index: f32,
         runtime: &MortarRuntime,
     ) -> Vec<MortarEventAction> {
-        let mut actions_to_process = Vec::new();
-        let current_index = current_index as f64;
-
-        for (event_idx, event) in self.events.iter().enumerate() {
-            if current_index >= event.index && !self.fired_events.contains(&event_idx) {
-                self.fired_events.push(event_idx);
-
-                debug!(
-                    "Mortar event triggered at index {}: {:?}",
-                    event.index, event.actions
-                );
-
-                // Call mortar functions.
-                //
-                // 调用 mortar 函数。
-                for action in &event.actions {
-                    let args: Vec<MortarValue> = action
-                        .args
-                        .iter()
-                        .map(|arg| MortarValue::parse(arg))
-                        .collect();
-
-                    if let Some(result) = runtime.functions.call(&action.action_type, &args) {
-                        debug!(
-                            "Event function '{}' returned: {:?}",
-                            action.action_type, result
-                        );
-                    } else {
-                        warn!("Event function '{}' not found", action.action_type);
-                    }
-
-                    // Collect actions for user to handle.
-                    //
-                    // 收集需要用户处理的动作。
-                    actions_to_process.push(MortarEventAction {
-                        action_name: action.action_type.clone(),
-                        args: action.args.clone(),
-                    });
-                }
-            }
-        }
-
-        actions_to_process
+        fire_events(
+            &self.events,
+            &mut self.fired_events,
+            current_index as f64,
+            &runtime.functions,
+        )
     }
 
     /// Resets the tracker, clearing all fired events.

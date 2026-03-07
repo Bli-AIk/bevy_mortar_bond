@@ -196,20 +196,22 @@ fn handle_game_events(
     for event in events.read() {
         match event.name.as_str() {
             "set_animation" => {
-                if let Some(anim_name) = event.args.first()
-                    && let Ok((entity, mut transform)) = triangle_transforms.single_mut()
-                {
-                    match anim_name.as_str() {
-                        "wave" => {
-                            commands.entity(entity).insert(RotateAnimation {
-                                timer: Timer::new(Duration::from_secs(1), TimerMode::Once),
-                                start_rotation: transform.rotation.to_euler(EulerRot::ZXY).0,
-                            });
-                        }
-                        "left" => transform.translation.x = -50.0,
-                        "right" => transform.translation.x = 50.0,
-                        _ => {}
+                let Some(anim_name) = event.args.first() else {
+                    continue;
+                };
+                let Ok((entity, mut transform)) = triangle_transforms.single_mut() else {
+                    continue;
+                };
+                match anim_name.as_str() {
+                    "wave" => {
+                        commands.entity(entity).insert(RotateAnimation {
+                            timer: Timer::new(Duration::from_secs(1), TimerMode::Once),
+                            start_rotation: transform.rotation.to_euler(EulerRot::ZXY).0,
+                        });
                     }
+                    "left" => transform.translation.x = -50.0,
+                    "right" => transform.translation.x = 50.0,
+                    _ => {}
                 }
             }
             "set_color" => {

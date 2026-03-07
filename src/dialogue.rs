@@ -406,6 +406,73 @@ fn update_mortar_text_targets(
     }
 }
 
+fn build_interpolation_index_map(
+    parts: &[mortar_compiler::StringPart],
+    variable_state: &MortarVariableState,
+    asset_data: &mortar_compiler::MortaredData,
+    all_events: &mut Vec<mortar_compiler::Event>,
+) -> (HashMap<usize, f64>, f64) {
+    let mut original_pos = 0.0;
+    let mut rendered_pos = 0.0;
+    let mut index_map = HashMap::new();
+
+    for part in parts {
+        if part.part_type == "text" {
+            for _ in 0..part.content.chars().count() {
+                index_map.insert(original_pos as usize, rendered_pos);
+                original_pos += 1.0;
+                rendered_pos += 1.0;
+            }
+            continue;
+        }
+        if part.part_type != "placeholder" {
+            continue;
+        }
+        let var_name = part.content.trim_matches(|c| c == '{' || c == '}');
+
+        if let Some(branch_events) =
+            variable_state.get_branch_events(var_name, &asset_data.variables)
+        {
+            for mut event in branch_events {
+                event.index += rendered_pos;
+                all_events.push(event);
+            }
+        }
+
+        if let Some(branch_text) = variable_state.get_branch_text(var_name) {
+            rendered_pos += branch_text.chars().count() as f64;
+        } else if let Some(value) = variable_state.get(var_name) {
+            rendered_pos += value.to_display_string().chars().count() as f64;
+        }
+    }
+
+    index_map.insert(original_pos as usize, rendered_pos);
+    (index_map, rendered_pos)
+}
+
+fn adjust_events_with_index_map(
+    text_events: &[mortar_compiler::Event],
+    index_map: &HashMap<usize, f64>,
+    variable_state: &MortarVariableState,
+    all_events: &mut Vec<mortar_compiler::Event>,
+) {
+    for event in text_events {
+        let mut adjusted_event = event.clone();
+
+        if let Some(var_name) = &adjusted_event.index_variable
+            && let Some(MortarVariableValue::Number(n)) = variable_state.get(var_name)
+        {
+            adjusted_event.index = *n;
+        }
+
+        if let Some(&rendered_index) = index_map.get(&(adjusted_event.index as usize)) {
+            adjusted_event.index = rendered_index;
+        }
+
+        all_events.push(adjusted_event);
+    }
+}
+
 fn collect_text_events(
     text_data: &crate::TextData,
     variable_state: &MortarVariableState,
@@ -417,55 +484,16 @@ fn collect_text_events(
 
     if let Some(parts) = &text_data.interpolated_parts {
         if let Some(asset_data) = asset_data {
-            let mut original_pos = 0.0;
-            let mut rendered_pos = 0.0;
-            let mut index_map = HashMap::new();
-
-            for part in parts {
-                if part.part_type == "text" {
-                    for _ in 0..part.content.chars().count() {
-                        index_map.insert(original_pos as usize, rendered_pos);
-                        original_pos += 1.0;
-                        rendered_pos += 1.0;
-                    }
-                } else if part.part_type == "placeholder" {
-                    let var_name = part.content.trim_matches(|c| c == '{' || c == '}');
-
-                    if let Some(branch_events) =
-                        variable_state.get_branch_events(var_name, &asset_data.variables)
-                    {
-                        for mut event in branch_events {
-                            event.index += rendered_pos;
-                            all_events.push(event);
-                        }
-                    }
-
-                    if let Some(branch_text) = variable_state.get_branch_text(var_name) {
-                        rendered_pos += branch_text.chars().count() as f64;
-                    } else if let Some(value) = variable_state.get(var_name) {
-                        rendered_pos += value.to_display_string().chars().count() as f64;
-                    }
-                }
-            }
-
-            index_map.insert(original_pos as usize, rendered_pos);
+            let (index_map, _rendered_pos) =
+                build_interpolation_index_map(parts, variable_state, asset_data, &mut all_events);
 
             if let Some(text_events) = &text_data.events {
-                for event in text_events {
-                    let mut adjusted_event = event.clone();
-
-                    if let Some(var_name) = &adjusted_event.index_variable
-                        && let Some(MortarVariableValue::Number(n)) = variable_state.get(var_name)
-                    {
-                        adjusted_event.index = *n;
-                    }
-
-                    if let Some(&rendered_index) = index_map.get(&(adjusted_event.index as usize)) {
-                        adjusted_event.index = rendered_index;
-                    }
-
-                    all_events.push(adjusted_event);
-                }
+                adjust_events_with_index_map(
+                    text_events,
+                    &index_map,
+                    variable_state,
+                    &mut all_events,
+                );
             }
         }
     } else if let Some(text_events) = &text_data.events {
@@ -493,12 +521,9 @@ fn collect_text_events(
         let index = if index_override.override_type == "variable" {
             variable_state
                 .get(&index_override.value)
-                .and_then(|v| {
-                    if let MortarVariableValue::Number(n) = v {
-                        Some(*n)
-                    } else {
-                        None
-                    }
+                .and_then(|v| match v {
+                    MortarVariableValue::Number(n) => Some(*n),
+                    _ => None,
                 })
                 .unwrap_or(0.0)
         } else {
@@ -653,64 +678,66 @@ fn process_pending_run_executions(
     for (entity, mut pending) in &mut query {
         pending.timer.tick(time.delta());
 
-        if pending.timer.just_finished() {
-            if pending.remaining_runs.is_empty() {
-                commands.entity(entity).despawn();
-                runs_executing.executing = false;
-                if runtime.has_active_dialogues() {
-                    runtime.set_changed();
-                }
-                continue;
+        if !pending.timer.just_finished() {
+            continue;
+        }
+
+        if pending.remaining_runs.is_empty() {
+            commands.entity(entity).despawn();
+            runs_executing.executing = false;
+            if runtime.has_active_dialogues() {
+                runtime.set_changed();
             }
+            continue;
+        }
 
-            if let Some((event_name, _, _)) = pending.remaining_runs.first()
-                && event_name != "__WAIT__"
-                && let Some(event_def) = pending.event_defs.iter().find(|e| e.name == *event_name)
-            {
-                dispatch_game_event(&event_def.action, &mut game_events);
-            }
+        if let Some((event_name, _, _)) = pending.remaining_runs.first()
+            && event_name != "__WAIT__"
+            && let Some(event_def) = pending.event_defs.iter().find(|e| e.name == *event_name)
+        {
+            dispatch_game_event(&event_def.action, &mut game_events);
+        }
 
-            if pending.remaining_runs.len() > 1 {
-                let remaining = pending.remaining_runs[1..].to_vec();
-                let next_event = &pending.remaining_runs[0];
+        if pending.remaining_runs.len() > 1 {
+            let remaining = pending.remaining_runs[1..].to_vec();
+            let next_event = &pending.remaining_runs[0];
 
-                let duration_secs = if next_event.0 == "__WAIT__" {
-                    next_event.1.unwrap_or(0.0)
-                } else if next_event.2 {
-                    0.0
-                } else {
-                    pending
-                        .event_defs
-                        .iter()
-                        .find(|e| e.name == next_event.0)
-                        .and_then(|e| e.duration)
-                        .unwrap_or(0.0)
-                };
-
-                if duration_secs > 0.0 {
-                    pending.remaining_runs = remaining;
-                    pending
-                        .timer
-                        .set_duration(Duration::from_secs_f32(duration_secs as f32));
-                    pending.timer.reset();
-                } else {
-                    let event_defs = pending.event_defs.clone();
-                    let timeline_defs = pending.timeline_defs.clone();
-                    commands.entity(entity).despawn();
-                    let _ = start_timeline_execution(
-                        remaining,
-                        event_defs,
-                        timeline_defs,
-                        &mut commands,
-                        &mut game_events,
-                    );
-                }
+            let duration_secs = if next_event.0 == "__WAIT__" {
+                next_event.1.unwrap_or(0.0)
+            } else if next_event.2 {
+                0.0
             } else {
+                pending
+                    .event_defs
+                    .iter()
+                    .find(|e| e.name == next_event.0)
+                    .and_then(|e| e.duration)
+                    .unwrap_or(0.0)
+            };
+
+            if duration_secs > 0.0 {
+                pending.remaining_runs = remaining;
+                pending
+                    .timer
+                    .set_duration(Duration::from_secs_f32(duration_secs as f32));
+                pending.timer.reset();
+            } else {
+                let event_defs = pending.event_defs.clone();
+                let timeline_defs = pending.timeline_defs.clone();
                 commands.entity(entity).despawn();
-                runs_executing.executing = false;
-                if runtime.has_active_dialogues() {
-                    runtime.set_changed();
-                }
+                let _ = start_timeline_execution(
+                    remaining,
+                    event_defs,
+                    timeline_defs,
+                    &mut commands,
+                    &mut game_events,
+                );
+            }
+        } else {
+            commands.entity(entity).despawn();
+            runs_executing.executing = false;
+            if runtime.has_active_dialogues() {
+                runtime.set_changed();
             }
         }
     }
@@ -741,47 +768,41 @@ fn execute_run_by_name(
         return false;
     }
 
-    if let Some(timeline_def) = timeline_defs.iter().find(|t| t.name == event_name) {
-        let mut timeline_sequence = Vec::new();
-        for stmt in &timeline_def.statements {
-            match stmt.stmt_type.as_str() {
-                "run" => {
-                    if let Some(event_name) = &stmt.event_name {
-                        let duration = if stmt.ignore_duration {
-                            None
-                        } else {
-                            stmt.duration
-                        };
-                        timeline_sequence.push((
-                            event_name.clone(),
-                            duration,
-                            stmt.ignore_duration,
-                        ));
-                    }
-                }
-                "wait" => {
-                    if let Some(duration) = stmt.duration {
-                        timeline_sequence.push(("__WAIT__".to_string(), Some(duration), false));
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        if !timeline_sequence.is_empty() {
-            let _ = start_timeline_execution(
-                timeline_sequence,
-                event_defs.to_vec(),
-                timeline_defs.to_vec(),
-                commands,
-                game_events,
-            );
-            return true;
-        }
+    let Some(timeline_def) = timeline_defs.iter().find(|t| t.name == event_name) else {
+        warn!("Run statement target not found: {}", event_name);
         return false;
+    };
+
+    let mut timeline_sequence = Vec::new();
+    for stmt in &timeline_def.statements {
+        match stmt.stmt_type.as_str() {
+            "run" => {
+                let Some(event_name) = &stmt.event_name else { continue };
+                let duration = stmt.duration.filter(|_| !stmt.ignore_duration);
+                timeline_sequence.push((
+                    event_name.clone(),
+                    duration,
+                    stmt.ignore_duration,
+                ));
+            }
+            "wait" => {
+                let Some(duration) = stmt.duration else { continue };
+                timeline_sequence.push(("__WAIT__".to_string(), Some(duration), false));
+            }
+            _ => {}
+        }
     }
 
-    warn!("Run statement target not found: {}", event_name);
+    if !timeline_sequence.is_empty() {
+        let _ = start_timeline_execution(
+            timeline_sequence,
+            event_defs.to_vec(),
+            timeline_defs.to_vec(),
+            commands,
+            game_events,
+        );
+        return true;
+    }
     false
 }
 
