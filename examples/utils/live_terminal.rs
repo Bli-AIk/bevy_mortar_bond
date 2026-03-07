@@ -371,9 +371,12 @@ fn spawn_line_segments(
     }
 }
 
-fn build_game_column(column: &mut ChildSpawnerCommands, font: &Handle<Font>, rogue_sheet: &RogueSpritesheet) {
-    let mut initial_typewriter =
-        Typewriter::new(DIALOGUE_PLACEHOLDER, DIALOGUE_CHAR_SPEED);
+fn build_game_column(
+    column: &mut ChildSpawnerCommands,
+    font: &Handle<Font>,
+    rogue_sheet: &RogueSpritesheet,
+) {
+    let mut initial_typewriter = Typewriter::new(DIALOGUE_PLACEHOLDER, DIALOGUE_CHAR_SPEED);
     initial_typewriter.current_text = DIALOGUE_PLACEHOLDER.to_string();
     initial_typewriter.current_char_index = DIALOGUE_PLACEHOLDER.chars().count();
     initial_typewriter.state = TypewriterState::Finished;

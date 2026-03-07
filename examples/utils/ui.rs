@@ -508,7 +508,6 @@ pub fn button_interaction_system(
     }
 }
 
-
 fn apply_choice_finish(
     finish_kind: ChoiceFinishKind,
     events: &mut MessageWriter<MortarEvent>,

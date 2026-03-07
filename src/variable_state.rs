@@ -131,8 +131,9 @@ fn find_matching_case<'a>(
     if let Some(enum_var_name) = enum_type {
         let enum_value = state.get(enum_var_name)?;
         let enum_member = enum_value.to_display_string();
-        let member_name =
-            enum_member.rfind('.').map_or(&*enum_member, |pos| &enum_member[pos + 1..]);
+        let member_name = enum_member
+            .rfind('.')
+            .map_or(&*enum_member, |pos| &enum_member[pos + 1..]);
         cases.iter().find(|case| {
             case.get("condition")
                 .and_then(|c| c.as_str())
@@ -166,8 +167,9 @@ fn resolve_branch_text(state: &MortarVariableState, branch: &BranchDef) -> Optio
     let enum_value = state.get(enum_var_name)?;
     let enum_member = enum_value.to_display_string();
     // Extract the member name after the dot.
-    let member_name =
-        enum_member.rfind('.').map_or(&*enum_member, |pos| &enum_member[pos + 1..]);
+    let member_name = enum_member
+        .rfind('.')
+        .map_or(&*enum_member, |pos| &enum_member[pos + 1..]);
 
     // Find the case that matches the enum member.
     branch
