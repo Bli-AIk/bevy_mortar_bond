@@ -319,7 +319,7 @@ pub fn setup_dialogue_ui(mut commands: Commands, asset_server: Res<AssetServer>)
         });
 }
 
-#[allow(clippy::type_complexity)]
+#[expect(clippy::type_complexity)] // reason: Bevy query with multiple filter components
 fn sync_typewriter_with_dialogue_texts(
     mut query: Query<
         (&MortarDialogueText, &mut Typewriter),

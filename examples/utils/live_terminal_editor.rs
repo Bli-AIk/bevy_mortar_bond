@@ -323,7 +323,7 @@ impl VimEditorState {
         line
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)] // reason: example helper with many rendering params
     fn push_token_with_cursor(
         &self,
         line: &mut StyledLine,
