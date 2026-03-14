@@ -972,28 +972,31 @@ pub fn evaluate_if_condition(
             }
         }
         "binary" => {
-            // Recursively evaluate left and right.
-            //
-            // 递归计算左右表达式。
-            let left_result = evaluate_if_condition(
-                condition.left.as_ref().unwrap().as_ref(),
-                functions,
-                variable_state,
-            );
-            let right_result = evaluate_if_condition(
-                condition.right.as_ref().unwrap().as_ref(),
-                functions,
-                variable_state,
-            );
+            let left = condition.left.as_ref().unwrap();
+            let right = condition.right.as_ref().unwrap();
 
             match condition.operator.as_deref() {
-                Some("&&") => left_result && right_result,
-                Some("||") => left_result || right_result,
+                Some("&&") => {
+                    evaluate_if_condition(left, functions, variable_state)
+                        && evaluate_if_condition(right, functions, variable_state)
+                }
+                Some("||") => {
+                    evaluate_if_condition(left, functions, variable_state)
+                        || evaluate_if_condition(right, functions, variable_state)
+                }
                 _ => {
-                    // For comparison operators, delegate to variable_state.
+                    // For comparison operators, check if either operand is a func_call.
+                    // variable_state alone cannot resolve func_calls, so we handle them here.
                     //
-                    // 对比较运算符委托给 variable_state。
-                    variable_state.evaluate_condition(condition)
+                    // 对比较运算符，检查是否有 func_call 操作数。
+                    // variable_state 无法解析 func_call，需在此处处理。
+                    if left.cond_type == "func_call" || right.cond_type == "func_call" {
+                        let left_val = resolve_condition_value(left, functions, variable_state);
+                        let right_val = resolve_condition_value(right, functions, variable_state);
+                        compare_mortar_values(&left_val, &right_val, condition.operator.as_deref())
+                    } else {
+                        variable_state.evaluate_condition(condition)
+                    }
                 }
             }
         }
@@ -1017,6 +1020,87 @@ pub fn evaluate_if_condition(
             // 对其他类型使用 variable_state 的求值逻辑。
             variable_state.evaluate_condition(condition)
         }
+    }
+}
+
+/// Resolves an if-condition operand to a concrete MortarValue.
+/// Used when comparison operands include func_call types.
+///
+/// 将 if 条件操作数解析为具体的 MortarValue。
+/// 用于比较操作数包含 func_call 类型的情况。
+fn resolve_condition_value(
+    cond: &mortar_compiler::IfCondition,
+    functions: &MortarFunctionRegistry,
+    variable_state: &MortarVariableState,
+) -> MortarValue {
+    match cond.cond_type.as_str() {
+        "func_call" => {
+            let func_name = cond.operand.as_ref().and_then(|op| op.value.clone());
+            let args: Vec<MortarValue> = cond
+                .right
+                .as_ref()
+                .and_then(|r| r.value.as_ref())
+                .map(|v| v.split_whitespace().map(MortarValue::parse).collect())
+                .unwrap_or_default();
+            func_name
+                .and_then(|name| functions.call(&name, &args))
+                .unwrap_or(MortarValue::Void)
+        }
+        "identifier" => {
+            let name = cond.value.as_deref().unwrap_or("");
+            // Try parsing as number literal first (serializer outputs numbers as identifiers).
+            //
+            // 优先尝试解析为数值字面量（序列化器将数字输出为 identifier）。
+            if let Ok(n) = name.parse::<f64>() {
+                return MortarValue::Number(MortarNumber(n));
+            }
+            match variable_state.get(name) {
+                Some(MortarVariableValue::Number(n)) => MortarValue::Number(MortarNumber(*n)),
+                Some(MortarVariableValue::String(s)) => {
+                    MortarValue::String(MortarString(s.clone()))
+                }
+                Some(MortarVariableValue::Boolean(b)) => MortarValue::Boolean(MortarBoolean(*b)),
+                None => MortarValue::Void,
+            }
+        }
+        "literal" => {
+            let val = cond.value.as_deref().unwrap_or("0");
+            MortarValue::parse(val)
+        }
+        "enum_member" => {
+            let val = cond.value.as_deref().unwrap_or("");
+            MortarValue::String(MortarString(val.to_string()))
+        }
+        _ => MortarValue::Void,
+    }
+}
+
+/// Compares two MortarValues with a given operator.
+///
+/// 使用给定运算符比较两个 MortarValue。
+fn compare_mortar_values(left: &MortarValue, right: &MortarValue, op: Option<&str>) -> bool {
+    match op {
+        Some("==") => match (left, right) {
+            (MortarValue::Number(l), MortarValue::Number(r)) => {
+                (l.as_f64() - r.as_f64()).abs() < f64::EPSILON
+            }
+            (MortarValue::String(l), MortarValue::String(r)) => l.as_str() == r.as_str(),
+            (MortarValue::Boolean(l), MortarValue::Boolean(r)) => l.as_bool() == r.as_bool(),
+            _ => false,
+        },
+        Some("!=") => !compare_mortar_values(left, right, Some("==")),
+        Some(">") => compare_numbers(left, right, |a, b| a > b),
+        Some("<") => compare_numbers(left, right, |a, b| a < b),
+        Some(">=") => compare_numbers(left, right, |a, b| a >= b),
+        Some("<=") => compare_numbers(left, right, |a, b| a <= b),
+        _ => false,
+    }
+}
+
+fn compare_numbers(left: &MortarValue, right: &MortarValue, cmp: fn(f64, f64) -> bool) -> bool {
+    match (left.as_number(), right.as_number()) {
+        (Some(l), Some(r)) => cmp(l.as_f64(), r.as_f64()),
+        _ => false,
     }
 }
 
