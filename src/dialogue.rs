@@ -242,11 +242,105 @@ fn log_public_constants_once(
     logged.seen_paths.insert(state.mortar_path.clone());
 }
 
+/// Cached result of a condition evaluation, used to ensure if/else mutual exclusivity.
+///
+/// 条件求值的缓存结果，用于确保 if/else 互斥。
+#[derive(Default)]
+pub struct CachedCondition {
+    /// JSON representation of the non-negated condition.
+    ///
+    /// 非取反条件的 JSON 表示。
+    json: String,
+    /// The evaluation result of the cached condition.
+    ///
+    /// 缓存条件的求值结果。
+    result: bool,
+}
+
+/// Evaluates a condition with caching to guarantee if/else mutual exclusivity.
+///
+/// When a non-negated condition is evaluated, the result is cached.
+/// When a `unary !` condition is encountered whose operand matches
+/// the cached condition, the negated cached result is used instead
+/// of re-evaluating—ensuring that if-branch and else-branch can never
+/// both evaluate to true, even if the underlying functions have
+/// side effects or non-deterministic return values.
+///
+/// 带缓存的条件求值，保证 if/else 互斥。
+///
+/// 对非取反条件求值后缓存结果。
+/// 当遇到 `unary !` 条件且其操作数与缓存条件匹配时，
+/// 直接使用缓存结果的取反值，而不重新求值——
+/// 即使底层函数有副作用或非确定性返回值，
+/// 也能保证 if 分支和 else 分支不会同时为 true。
+pub fn evaluate_condition_cached(
+    condition: &mortar_compiler::IfCondition,
+    functions: &crate::MortarFunctionRegistry,
+    variable_state: &crate::MortarVariableState,
+    cached: &mut Option<CachedCondition>,
+) -> bool {
+    let is_unary_not = condition.cond_type == "unary" && condition.operator.as_deref() == Some("!");
+
+    // Check if this is a unary negation whose operand matches the cached condition.
+    if is_unary_not && let Some(result) = try_cache_negated(condition, cached) {
+        return result;
+    }
+
+    // Check if this condition matches the cached condition (same if-branch, multi-text).
+    if let Some(result) = try_cache_same(condition, cached) {
+        return result;
+    }
+
+    // No cache hit — evaluate normally and cache if this is NOT a unary negation.
+    let result = evaluate_if_condition(condition, functions, variable_state);
+
+    if !is_unary_not && let Ok(json) = serde_json::to_string(condition) {
+        *cached = Some(CachedCondition { json, result });
+    }
+
+    result
+}
+
+/// Returns the negated cached result if the unary-not operand matches the cache.
+fn try_cache_negated(
+    condition: &mortar_compiler::IfCondition,
+    cached: &Option<CachedCondition>,
+) -> Option<bool> {
+    let operand = condition.operand.as_ref()?;
+    let cache = cached.as_ref()?;
+    let operand_json = serde_json::to_string(operand.as_ref()).ok()?;
+    if operand_json != cache.json {
+        return None;
+    }
+    let result = !cache.result;
+    dev_info!(
+        "Condition cache hit (negated): cached={} → result={}",
+        cache.result,
+        result
+    );
+    Some(result)
+}
+
+/// Returns the cached result if the condition matches exactly.
+fn try_cache_same(
+    condition: &mortar_compiler::IfCondition,
+    cached: &Option<CachedCondition>,
+) -> Option<bool> {
+    let cache = cached.as_ref()?;
+    let cond_json = serde_json::to_string(condition).ok()?;
+    if cond_json != cache.json {
+        return None;
+    }
+    dev_info!("Condition cache hit (same): result={}", cache.result);
+    Some(cache.result)
+}
+
 fn update_mortar_text_targets(
     mut asset_events: MessageReader<AssetEvent<MortarAsset>>,
     params: TextUpdateParams,
     mut last_key: Local<Option<(String, String, usize)>>,
     mut skip_next_conditional: Local<bool>,
+    mut cached_condition: Local<Option<CachedCondition>>,
 ) {
     let TextUpdateParams {
         mut commands,
@@ -266,6 +360,7 @@ fn update_mortar_text_targets(
             info!("Mortar asset modified, reloading variables...");
             variable_cache.reset();
             *last_key = None; // Also reset last_key to ensure text re-evaluation
+            *cached_condition = None;
         }
     }
 
@@ -279,6 +374,7 @@ fn update_mortar_text_targets(
             **text = "等待加载对话...".to_string();
         }
         *last_key = None;
+        *cached_condition = None;
         return;
     }
 
@@ -320,14 +416,6 @@ fn update_mortar_text_targets(
                 .get_or_insert_with(MortarVariableState::new)
         };
 
-        // DEBUG: Check isFemale value
-        if let Some(val) = variable_state.get("isFemale") {
-            info!("DEBUG: isFemale = {:?}", val);
-        } else {
-            // It might be fine if not present, but good to know
-            // info!("DEBUG: isFemale not found in variable state");
-        }
-
         if *skip_next_conditional && text_data.condition.is_some() {
             *skip_next_conditional = false;
             *last_key = Some(current_key);
@@ -336,10 +424,13 @@ fn update_mortar_text_targets(
         }
 
         if let Some(condition) = &text_data.condition {
-            let result = evaluate_if_condition(condition, &runtime.functions, variable_state);
-            info!("DEBUG: Evaluating condition {:?} -> {}", condition, result);
+            let result = evaluate_condition_cached(
+                condition,
+                &runtime.functions,
+                variable_state,
+                &mut cached_condition,
+            );
             if !result {
-                *skip_next_conditional = false;
                 *last_key = Some(current_key.clone());
                 events.write(MortarEvent::next_text());
                 continue;

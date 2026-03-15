@@ -54,8 +54,9 @@ pub use binder::{
     MortarBoolean, MortarFunctionRegistry, MortarNumber, MortarString, MortarValue, MortarVoid,
 };
 pub use dialogue::{
-    MortarDialoguePlugin, MortarDialogueSystemSet, MortarDialogueText, MortarDialogueVariables,
-    MortarEventBinding, MortarGameEvent, MortarRunsExecuting, MortarTextTarget,
+    CachedCondition, MortarDialoguePlugin, MortarDialogueSystemSet, MortarDialogueText,
+    MortarDialogueVariables, MortarEventBinding, MortarGameEvent, MortarRunsExecuting,
+    MortarTextTarget, evaluate_condition_cached,
 };
 pub use variable_state::{MortarVariableState, MortarVariableValue};
 
