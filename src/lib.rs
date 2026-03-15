@@ -254,6 +254,10 @@ pub struct TextData {
     pub condition: Option<mortar_compiler::IfCondition>,
     pub pre_statements: Vec<mortar_compiler::Statement>,
     pub events: Option<Vec<mortar_compiler::Event>>,
+    /// When true, consecutive lines are joined with `\n` into a single display unit.
+    ///
+    /// 为 true 时，连续的 line 用 `\n` 拼接为单个显示单元。
+    pub is_line: bool,
 }
 
 /// The state of a dialogue.
@@ -377,7 +381,8 @@ fn parse_node_content(
         return;
     };
     match type_str {
-        "text" => {
+        "text" | "line" => {
+            let is_line = type_str == "line";
             let value = content_value
                 .get("value")
                 .and_then(|v| v.as_str())
@@ -403,6 +408,7 @@ fn parse_node_content(
                 condition,
                 pre_statements,
                 events,
+                is_line,
             });
             text_to_content_index.push(content_idx);
         }
@@ -676,11 +682,40 @@ impl DialogueState {
         Some(text_data)
     }
 
+    /// Returns the exclusive end index of the current line group.
+    /// For a `text:` entry, returns `text_index + 1`.
+    /// For consecutive `line:` entries, returns the first non-line index after the group.
+    ///
+    /// 返回当前 line 组的独占结束索引。
+    fn line_group_end(&self) -> usize {
+        let Some(current) = self.text_items.get(self.text_index) else {
+            return self.text_index + 1;
+        };
+        if !current.is_line {
+            return self.text_index + 1;
+        }
+        let mut end = self.text_index + 1;
+        while end < self.text_items.len() && self.text_items[end].is_line {
+            end += 1;
+        }
+        end
+    }
+
+    /// Returns the current line group as a slice of `TextData` entries.
+    /// For `text:`, returns a single-element slice.
+    /// For `line:`, returns all consecutive lines from the current position.
+    ///
+    /// 返回当前 line 组的 TextData 切片。
+    pub fn current_line_group(&self) -> Option<&[TextData]> {
+        self.text_items.get(self.text_index)?;
+        Some(&self.text_items[self.text_index..self.line_group_end()])
+    }
+
     /// Checks if there is more text to display.
     ///
     /// 检查是否还有更多文本。
     pub fn has_next_text(&self) -> bool {
-        self.text_index + 1 < self.text_items.len()
+        self.line_group_end() < self.text_items.len()
     }
 
     /// Checks if there is more text to display before the choice position.
@@ -688,11 +723,9 @@ impl DialogueState {
     /// 检查在choice位置之前是否还有更多文本。
     pub fn has_next_text_before_choice(&self) -> bool {
         if let Some(choice_content_idx) = self.choice_content_index {
-            // Check if the next text would be after the choice position.
-            //
-            // 检查下一段文本是否会出现在选项位置之后。
-            if self.text_index + 1 < self.text_items.len() {
-                let next_text_content_idx = self.text_to_content_index[self.text_index + 1];
+            let next_idx = self.line_group_end();
+            if next_idx < self.text_items.len() {
+                let next_text_content_idx = self.text_to_content_index[next_idx];
                 next_text_content_idx < choice_content_idx
             } else {
                 false
@@ -702,12 +735,13 @@ impl DialogueState {
         }
     }
 
-    /// Advances to the next text.
+    /// Advances to the next text (or past the current line group).
     ///
-    /// 步进到下一条文本。
+    /// 步进到下一条文本（或跳过当前 line 组）。
     pub fn next_text(&mut self) -> bool {
-        if self.has_next_text() {
-            self.text_index += 1;
+        let end = self.line_group_end();
+        if end < self.text_items.len() {
+            self.text_index = end;
             true
         } else {
             false
@@ -783,6 +817,16 @@ impl DialogueState {
     /// 获取当前文本的内容索引。
     pub fn current_text_content_index(&self) -> Option<usize> {
         self.text_to_content_index.get(self.text_index).copied()
+    }
+
+    /// Gets the content index of the last entry in the current line group (or current text).
+    /// For `text:`, returns the content index of the current text.
+    /// For `line:`, returns the content index of the last line in the group.
+    ///
+    /// 获取当前 line 组（或当前 text）最后一个条目的内容索引。
+    pub fn line_group_last_content_index(&self) -> Option<usize> {
+        let end = self.line_group_end();
+        self.text_to_content_index.get(end - 1).copied()
     }
 
     /// Gets all text to content index mappings.

@@ -69,7 +69,7 @@ fn handle_next_text(
             return;
         };
         state.pending_run_position = state
-            .current_text_content_index()
+            .line_group_last_content_index()
             .map(|content_idx| content_idx + 1);
 
         if state.next_text() {

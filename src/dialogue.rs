@@ -335,6 +335,41 @@ fn try_cache_same(
     Some(cache.result)
 }
 
+/// Processes a line group: evaluates conditions per-line, processes interpolation,
+/// and joins passing lines with `\n`. Returns `None` if all lines are empty/skipped.
+///
+/// 处理 line 组：逐行评估条件、处理插值，用 `\n` 拼接通过的行。
+fn process_line_group(
+    group: &[crate::TextData],
+    functions: &crate::MortarFunctionRegistry,
+    func_decls: &[mortar_compiler::Function],
+    variable_state: &mut MortarVariableState,
+) -> Option<String> {
+    let mut result_lines = Vec::new();
+    for line_data in group {
+        if let Some(condition) = &line_data.condition
+            && !evaluate_if_condition(condition, functions, variable_state)
+        {
+            continue;
+        }
+        for stmt in &line_data.pre_statements {
+            if stmt.stmt_type == "assignment"
+                && let (Some(var_name), Some(value)) = (&stmt.var_name, &stmt.value)
+            {
+                variable_state.execute_assignment(var_name, value);
+            }
+        }
+        let line_text = process_interpolated_text(line_data, functions, func_decls, variable_state);
+        if !line_text.is_empty() {
+            result_lines.push(line_text);
+        }
+    }
+    if result_lines.is_empty() {
+        return None;
+    }
+    Some(result_lines.join("\n"))
+}
+
 fn update_mortar_text_targets(
     mut asset_events: MessageReader<AssetEvent<MortarAsset>>,
     params: TextUpdateParams,
@@ -416,6 +451,44 @@ fn update_mortar_text_targets(
                 .get_or_insert_with(MortarVariableState::new)
         };
 
+        let func_decls = asset_data
+            .map(|data| data.functions.as_slice())
+            .unwrap_or(&[]);
+
+        // Line groups: collect all consecutive lines, evaluate conditions per-line,
+        // join passing lines with '\n'.
+        //
+        // Line 组：收集所有连续 line，逐行评估条件，用 '\n' 拼接通过的行。
+        if text_data.is_line {
+            let group = state.current_line_group().unwrap_or(&[]);
+            let Some(processed_text) =
+                process_line_group(group, &runtime.functions, func_decls, variable_state)
+            else {
+                *last_key = Some(current_key);
+                events.write(MortarEvent::next_text());
+                continue;
+            };
+
+            *skip_next_conditional = false;
+            commands.entity(entity).remove::<MortarEventTracker>();
+            commands.entity(entity).remove::<MortarEventBinding>();
+
+            *last_key = Some(current_key);
+
+            let header = format!("[{} / {}]\n\n", state.mortar_path, state.current_node);
+            let final_text = format!("{}{}", header, processed_text);
+            **text = final_text.clone();
+            commands.entity(entity).insert(MortarDialogueText {
+                header,
+                body: processed_text,
+            });
+            continue;
+        }
+
+        // Regular text: handling (existing logic)
+        //
+        // 常规 text: 处理（现有逻辑）
+
         if *skip_next_conditional && text_data.condition.is_some() {
             *skip_next_conditional = false;
             *last_key = Some(current_key);
@@ -447,14 +520,8 @@ fn update_mortar_text_targets(
             }
         }
 
-        let processed_text = process_interpolated_text(
-            text_data,
-            &runtime.functions,
-            asset_data
-                .map(|data| data.functions.as_slice())
-                .unwrap_or(&[]),
-            variable_state,
-        );
+        let processed_text =
+            process_interpolated_text(text_data, &runtime.functions, func_decls, variable_state);
 
         if processed_text.is_empty() {
             if executed_statements && text_data.condition.is_some() {
@@ -965,4 +1032,127 @@ fn dispatch_game_event(
         name: action.action_type.clone(),
         args: parsed_args,
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{TextData, binder::MortarFunctionRegistry};
+
+    fn make_line(value: &str) -> TextData {
+        TextData {
+            value: value.to_string(),
+            interpolated_parts: None,
+            condition: None,
+            pre_statements: vec![],
+            events: None,
+            is_line: true,
+        }
+    }
+
+    fn make_conditional_line(value: &str, cond: mortar_compiler::IfCondition) -> TextData {
+        TextData {
+            value: value.to_string(),
+            interpolated_parts: None,
+            condition: Some(cond),
+            pre_statements: vec![],
+            events: None,
+            is_line: true,
+        }
+    }
+
+    fn true_condition() -> mortar_compiler::IfCondition {
+        // A variable set to "1" evaluates to truthy
+        mortar_compiler::IfCondition {
+            cond_type: "identifier".to_string(),
+            operator: None,
+            left: None,
+            right: None,
+            operand: None,
+            value: Some("truthy_var".to_string()),
+        }
+    }
+
+    fn false_condition() -> mortar_compiler::IfCondition {
+        // A variable not set evaluates to falsy
+        mortar_compiler::IfCondition {
+            cond_type: "identifier".to_string(),
+            operator: None,
+            left: None,
+            right: None,
+            operand: None,
+            value: Some("unset_var".to_string()),
+        }
+    }
+
+    #[test]
+    fn test_process_line_group_basic() {
+        let group = vec![make_line("Line A"), make_line("Line B")];
+        let functions = MortarFunctionRegistry::new();
+        let func_decls = vec![];
+        let mut vs = MortarVariableState::default();
+
+        let result = process_line_group(&group, &functions, &func_decls, &mut vs);
+        assert_eq!(result, Some("Line A\nLine B".to_string()));
+    }
+
+    #[test]
+    fn test_process_line_group_single_line() {
+        let group = vec![make_line("Only line")];
+        let functions = MortarFunctionRegistry::new();
+        let func_decls = vec![];
+        let mut vs = MortarVariableState::default();
+
+        let result = process_line_group(&group, &functions, &func_decls, &mut vs);
+        assert_eq!(result, Some("Only line".to_string()));
+    }
+
+    #[test]
+    fn test_process_line_group_all_conditions_false() {
+        let group = vec![
+            make_conditional_line("Line A", false_condition()),
+            make_conditional_line("Line B", false_condition()),
+        ];
+        let functions = MortarFunctionRegistry::new();
+        let func_decls = vec![];
+        let mut vs = MortarVariableState::default();
+
+        let result = process_line_group(&group, &functions, &func_decls, &mut vs);
+        assert_eq!(result, None, "All conditions false → None");
+    }
+
+    #[test]
+    fn test_process_line_group_mixed_conditions() {
+        let group = vec![
+            make_line("Always shown"),
+            make_conditional_line("True line", true_condition()),
+            make_conditional_line("False line", false_condition()),
+        ];
+        let functions = MortarFunctionRegistry::new();
+        let func_decls = vec![];
+        let mut vs = MortarVariableState::default();
+        vs.set("truthy_var", crate::MortarVariableValue::Boolean(true));
+
+        let result = process_line_group(&group, &functions, &func_decls, &mut vs);
+        assert_eq!(
+            result,
+            Some("Always shown\nTrue line".to_string()),
+            "False line should be excluded"
+        );
+    }
+
+    #[test]
+    fn test_process_line_group_empty_lines_skipped() {
+        let group = vec![make_line(""), make_line("Non-empty")];
+        let functions = MortarFunctionRegistry::new();
+        let func_decls = vec![];
+        let mut vs = MortarVariableState::default();
+
+        let result = process_line_group(&group, &functions, &func_decls, &mut vs);
+        assert_eq!(
+            result,
+            Some("Non-empty".to_string()),
+            "Empty lines should be excluded from join"
+        );
+    }
 }
