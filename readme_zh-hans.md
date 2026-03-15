@@ -84,9 +84,15 @@ cargo run --example dialogue_ui
 | Crate                                                                 | 版本   | 描述                  |
 |-----------------------------------------------------------------------|------|---------------------|
 | [bevy](https://crates.io/crates/bevy)                                 | 0.18 | 游戏引擎                |
-| [mortar_compiler](https://github.com/Bli-AIk/mortar)                  | 本地   | Mortar 语言编译 器        |
+| [mortar_compiler](https://github.com/Bli-AIk/mortar)                  | 本地   | Mortar 语言编译器        |
 | [serde_json](https://crates.io/crates/serde_json)                     | 1.0  | JSON 序列化/反序列化       |
 | bevy_mortar_bond_macros                                               | 本地   | bevy_mortar_bond 宏  |
+
+### 开发依赖
+
+| Crate                                                             | 版本  | 描述                  |
+|-------------------------------------------------------------------|-----|---------------------|
+| [proptest](https://crates.io/crates/proptest)                     | 1.6 | 属性测试 / 模糊测试      |
 
 ## 贡献指南
 

@@ -35,3 +35,6 @@ bevy_mortar_bond_macros = { path = "./src/bevy_mortar_bond_macros" , version = "
 [features]
 
 dev-logs = []
+
+[dev-dependencies]
+proptest = "1.6"
