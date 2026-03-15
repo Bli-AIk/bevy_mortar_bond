@@ -1067,7 +1067,7 @@ mod fuzz_tests {
                 expected.insert(name.clone(), val.clone());
             }
 
-            for (name, _val) in &expected {
+            for name in expected.keys() {
                 let got = state.get(name);
                 prop_assert!(got.is_some(), "Missing key {}", name);
             }
