@@ -38,3 +38,22 @@ dev-logs = []
 
 [dev-dependencies]
 proptest = "1.6"
+bevy = { version = "0.18", default-features = false, features = [
+    "std",
+    "bevy_asset",
+    "bevy_audio",
+    "bevy_log",
+    "bevy_text",
+    "bevy_ui",
+    "bevy_sprite",
+    "bevy_sprite_render",
+    "bevy_mesh",
+    "bevy_render",
+    "bevy_window",
+    "bevy_winit",
+    "reflect_auto_register",
+    "wav",
+    "file_watcher",
+    "default_font",
+    "x11",
+] }
