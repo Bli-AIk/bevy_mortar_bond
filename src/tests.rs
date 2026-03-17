@@ -500,6 +500,7 @@ mod core_tests {
             condition: None,
             events: None,
             pre_statements: vec![],
+            is_line: false,
         };
 
         let functions = MortarFunctionRegistry::new();
@@ -513,6 +514,7 @@ mod core_tests {
     #[test]
     fn test_process_interpolated_text_with_variables() {
         let text_data = TextData {
+            is_line: false,
             value: "Hello {name}!".to_string(),
             interpolated_parts: Some(vec![
                 mortar_compiler::StringPart {
@@ -836,6 +838,202 @@ mod core_tests {
         assert!(state.get_choices().is_none());
     }
 
+    // --- Line group tests ---
+
+    fn create_line_group_node() -> mortar_compiler::Node {
+        use serde_json::json;
+        mortar_compiler::Node {
+            name: "LineGroupNode".to_string(),
+            content: vec![
+                json!({ "type": "line", "value": "Line A" }),
+                json!({ "type": "line", "value": "Line B" }),
+                json!({ "type": "line", "value": "Line C" }),
+            ],
+            branches: None,
+            variables: vec![],
+            next: None,
+        }
+    }
+
+    #[test]
+    fn test_line_group_is_line_flag() {
+        let node = create_line_group_node();
+        let state =
+            DialogueState::new("test.mortar".to_string(), "LineGroupNode".to_string(), node);
+
+        let td = state.current_text_data().unwrap();
+        assert!(td.is_line, "First entry should be is_line=true");
+    }
+
+    #[test]
+    fn test_line_group_end_covers_consecutive_lines() {
+        let node = create_line_group_node();
+        let state =
+            DialogueState::new("test.mortar".to_string(), "LineGroupNode".to_string(), node);
+
+        let group = state.current_line_group().unwrap();
+        assert_eq!(
+            group.len(),
+            3,
+            "All 3 consecutive lines should form one group"
+        );
+        assert_eq!(group[0].value, "Line A");
+        assert_eq!(group[1].value, "Line B");
+        assert_eq!(group[2].value, "Line C");
+    }
+
+    #[test]
+    fn test_line_group_next_text_skips_entire_group() {
+        let node = create_line_group_node();
+        let mut state =
+            DialogueState::new("test.mortar".to_string(), "LineGroupNode".to_string(), node);
+
+        // Should not have next text — the entire node is one line group
+        assert!(
+            !state.has_next_text(),
+            "3-line group should be the only step"
+        );
+
+        // next_text should return false (no more text after the group)
+        assert!(
+            !state.next_text(),
+            "next_text should return false when no text after group"
+        );
+    }
+
+    #[test]
+    fn test_mixed_text_and_line_group() {
+        use serde_json::json;
+        let node = mortar_compiler::Node {
+            name: "MixedNode".to_string(),
+            content: vec![
+                json!({ "type": "text", "value": "Step 1" }),
+                json!({ "type": "line", "value": "Line A" }),
+                json!({ "type": "line", "value": "Line B" }),
+                json!({ "type": "text", "value": "Step 2" }),
+            ],
+            branches: None,
+            variables: vec![],
+            next: None,
+        };
+        let mut state =
+            DialogueState::new("test.mortar".to_string(), "MixedNode".to_string(), node);
+
+        // Step 1: regular text
+        assert_eq!(state.current_text(), Some("Step 1"));
+        assert!(!state.current_text_data().unwrap().is_line);
+        assert!(state.has_next_text());
+
+        // Advance: text_index 0 → 1
+        assert!(state.next_text());
+
+        // Step 2: line group (Line A + Line B)
+        let td = state.current_text_data().unwrap();
+        assert!(td.is_line);
+        let group = state.current_line_group().unwrap();
+        assert_eq!(group.len(), 2);
+        assert_eq!(group[0].value, "Line A");
+        assert_eq!(group[1].value, "Line B");
+        assert!(state.has_next_text());
+
+        // Advance: text_index 1 → 3 (skip entire line group)
+        assert!(state.next_text());
+
+        // Step 3: regular text
+        assert_eq!(state.current_text(), Some("Step 2"));
+        assert!(!state.current_text_data().unwrap().is_line);
+        assert!(!state.has_next_text());
+    }
+
+    #[test]
+    fn test_line_group_with_conditions() {
+        use serde_json::json;
+        let node = mortar_compiler::Node {
+            name: "CondNode".to_string(),
+            content: vec![
+                json!({ "type": "line", "value": "Always shown" }),
+                json!({
+                    "type": "line",
+                    "value": "Conditional line",
+                    "condition": {
+                        "type": "identifier",
+                        "value": "some_flag"
+                    }
+                }),
+            ],
+            branches: None,
+            variables: vec![],
+            next: None,
+        };
+        let state = DialogueState::new("test.mortar".to_string(), "CondNode".to_string(), node);
+
+        // Both entries should still be in the same line group
+        let group = state.current_line_group().unwrap();
+        assert_eq!(
+            group.len(),
+            2,
+            "Conditional line is still part of the group"
+        );
+        assert!(group[0].condition.is_none());
+        assert!(group[1].condition.is_some());
+
+        // The entire group is one step
+        assert!(
+            !state.has_next_text(),
+            "Conditional line group should be one step"
+        );
+    }
+
+    #[test]
+    fn test_line_group_last_content_index() {
+        use serde_json::json;
+        let node = mortar_compiler::Node {
+            name: "RunAfterLine".to_string(),
+            content: vec![
+                json!({ "type": "line", "value": "Line A" }), // content 0
+                json!({ "type": "line", "value": "Line B" }), // content 1
+                json!({ "type": "line", "value": "Line C" }), // content 2
+                json!({ "type": "run_event", "name": "sfx" }), // content 3
+                json!({ "type": "text", "value": "After group" }), // content 4
+            ],
+            branches: None,
+            variables: vec![],
+            next: None,
+        };
+        let state = DialogueState::new("test.mortar".to_string(), "RunAfterLine".to_string(), node);
+
+        // line_group_last_content_index should point to content index 2 (the last line)
+        assert_eq!(
+            state.line_group_last_content_index(),
+            Some(2),
+            "Last line in group should have content index 2"
+        );
+
+        // current_text_content_index should point to content index 0 (the first line)
+        assert_eq!(
+            state.current_text_content_index(),
+            Some(0),
+            "First line in group should have content index 0"
+        );
+    }
+
+    #[test]
+    fn test_line_group_single_text_last_content_index() {
+        use serde_json::json;
+        let node = mortar_compiler::Node {
+            name: "SingleText".to_string(),
+            content: vec![json!({ "type": "text", "value": "Hello" })],
+            branches: None,
+            variables: vec![],
+            next: None,
+        };
+        let state = DialogueState::new("test.mortar".to_string(), "SingleText".to_string(), node);
+
+        // For a single text, both should return the same index
+        assert_eq!(state.current_text_content_index(), Some(0));
+        assert_eq!(state.line_group_last_content_index(), Some(0));
+    }
+
     // Integration test: full workflow.
     //
     // 集成测试：完整流程。
@@ -844,3 +1042,5 @@ mod core_tests {
     //
     // 已禁用：需要依据新的内容结构彻底重写。
 }
+
+mod fuzz_tests;

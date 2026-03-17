@@ -12,6 +12,7 @@
 mod utils;
 
 use bevy::prelude::*;
+use bevy::sprite_render::{ColorMaterial, MeshMaterial2d};
 use bevy_mortar_bond::{
     MortarAudioSettings, MortarDialoguePlugin, MortarEvent, MortarFunctions, MortarGameEvent,
     MortarNumber, MortarPlugin, MortarRegistry, MortarRuntime, MortarString, mortar_functions,
