@@ -87,6 +87,12 @@ This project uses the following crates:
 | [serde_json](https://crates.io/crates/serde_json)                     | 1.0     | JSON Serialization/Deserialization         |
 | bevy_mortar_bond_macros                                               | Local   | bevy_mortar_bond Macros                    |
 
+### Dev Dependencies
+
+| Crate                                                             | Version | Description                        |
+|-------------------------------------------------------------------|---------|------------------------------------|
+| [proptest](https://crates.io/crates/proptest)                     | 1.6     | Property-based / fuzz testing      |
+
 ## Contribution Guide
 
 Contributions are welcome!

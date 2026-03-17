@@ -41,6 +41,7 @@ mod asset;
 mod audio;
 mod binder;
 mod dialogue;
+mod eval;
 mod system;
 mod variable_state;
 
@@ -54,9 +55,11 @@ pub use binder::{
     MortarBoolean, MortarFunctionRegistry, MortarNumber, MortarString, MortarValue, MortarVoid,
 };
 pub use dialogue::{
-    MortarDialoguePlugin, MortarDialogueSystemSet, MortarDialogueText, MortarDialogueVariables,
-    MortarEventBinding, MortarGameEvent, MortarRunsExecuting, MortarTextTarget,
+    CachedCondition, MortarDialoguePlugin, MortarDialogueSystemSet, MortarDialogueText,
+    MortarDialogueVariables, MortarEventBinding, MortarGameEvent, MortarRunsExecuting,
+    MortarTextTarget, evaluate_condition_cached,
 };
+pub use eval::{evaluate_condition, evaluate_if_condition, process_interpolated_text};
 pub use variable_state::{MortarVariableState, MortarVariableValue};
 
 /// Re-export mortar_compiler types for convenience.
@@ -253,6 +256,10 @@ pub struct TextData {
     pub condition: Option<mortar_compiler::IfCondition>,
     pub pre_statements: Vec<mortar_compiler::Statement>,
     pub events: Option<Vec<mortar_compiler::Event>>,
+    /// When true, consecutive lines are joined with `\n` into a single display unit.
+    ///
+    /// 为 true 时，连续的 line 用 `\n` 拼接为单个显示单元。
+    pub is_line: bool,
 }
 
 /// The state of a dialogue.
@@ -376,7 +383,8 @@ fn parse_node_content(
         return;
     };
     match type_str {
-        "text" => {
+        "text" | "line" => {
+            let is_line = type_str == "line";
             let value = content_value
                 .get("value")
                 .and_then(|v| v.as_str())
@@ -402,6 +410,7 @@ fn parse_node_content(
                 condition,
                 pre_statements,
                 events,
+                is_line,
             });
             text_to_content_index.push(content_idx);
         }
@@ -675,11 +684,40 @@ impl DialogueState {
         Some(text_data)
     }
 
+    /// Returns the exclusive end index of the current line group.
+    /// For a `text:` entry, returns `text_index + 1`.
+    /// For consecutive `line:` entries, returns the first non-line index after the group.
+    ///
+    /// 返回当前 line 组的独占结束索引。
+    fn line_group_end(&self) -> usize {
+        let Some(current) = self.text_items.get(self.text_index) else {
+            return self.text_index + 1;
+        };
+        if !current.is_line {
+            return self.text_index + 1;
+        }
+        let mut end = self.text_index + 1;
+        while end < self.text_items.len() && self.text_items[end].is_line {
+            end += 1;
+        }
+        end
+    }
+
+    /// Returns the current line group as a slice of `TextData` entries.
+    /// For `text:`, returns a single-element slice.
+    /// For `line:`, returns all consecutive lines from the current position.
+    ///
+    /// 返回当前 line 组的 TextData 切片。
+    pub fn current_line_group(&self) -> Option<&[TextData]> {
+        self.text_items.get(self.text_index)?;
+        Some(&self.text_items[self.text_index..self.line_group_end()])
+    }
+
     /// Checks if there is more text to display.
     ///
     /// 检查是否还有更多文本。
     pub fn has_next_text(&self) -> bool {
-        self.text_index + 1 < self.text_items.len()
+        self.line_group_end() < self.text_items.len()
     }
 
     /// Checks if there is more text to display before the choice position.
@@ -687,11 +725,9 @@ impl DialogueState {
     /// 检查在choice位置之前是否还有更多文本。
     pub fn has_next_text_before_choice(&self) -> bool {
         if let Some(choice_content_idx) = self.choice_content_index {
-            // Check if the next text would be after the choice position.
-            //
-            // 检查下一段文本是否会出现在选项位置之后。
-            if self.text_index + 1 < self.text_items.len() {
-                let next_text_content_idx = self.text_to_content_index[self.text_index + 1];
+            let next_idx = self.line_group_end();
+            if next_idx < self.text_items.len() {
+                let next_text_content_idx = self.text_to_content_index[next_idx];
                 next_text_content_idx < choice_content_idx
             } else {
                 false
@@ -701,12 +737,13 @@ impl DialogueState {
         }
     }
 
-    /// Advances to the next text.
+    /// Advances to the next text (or past the current line group).
     ///
-    /// 步进到下一条文本。
+    /// 步进到下一条文本（或跳过当前 line 组）。
     pub fn next_text(&mut self) -> bool {
-        if self.has_next_text() {
-            self.text_index += 1;
+        let end = self.line_group_end();
+        if end < self.text_items.len() {
+            self.text_index = end;
             true
         } else {
             false
@@ -782,6 +819,16 @@ impl DialogueState {
     /// 获取当前文本的内容索引。
     pub fn current_text_content_index(&self) -> Option<usize> {
         self.text_to_content_index.get(self.text_index).copied()
+    }
+
+    /// Gets the content index of the last entry in the current line group (or current text).
+    /// For `text:`, returns the content index of the current text.
+    /// For `line:`, returns the content index of the last line in the group.
+    ///
+    /// 获取当前 line 组（或当前 text）最后一个条目的内容索引。
+    pub fn line_group_last_content_index(&self) -> Option<usize> {
+        let end = self.line_group_end();
+        self.text_to_content_index.get(end - 1).copied()
     }
 
     /// Gets all text to content index mappings.
@@ -925,219 +972,6 @@ pub struct MortarDialogueFinished {
     ///
     /// 结束的节点。
     pub node: String,
-}
-
-/// Gets default return value based on type.
-///
-/// 根据类型获取默认返回值。
-fn get_default_return_value(return_type: &str) -> String {
-    match return_type {
-        "Boolean" | "Bool" => "false".to_string(),
-        "Number" => "0".to_string(),
-        "String" => String::new(),
-        _ => String::new(), // void or unknown
-    }
-}
-
-/// Evaluates an IfCondition with support for function calls.
-///
-/// 评估 IfCondition，支持函数调用。
-pub fn evaluate_if_condition(
-    condition: &mortar_compiler::IfCondition,
-    functions: &MortarFunctionRegistry,
-    variable_state: &MortarVariableState,
-) -> bool {
-    match condition.cond_type.as_str() {
-        "func_call" => {
-            let func_name = condition.operand.as_ref().and_then(|op| op.value.clone());
-            let Some(func_name) = func_name else {
-                warn!("Function call condition missing function_name");
-                return false;
-            };
-            let args: Vec<MortarValue> = condition
-                .right
-                .as_ref()
-                .and_then(|r| r.value.as_ref())
-                .map(|v| v.split_whitespace().map(MortarValue::parse).collect())
-                .unwrap_or_default();
-
-            if let Some(value) = functions.call(&func_name, &args) {
-                value.is_truthy()
-            } else {
-                warn!(
-                    "Condition function '{}' not bound, defaulting to false",
-                    func_name
-                );
-                false
-            }
-        }
-        "binary" => {
-            // Recursively evaluate left and right.
-            //
-            // 递归计算左右表达式。
-            let left_result = evaluate_if_condition(
-                condition.left.as_ref().unwrap().as_ref(),
-                functions,
-                variable_state,
-            );
-            let right_result = evaluate_if_condition(
-                condition.right.as_ref().unwrap().as_ref(),
-                functions,
-                variable_state,
-            );
-
-            match condition.operator.as_deref() {
-                Some("&&") => left_result && right_result,
-                Some("||") => left_result || right_result,
-                _ => {
-                    // For comparison operators, delegate to variable_state.
-                    //
-                    // 对比较运算符委托给 variable_state。
-                    variable_state.evaluate_condition(condition)
-                }
-            }
-        }
-        "unary" => {
-            let operand_result = evaluate_if_condition(
-                condition.operand.as_ref().unwrap().as_ref(),
-                functions,
-                variable_state,
-            );
-            match condition.operator.as_deref() {
-                Some("!") => !operand_result,
-                _ => {
-                    warn!("Unknown unary operator: {:?}", condition.operator);
-                    false
-                }
-            }
-        }
-        _ => {
-            // For other types, use variable_state's evaluation.
-            //
-            // 对其他类型使用 variable_state 的求值逻辑。
-            variable_state.evaluate_condition(condition)
-        }
-    }
-}
-
-/// Evaluates a condition by calling the bound function.
-///
-/// 通过调用绑定函数来评估条件。
-pub fn evaluate_condition(
-    condition: &mortar_compiler::Condition,
-    functions: &MortarFunctionRegistry,
-    _function_decls: &[mortar_compiler::Function],
-) -> bool {
-    // Parse arguments.
-    //
-    // 解析参数。
-    let args: Vec<MortarValue> = condition
-        .args
-        .iter()
-        .map(|arg| MortarValue::parse(arg))
-        .collect();
-
-    // Call the function.
-    //
-    // 调用函数。
-    if let Some(value) = functions.call(&condition.condition_type, &args) {
-        value.is_truthy()
-    } else {
-        // Function not found - default to false.
-        //
-        // 未找到函数时默认返回 false。
-        warn!(
-            "Condition function '{}' not bound, defaulting to false",
-            condition.condition_type
-        );
-        false
-    }
-}
-
-/// Processes interpolated text by calling bound functions and resolving variables.
-///
-/// 通过调用绑定函数和解析变量来处理插值文本。
-pub fn process_interpolated_text(
-    text_data: &TextData,
-    functions: &MortarFunctionRegistry,
-    function_decls: &[mortar_compiler::Function],
-    variable_state: &MortarVariableState,
-) -> String {
-    // If there are no interpolated parts, return the original text.
-    //
-    // 如果没有插值片段，则直接返回原始文本。
-    let Some(parts) = &text_data.interpolated_parts else {
-        return text_data.value.clone();
-    };
-
-    let mut result = String::new();
-    for part in parts {
-        match part.part_type.as_str() {
-            "text" => {
-                result.push_str(&part.content);
-            }
-            "expression" => {
-                let Some(func_name) = &part.function_name else {
-                    result.push_str(&part.content);
-                    continue;
-                };
-                let args: Vec<MortarValue> = part
-                    .args
-                    .iter()
-                    .map(|arg| MortarValue::parse(arg))
-                    .collect();
-
-                if let Some(value) = functions.call(func_name, &args) {
-                    result.push_str(&value.to_display_string());
-                } else {
-                    let return_type = function_decls
-                        .iter()
-                        .find(|f| f.name == *func_name)
-                        .and_then(|f| f.return_type.as_deref())
-                        .unwrap_or("void");
-
-                    let default_value = get_default_return_value(return_type);
-                    warn!(
-                        "Function '{}' not bound, using default return value: {}",
-                        func_name, default_value
-                    );
-                    result.push_str(&default_value);
-                }
-            }
-            "placeholder" => {
-                // Extract variable name from placeholder (e.g., "{status}" -> "status").
-                //
-                // 从占位符中提取变量名（如 "{status}" -> "status"）。
-                let var_name = part.content.trim_matches(|c| c == '{' || c == '}');
-
-                // First try to get as a regular variable.
-                //
-                // 优先尝试作为普通变量获取。
-                if let Some(value) = variable_state.get(var_name) {
-                    result.push_str(&value.to_display_string());
-                } else if let Some(branch_text) = variable_state.get_branch_text(var_name) {
-                    // Try to get as a branch variable.
-                    //
-                    // 尝试作为分支变量获取。
-                    result.push_str(&branch_text);
-                } else {
-                    // Variable not found, keep placeholder.
-                    //
-                    // 未找到变量时保留占位符。
-                    warn!("Variable '{}' not found, keeping placeholder", var_name);
-                    result.push_str(&part.content);
-                }
-            }
-            _ => {
-                // Unknown type, keep the content.
-                //
-                // 未知类型则保留原内容。
-                result.push_str(&part.content);
-            }
-        }
-    }
-
-    result
 }
 
 /// Fires events whose index has been reached, returning the resulting actions.

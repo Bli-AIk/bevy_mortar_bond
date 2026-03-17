@@ -4,11 +4,10 @@
 
 use bevy::asset::io::Reader;
 use bevy::asset::{Asset, AssetLoader, LoadContext};
-use bevy::log::warn;
 use bevy::prelude::TypePath;
 use bevy::tasks::ConditionalSendFuture;
 use mortar_compiler::{Deserializer, Language, MortaredData, ParseHandler, Serializer};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// A Bevy asset representing a Mortar dialogue file.
 ///
@@ -44,68 +43,12 @@ impl MortarAssetLoader {
         }
     }
 
-    /// Finds the base path of the assets directory.
-    ///
-    /// 查找 `assets` 目录的基本路径。
-    fn find_asset_base_path() -> Option<PathBuf> {
-        // Try multiple possible locations for the assets directory.
-        //
-        // 尝试多个 `assets` 目录的可能位置。
-        let candidates = [
-            PathBuf::from("assets"),
-            PathBuf::from("crates/bevy_mortar_bond/assets"),
-            PathBuf::from("../bevy_mortar_bond/assets"),
-        ];
-
-        for candidate in &candidates {
-            if candidate.exists() && candidate.is_dir() {
-                return Some(candidate.clone());
-            }
-        }
-        None
-    }
-
-    /// Checks if a `.mortar` file needs to be recompiled.
-    ///
-    /// 检查 `.mortar` 文件是否需要重新编译。
-    #[allow(dead_code)]
-    fn should_recompile(
-        source_fs_path: &Path,
-        mortared_fs_path: &Path,
-    ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
-        let source_meta =
-            std::fs::metadata(source_fs_path).map_err(|_| "Cannot access .mortar file metadata")?;
-
-        let Ok(compiled_meta) = std::fs::metadata(mortared_fs_path) else {
-            dev_info!("No existing .mortared file found, will compile");
-            return Ok(true);
-        };
-
-        if let (Ok(source_time), Ok(compiled_time)) =
-            (source_meta.modified(), compiled_meta.modified())
-        {
-            let needs_recompile = source_time > compiled_time;
-            dev_info!(
-                "Checking recompile: source modified={:?}, compiled modified={:?}, needs_recompile={}",
-                source_time,
-                compiled_time,
-                needs_recompile
-            );
-            Ok(needs_recompile)
-        } else {
-            dev_info!("Cannot read modification times, will compile");
-            Ok(true)
-        }
-    }
-
     /// Compiles a `.mortar` source file into `MortaredData`.
     ///
     /// 将 `.mortar` 源文件编译为 `MortaredData`。
     async fn compile_mortar_source(
         reader: &mut dyn Reader,
         source_path: &Path,
-        mortared_path: &Path,
-        base_path: Option<&Path>,
     ) -> Result<MortaredData, Box<dyn std::error::Error + Send + Sync>> {
         dev_info!("Compiling .mortar file: {:?}", source_path);
 
@@ -130,28 +73,6 @@ impl MortarAssetLoader {
         let program = parse_result?;
         let json = Serializer::serialize_to_json(&program, true)?;
 
-        // Write the compiled file (skip if no base_path, e.g. on Android).
-        //
-        // 写入编译后的文件（如果没有 base_path 则跳过，例如在 Android 上）。
-        if let Some(base_path) = base_path {
-            let write_path = base_path.join(mortared_path);
-            if let Err(e) = std::fs::write(&write_path, json.as_bytes()) {
-                warn!("Failed to write .mortared file to {:?}: {}", write_path, e);
-            }
-        }
-
-        Deserializer::from_json(&json).map_err(Into::into)
-    }
-
-    /// Loads a pre-compiled `.mortared` file.
-    ///
-    /// 加载预编译的 `.mortared` 文件。
-    #[allow(dead_code)]
-    fn load_mortared_file(
-        mortared_fs_path: &Path,
-    ) -> Result<MortaredData, Box<dyn std::error::Error + Send + Sync>> {
-        dev_info!("Loading existing .mortared file: {:?}", mortared_fs_path);
-        let json = std::fs::read_to_string(mortared_fs_path)?;
         Deserializer::from_json(&json).map_err(Into::into)
     }
 
@@ -251,22 +172,10 @@ impl AssetLoader for MortarAssetLoader {
 
             let data = match path.extension().and_then(std::ffi::OsStr::to_str) {
                 Some("mortar") => {
-                    let mortared_path = path.with_extension("mortared");
-
-                    // Find the actual assets directory (optional, only used for cache writing).
-                    //
-                    // 查找实际的 `assets` 目录（可选，仅用于缓存写入）。
-                    let base_path = Self::find_asset_base_path();
-
                     // Always compile from source to ensure hot reloading gets the latest changes.
-                    // The `reader` provides the current content of the file.
-                    // We still pass paths for writing the .mortared cache, but we don't rely on it for reading.
                     //
                     // 始终从源代码编译以确保热重载获取最新更改。
-                    // `reader` 提供了文件的当前内容。
-                    // 我们仍然传递路径用于写入 .mortared 缓存，但不依赖它进行读取。
-                    Self::compile_mortar_source(reader, &path, &mortared_path, base_path.as_deref())
-                        .await?
+                    Self::compile_mortar_source(reader, &path).await?
                 }
                 Some("mortared") => Self::load_mortared_direct(reader, &path).await?,
                 _ => return Err("Unsupported file extension".into()),

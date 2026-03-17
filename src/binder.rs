@@ -187,8 +187,9 @@ impl MortarValue {
         //
         // 否则视为字符串（如有引号则移除）。
         let trimmed = s.trim();
-        if (trimmed.starts_with('"') && trimmed.ends_with('"'))
-            || (trimmed.starts_with('\'') && trimmed.ends_with('\''))
+        if trimmed.len() >= 2
+            && ((trimmed.starts_with('"') && trimmed.ends_with('"'))
+                || (trimmed.starts_with('\'') && trimmed.ends_with('\'')))
         {
             MortarValue::String(MortarString(trimmed[1..trimmed.len() - 1].to_string()))
         } else {
