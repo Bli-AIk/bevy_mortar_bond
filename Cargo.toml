@@ -7,6 +7,8 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/Bli-AIk/bevy_mortar_bond"
 readme = "readme.md"
 description = "Bevy integration plug-in for mortar language"
+keywords = ["bevy", "dialogue", "mortar", "scripting", "narrative"]
+categories = ["game-development"]
 exclude = [
     "target/*",
     ".github/*"

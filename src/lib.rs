@@ -67,6 +67,17 @@ pub use variable_state::{MortarVariableState, MortarVariableValue};
 /// 为方便使用，重新导出 mortar_compiler 类型。
 pub use mortar_compiler::Event as MortarTextEvent;
 
+/// Convenient re-exports for common usage.
+///
+/// 常用类型的便捷重导出。
+pub mod prelude {
+    pub use crate::{
+        MortarAudioSettings, MortarDialoguePlugin, MortarDialogueSystemSet, MortarDialogueText,
+        MortarDialogueVariables, MortarEventBinding, MortarFunctionRegistry, MortarGameEvent,
+        MortarPlugin, MortarRunsExecuting, MortarTextTarget, MortarValue,
+    };
+}
+
 /// The main plugin for the mortar 'bond' (bind) system.
 ///
 /// Mortar "绑钉" （绑定）系统的主要插件。

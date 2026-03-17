@@ -468,7 +468,7 @@ pub fn setup_ui(
     asset_server: Res<AssetServer>,
     rogue_sheet: Res<RogueSpritesheet>,
 ) {
-    commands.spawn(Camera2d);
+    commands.spawn((Name::new("Camera"), Camera2d));
     let font = asset_server.load(FONT_PATH);
 
     commands

@@ -90,7 +90,7 @@ fn main() {
 }
 
 fn setup_camera(mut commands: Commands) {
-    commands.spawn(Camera2d);
+    commands.spawn((Name::new("Camera"), Camera2d));
 }
 
 fn setup_triangle_sprite(
@@ -105,6 +105,7 @@ fn setup_triangle_sprite(
     ));
 
     commands.spawn((
+        Name::new("TriangleSprite"),
         Mesh2d(meshes.add(triangle)),
         MeshMaterial2d(materials.add(Color::srgb(0.3, 0.8, 0.9))),
         Transform::from_xyz(0.0, 300.0, 0.0),
