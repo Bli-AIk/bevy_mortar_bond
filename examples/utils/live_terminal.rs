@@ -1,3 +1,10 @@
+//! This file contains the shared terminal-style UI runtime used by the interactive
+//! Mortar examples. It wires keyboard input, editor state, dialogue display, and
+//! the auxiliary rogue-sprite preview into one reusable support module for examples.
+//!
+//! 这个文件包含交互式 Mortar 示例共用的终端风格 UI 运行时。它把键盘输入、编辑器状态、
+//! 对话显示以及额外的 rogue sprite 预览接到一起，作为多个示例复用的支撑模块。
+
 #[path = "live_terminal_editor.rs"]
 mod live_terminal_editor;
 pub use live_terminal_editor::live_root_path;
@@ -468,7 +475,7 @@ pub fn setup_ui(
     asset_server: Res<AssetServer>,
     rogue_sheet: Res<RogueSpritesheet>,
 ) {
-    commands.spawn(Camera2d);
+    commands.spawn((Name::new("Camera"), Camera2d));
     let font = asset_server.load(FONT_PATH);
 
     commands
