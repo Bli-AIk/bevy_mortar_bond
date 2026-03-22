@@ -1,3 +1,18 @@
+//! # dialogue.rs
+//!
+//! # dialogue.rs 文件
+//!
+//! ## Module Overview
+//!
+//! ## 模块概述
+//!
+//! This file is the dialogue-facing plugin surface of `bevy_mortar_bond`. It connects Mortar
+//! runtime state to Bevy text entities and gameplay messages, and delegates the specialized pieces
+//! such as condition caching, run execution, and text-event collection to focused helper modules.
+//!
+//! 这个文件是 `bevy_mortar_bond` 面向对话层的插件入口。它把 Mortar 运行时状态连接到 Bevy
+//! 文本实体和游戏消息上，并把条件缓存、run 执行和文本事件收集这些更细的工作分发给专门的辅助模块。
+
 use crate::{
     MortarAsset, MortarAudioSettings, MortarEvent, MortarEventTracker, MortarRegistry,
     MortarRuntime, MortarVariableState, audio::auto_play_sound_events, evaluate_if_condition,

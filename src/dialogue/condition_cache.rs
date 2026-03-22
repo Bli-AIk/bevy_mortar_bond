@@ -1,3 +1,18 @@
+//! # condition_cache.rs
+//!
+//! # condition_cache.rs 文件
+//!
+//! ## Module Overview
+//!
+//! ## 模块概述
+//!
+//! This file provides the tiny cache used to keep Mortar `if` / `else` evaluation mutually
+//! exclusive within one pass. It remembers the last serialized condition result so the negated or
+//! repeated branch can reuse that decision instead of re-evaluating independently.
+//!
+//! 这个文件提供了一个很小的缓存，用来保证同一轮 Mortar `if` / `else` 求值的互斥性。它会
+//! 记住最近一次序列化条件的结果，让取反或重复分支复用这次判断，而不是各自重新求值。
+
 use crate::{MortarFunctionRegistry, MortarVariableState, evaluate_if_condition};
 
 /// Cached result of a condition evaluation, used to ensure if/else mutual exclusivity.

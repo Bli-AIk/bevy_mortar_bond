@@ -1,3 +1,18 @@
+//! # dialogue_state.rs
+//!
+//! # dialogue_state.rs 文件
+//!
+//! ## Module Overview
+//!
+//! ## 模块概述
+//!
+//! This file defines the in-memory dialogue state machine used by `bevy_mortar_bond`. It parses a
+//! Mortar node into text, choice, and run-oriented views, then stores the cursor, executed content
+//! markers, pending runs, and choice navigation data needed while a dialogue is active.
+//!
+//! 这个文件定义了 `bevy_mortar_bond` 使用的内存对话状态机。它会把 Mortar 节点拆成面向文本、
+//! 选项和 run 的视图，并保存对话进行中所需的游标、已执行内容标记、待执行 run 以及选项导航数据。
+
 use bevy::prelude::*;
 use mortar_compiler::{Choice, Node};
 
