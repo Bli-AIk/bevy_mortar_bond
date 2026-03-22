@@ -83,16 +83,6 @@ impl MortarRuntime {
     pub fn active_dialogue_count(&self) -> usize {
         self.active_dialogues.len()
     }
-
-    #[deprecated(note = "Use primary_dialogue() or get_dialogue(entity) instead")]
-    pub fn active_dialogue(&self) -> Option<&crate::dialogue_state::DialogueState> {
-        self.primary_dialogue()
-    }
-
-    #[deprecated(note = "Use primary_dialogue_mut() or get_dialogue_mut(entity) instead")]
-    pub fn active_dialogue_mut(&mut self) -> Option<&mut crate::dialogue_state::DialogueState> {
-        self.primary_dialogue_mut()
-    }
 }
 
 impl Default for MortarRuntime {
