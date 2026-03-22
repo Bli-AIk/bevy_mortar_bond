@@ -1,3 +1,10 @@
+//! This file exercises the public behavior of `DialogueState`.
+//! It checks creation, text stepping, choice selection, reset behavior, and other
+//! navigation rules that the runtime and Bevy-facing systems rely on.
+//!
+//! 这个文件验证 `DialogueState` 的对外行为。它覆盖创建、文本推进、选项选择、重置
+//! 行为以及其他导航规则，确保运行时和 Bevy 集成系统依赖的状态机语义保持稳定。
+
 use super::*;
 
 #[test]

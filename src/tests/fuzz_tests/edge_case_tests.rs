@@ -1,3 +1,12 @@
+//! This file holds edge-case regression tests for Mortar condition evaluation.
+//! It protects the evaluator against malformed condition trees, missing operands,
+//! unbound function calls, and other shapes that should fail safely instead of
+//! panicking when parser or runtime logic changes.
+//!
+//! 这个文件存放 Mortar 条件求值的边界回归测试。它确保在解析器或运行时逻辑调整后，
+//! 面对结构不完整的条件树、缺失操作数、未绑定函数调用等异常输入时，求值器仍然会
+//! 以安全方式处理，而不是直接 panic。
+
 use super::{
     IfCondition, MortarBoolean, MortarNumber, MortarString, MortarValue, MortarVariableState,
     evaluate_if_condition, make_empty_registry, make_registry_with_funcs,

@@ -1,3 +1,10 @@
+//! This file verifies the event-tracking helper used by Mortar dialogue playback.
+//! The tests focus on event counting, trigger timing, and fired-state bookkeeping
+//! so dialogue events remain deterministic as execution code evolves.
+//!
+//! 这个文件验证 Mortar 对话播放过程中使用的事件跟踪辅助类型。测试重点是事件计数、
+//! 触发时机和 fired 状态记录，确保执行代码演化之后，对话事件仍然保持确定性行为。
+
 use super::*;
 
 #[test]

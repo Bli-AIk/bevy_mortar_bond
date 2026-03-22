@@ -1,3 +1,12 @@
+//! This file defines the shared fuzzing strategies and helper registries used by
+//! Mortar's property-style tests. It is the support module behind the fuzz test
+//! suite, generating random conditions, literals, and lightweight registries that
+//! let individual test files focus on one runtime guarantee at a time.
+//!
+//! 这个文件定义了 Mortar 属性测试共用的 fuzz 策略和辅助注册表。它是整组 fuzz
+//! 测试的支撑模块，负责生成随机条件、字面量和轻量级注册表，让各个测试文件可以把
+//! 注意力集中在单一运行时保证上。
+
 use crate::binder::{MortarBoolean, MortarFunctionRegistry, MortarNumber, MortarString};
 use crate::variable_state::MortarVariableState;
 use crate::{MortarValue, evaluate_if_condition};

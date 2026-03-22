@@ -1,3 +1,11 @@
+//! This file tests Mortar's interpolated-text processing path.
+//! It keeps the rules for plain text, variable interpolation, and function-backed
+//! substitutions pinned down so dialogue rendering changes do not silently alter
+//! authored line output.
+//!
+//! 这个文件测试 Mortar 的插值文本处理路径。它把纯文本、变量插值和函数替换等规则
+//! 固定下来，避免对话渲染相关改动在不知不觉中改变作者写下的文本输出。
+
 use super::*;
 
 #[test]

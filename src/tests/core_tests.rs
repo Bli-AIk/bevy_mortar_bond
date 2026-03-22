@@ -1,3 +1,12 @@
+//! This file is the root module for `bevy_mortar_bond`'s focused core test suite.
+//! It groups the unit tests that cover the runtime's fundamental data structures
+//! and exposes a small shared fixture builder so the submodules can reuse the same
+//! representative dialogue node.
+//!
+//! 这个文件是 `bevy_mortar_bond` 核心测试集的根模块。它把覆盖运行时基础数据结构的
+//! 单元测试组织在一起，并提供一个共享的 fixture 构造函数，方便子模块复用同一个代表性
+//! 对话节点。
+
 use crate::*;
 
 mod dialogue_state_tests;

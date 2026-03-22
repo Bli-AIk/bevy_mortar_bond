@@ -1,3 +1,11 @@
+//! This file tests how `DialogueState` treats consecutive `line` entries.
+//! It verifies the line-group behavior that the dialogue runtime relies on when
+//! batching authored line fragments into a single navigable unit.
+//!
+//! 这个文件测试 `DialogueState` 如何处理连续出现的 `line` 条目。对话运行时依赖
+//! 这套“行分组”语义，把作者写下的多段 line 片段收拢成一个可导航的整体；这里负责
+//! 确认那条语义不会在后续重构里被破坏。
+
 use crate::*;
 
 fn create_line_group_node() -> mortar_compiler::Node {
