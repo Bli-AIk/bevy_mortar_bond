@@ -1,3 +1,18 @@
+//! # audio.rs
+//!
+//! # audio.rs 文件
+//!
+//! ## Module Overview
+//!
+//! ## 模块概述
+//!
+//! Contains the optional audio bridge for Mortar dialogue events. It interprets
+//! `play_sound` gameplay events emitted by the dialogue layer and, when enabled, spawns Bevy audio
+//! players using the configured playback policy.
+//!
+//! 包含 Mortar 对话事件到音频系统的可选桥接。它会解释对话层发出的 `play_sound`
+//! 游戏事件，并在启用时按照配置好的播放策略生成 Bevy 音频播放器。
+
 use crate::MortarGameEvent;
 use bevy::prelude::*;
 

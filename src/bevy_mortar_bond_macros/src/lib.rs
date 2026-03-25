@@ -1,3 +1,12 @@
+//! This crate contains the procedural macros that reduce boilerplate for
+//! `bevy_mortar_bond` integrations. Its job is to turn annotated Rust impls into
+//! function-registration glue so host code can expose Mortar-callable APIs without
+//! hand-writing repetitive registry plumbing.
+//!
+//! 这个 crate 存放 `bevy_mortar_bond` 用来减少样板代码的过程宏。它的职责是把带注解的
+//! Rust 实现转换成函数注册胶水代码，让宿主侧可以把 API 暴露给 Mortar 调用，而不必手写
+//! 大量重复的注册表接线逻辑。
+
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{DeriveInput, ItemImpl, ReturnType, parse_macro_input};

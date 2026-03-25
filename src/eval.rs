@@ -1,3 +1,18 @@
+//! # eval.rs
+//!
+//! # eval.rs 文件
+//!
+//! ## Module Overview
+//!
+//! ## 模块概述
+//!
+//! Evaluates Mortar conditions, comparisons, and interpolated text against the bound
+//! host function registry and current variable state. It is the semantic bridge that turns parsed
+//! Mortar AST fragments into concrete booleans, values, and rendered dialogue strings.
+//!
+//! 负责基于已绑定的宿主函数注册表和当前变量状态，求值 Mortar 的条件、比较与插值文本。
+//! 它是把解析后的 Mortar AST 片段转换成具体布尔值、具体值和最终对话字符串的语义桥接层。
+
 use bevy::prelude::*;
 
 use crate::binder::{MortarBoolean, MortarFunctionRegistry, MortarNumber, MortarString};

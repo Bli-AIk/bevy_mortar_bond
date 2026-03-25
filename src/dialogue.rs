@@ -1,15 +1,35 @@
+//! # dialogue.rs
+//!
+//! # dialogue.rs 文件
+//!
+//! ## Module Overview
+//!
+//! ## 模块概述
+//!
+//! Acts as the dialogue-facing plugin surface of `bevy_mortar_bond`. It connects Mortar
+//! runtime state to Bevy text entities and gameplay messages, and delegates the specialized pieces
+//! such as condition caching, run execution, and text-event collection to focused helper modules.
+//!
+//! `bevy_mortar_bond` 面向对话层的插件入口。它把 Mortar 运行时状态连接到 Bevy
+//! 文本实体和游戏消息上，并把条件缓存、run 执行和文本事件收集这些更细的工作分发给专门的辅助模块。
+
 use crate::{
     MortarAsset, MortarAudioSettings, MortarEvent, MortarEventTracker, MortarRegistry,
-    MortarRuntime, MortarVariableState, MortarVariableValue, audio::auto_play_sound_events,
-    evaluate_if_condition, process_interpolated_text,
+    MortarRuntime, MortarVariableState, audio::auto_play_sound_events, evaluate_if_condition,
+    process_interpolated_text,
 };
 use bevy::asset::Assets;
 use bevy::ecs::schedule::SystemSet;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
+mod condition_cache;
 mod run_execution;
+mod text_events;
+
+pub use condition_cache::{CachedCondition, evaluate_condition_cached};
+use text_events::collect_text_events;
 
 /// Plugin that turns Mortar runtime data into ready-to-render UI text plus gameplay events.
 ///
@@ -230,99 +250,6 @@ fn log_public_constants_once(
     }
 
     logged.seen_paths.insert(state.mortar_path.clone());
-}
-
-/// Cached result of a condition evaluation, used to ensure if/else mutual exclusivity.
-///
-/// 条件求值的缓存结果，用于确保 if/else 互斥。
-#[derive(Default)]
-pub struct CachedCondition {
-    /// JSON representation of the non-negated condition.
-    ///
-    /// 非取反条件的 JSON 表示。
-    json: String,
-    /// The evaluation result of the cached condition.
-    ///
-    /// 缓存条件的求值结果。
-    result: bool,
-}
-
-/// Evaluates a condition with caching to guarantee if/else mutual exclusivity.
-///
-/// When a non-negated condition is evaluated, the result is cached.
-/// When a `unary !` condition is encountered whose operand matches
-/// the cached condition, the negated cached result is used instead
-/// of re-evaluating—ensuring that if-branch and else-branch can never
-/// both evaluate to true, even if the underlying functions have
-/// side effects or non-deterministic return values.
-///
-/// 带缓存的条件求值，保证 if/else 互斥。
-///
-/// 对非取反条件求值后缓存结果。
-/// 当遇到 `unary !` 条件且其操作数与缓存条件匹配时，
-/// 直接使用缓存结果的取反值，而不重新求值——
-/// 即使底层函数有副作用或非确定性返回值，
-/// 也能保证 if 分支和 else 分支不会同时为 true。
-pub fn evaluate_condition_cached(
-    condition: &mortar_compiler::IfCondition,
-    functions: &crate::MortarFunctionRegistry,
-    variable_state: &crate::MortarVariableState,
-    cached: &mut Option<CachedCondition>,
-) -> bool {
-    let is_unary_not = condition.cond_type == "unary" && condition.operator.as_deref() == Some("!");
-
-    // Check if this is a unary negation whose operand matches the cached condition.
-    if is_unary_not && let Some(result) = try_cache_negated(condition, cached) {
-        return result;
-    }
-
-    // Check if this condition matches the cached condition (same if-branch, multi-text).
-    if let Some(result) = try_cache_same(condition, cached) {
-        return result;
-    }
-
-    // No cache hit — evaluate normally and cache if this is NOT a unary negation.
-    let result = evaluate_if_condition(condition, functions, variable_state);
-
-    if !is_unary_not && let Ok(json) = serde_json::to_string(condition) {
-        *cached = Some(CachedCondition { json, result });
-    }
-
-    result
-}
-
-/// Returns the negated cached result if the unary-not operand matches the cache.
-fn try_cache_negated(
-    condition: &mortar_compiler::IfCondition,
-    cached: &Option<CachedCondition>,
-) -> Option<bool> {
-    let operand = condition.operand.as_ref()?;
-    let cache = cached.as_ref()?;
-    let operand_json = serde_json::to_string(operand.as_ref()).ok()?;
-    if operand_json != cache.json {
-        return None;
-    }
-    let result = !cache.result;
-    dev_info!(
-        "Condition cache hit (negated): cached={} → result={}",
-        cache.result,
-        result
-    );
-    Some(result)
-}
-
-/// Returns the cached result if the condition matches exactly.
-fn try_cache_same(
-    condition: &mortar_compiler::IfCondition,
-    cached: &Option<CachedCondition>,
-) -> Option<bool> {
-    let cache = cached.as_ref()?;
-    let cond_json = serde_json::to_string(condition).ok()?;
-    if cond_json != cache.json {
-        return None;
-    }
-    dev_info!("Condition cache hit (same): result={}", cache.result);
-    Some(cache.result)
 }
 
 /// Processes a line group: evaluates conditions per-line, processes interpolation,
@@ -552,143 +479,6 @@ fn update_mortar_text_targets(
             body: processed_text,
         });
     }
-}
-
-fn build_interpolation_index_map(
-    parts: &[mortar_compiler::StringPart],
-    variable_state: &MortarVariableState,
-    asset_data: &mortar_compiler::MortaredData,
-    all_events: &mut Vec<mortar_compiler::Event>,
-) -> (HashMap<usize, f64>, f64) {
-    let mut original_pos = 0.0;
-    let mut rendered_pos = 0.0;
-    let mut index_map = HashMap::new();
-
-    for part in parts {
-        if part.part_type == "text" {
-            for _ in 0..part.content.chars().count() {
-                index_map.insert(original_pos as usize, rendered_pos);
-                original_pos += 1.0;
-                rendered_pos += 1.0;
-            }
-            continue;
-        }
-        if part.part_type != "placeholder" {
-            continue;
-        }
-        let var_name = part.content.trim_matches(|c| c == '{' || c == '}');
-
-        if let Some(branch_events) =
-            variable_state.get_branch_events(var_name, &asset_data.variables)
-        {
-            for mut event in branch_events {
-                event.index += rendered_pos;
-                all_events.push(event);
-            }
-        }
-
-        if let Some(branch_text) = variable_state.get_branch_text(var_name) {
-            rendered_pos += branch_text.chars().count() as f64;
-        } else if let Some(value) = variable_state.get(var_name) {
-            rendered_pos += value.to_display_string().chars().count() as f64;
-        }
-    }
-
-    index_map.insert(original_pos as usize, rendered_pos);
-    (index_map, rendered_pos)
-}
-
-fn adjust_events_with_index_map(
-    text_events: &[mortar_compiler::Event],
-    index_map: &HashMap<usize, f64>,
-    variable_state: &MortarVariableState,
-    all_events: &mut Vec<mortar_compiler::Event>,
-) {
-    for event in text_events {
-        let mut adjusted_event = event.clone();
-
-        if let Some(var_name) = &adjusted_event.index_variable
-            && let Some(MortarVariableValue::Number(n)) = variable_state.get(var_name)
-        {
-            adjusted_event.index = *n;
-        }
-
-        if let Some(&rendered_index) = index_map.get(&(adjusted_event.index as usize)) {
-            adjusted_event.index = rendered_index;
-        }
-
-        all_events.push(adjusted_event);
-    }
-}
-
-fn collect_text_events(
-    text_data: &crate::TextData,
-    variable_state: &MortarVariableState,
-    asset_data: Option<&mortar_compiler::MortaredData>,
-    current_text_content_idx: Option<usize>,
-    node_data: &mortar_compiler::Node,
-) -> Vec<mortar_compiler::Event> {
-    let mut all_events = Vec::new();
-
-    if let Some(parts) = &text_data.interpolated_parts {
-        if let Some(asset_data) = asset_data {
-            let (index_map, _rendered_pos) =
-                build_interpolation_index_map(parts, variable_state, asset_data, &mut all_events);
-
-            if let Some(text_events) = &text_data.events {
-                adjust_events_with_index_map(
-                    text_events,
-                    &index_map,
-                    variable_state,
-                    &mut all_events,
-                );
-            }
-        }
-    } else if let Some(text_events) = &text_data.events {
-        all_events = text_events.clone();
-        for event in &mut all_events {
-            if let Some(var_name) = &event.index_variable
-                && let Some(MortarVariableValue::Number(n)) = variable_state.get(var_name)
-            {
-                event.index = *n;
-            }
-        }
-    }
-
-    if let Some(asset_data) = asset_data
-        && let Some(content_idx) = current_text_content_idx
-        && let Some(prev_content) = content_idx
-            .checked_sub(1)
-            .and_then(|idx| node_data.content.get(idx))
-        && let Some("run_event") = prev_content.get("type").and_then(|v| v.as_str())
-        && let Some(index_override) = prev_content
-            .get("index_override")
-            .and_then(|v| serde_json::from_value::<mortar_compiler::IndexOverride>(v.clone()).ok())
-        && let Some(event_name) = prev_content.get("name").and_then(|v| v.as_str())
-    {
-        let index = if index_override.override_type == "variable" {
-            variable_state
-                .get(&index_override.value)
-                .and_then(|v| match v {
-                    MortarVariableValue::Number(n) => Some(*n),
-                    _ => None,
-                })
-                .unwrap_or(0.0)
-        } else {
-            index_override.value.parse::<f64>().unwrap_or(0.0)
-        };
-
-        if let Some(event_def) = asset_data.events.iter().find(|e| e.name == event_name) {
-            let text_event = mortar_compiler::Event {
-                index,
-                index_variable: None,
-                actions: vec![event_def.action.clone()],
-            };
-            all_events.push(text_event);
-        }
-    }
-
-    all_events
 }
 
 #[cfg(test)]

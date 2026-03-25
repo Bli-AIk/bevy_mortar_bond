@@ -360,6 +360,7 @@ fn setup_mortar_integration(
     // Create a hidden proxy entity to receive Mortar text updates.
     // MortarDialoguePlugin expects a Text component to write into.
     commands.spawn((
+        Name::new("MortarTextProxy"),
         Text::new(""),
         MortarTextTarget,
         MortarDialogueText::default(),
