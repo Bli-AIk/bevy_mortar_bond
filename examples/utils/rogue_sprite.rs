@@ -1,8 +1,8 @@
-//! This file provides the reusable rogue-sprite helper used by the Mortar example
+//! Provides the reusable rogue-sprite helper used by the Mortar example
 //! applications. It owns the shared sprite-sheet resource, the animation state
 //! components, and the small runtime systems that keep the preview character in sync.
 //!
-//! 这个文件提供 Mortar 示例程序共用的 rogue sprite 辅助模块。它负责共享精灵图资源、
+//! 提供 Mortar 示例程序共用的 rogue sprite 辅助模块。它负责共享精灵图资源、
 //! 动画状态组件，以及让预览角色保持同步的几个小型运行时系统。
 
 use bevy::{prelude::*, ui::widget::ImageNode};

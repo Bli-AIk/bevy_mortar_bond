@@ -6,11 +6,11 @@
 //!
 //! ## 模块概述
 //!
-//! This file contains the core event-processing systems for the Mortar runtime. It reacts to
+//! Contains the core event-processing systems for the Mortar runtime. It reacts to
 //! start, advance, choice, and stop requests, keeps the active dialogue map coherent, and emits
 //! completion events when a dialogue reaches a natural end.
 //!
-//! 这个文件包含 Mortar 运行时的核心事件处理系统。它会响应开始、推进、选择和停止请求，
+//! 包含 Mortar 运行时的核心事件处理系统。它会响应开始、推进、选择和停止请求，
 //! 维护活跃对话映射的一致性，并在对话自然结束时发出完成事件。
 
 use crate::{

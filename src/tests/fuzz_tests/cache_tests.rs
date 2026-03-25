@@ -1,9 +1,9 @@
-//! This file contains cache-oriented property tests for Mortar condition evaluation.
+//! Contains cache-oriented property tests for Mortar condition evaluation.
 //! It checks that cached branches keep their mutual-exclusion behavior and that
 //! repeated evaluations do not quietly change semantics when function calls or
 //! binary comparisons are involved.
 //!
-//! 这个文件放的是面向缓存行为的 Mortar 条件属性测试。它验证带缓存的分支仍然保持
+//! 放的是面向缓存行为的 Mortar 条件属性测试。它验证带缓存的分支仍然保持
 //! 互斥语义，并确保在涉及函数调用和二元比较时，重复求值不会因为缓存机制而悄悄改变结果。
 
 use super::{

@@ -1,8 +1,8 @@
-//! This file covers Mortar's basic value and variable-state primitives.
+//! Covers Mortar's basic value and variable-state primitives.
 //! It verifies parsing, display formatting, conversions, and variable mutation so
 //! higher-level dialogue tests can rely on these low-level building blocks.
 //!
-//! 这个文件覆盖 Mortar 最基础的值类型和变量状态类型。它验证解析、显示格式、类型转换
+//! 覆盖 Mortar 最基础的值类型和变量状态类型。它验证解析、显示格式、类型转换
 //! 和变量修改语义，让更高层的对话测试能够建立在可靠的底层基元之上。
 
 use super::*;

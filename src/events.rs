@@ -6,11 +6,11 @@
 //!
 //! ## 模块概述
 //!
-//! This file defines the message types used to drive and observe Mortar dialogue playback. It
+//! Defines the message types used to drive and observe Mortar dialogue playback. It
 //! includes the input events sent into the runtime, the finish notification emitted at natural
 //! completion, and the tracker that converts Mortar-authored text events into runtime actions.
 //!
-//! 这个文件定义了驱动和观测 Mortar 对话播放所用的消息类型。它包括送入运行时的输入事件、
+//! 定义了驱动和观测 Mortar 对话播放所用的消息类型。它包括送入运行时的输入事件、
 //! 自然结束时发出的完成通知，以及把 Mortar 文本事件转换成运行时动作的跟踪器。
 
 use bevy::prelude::*;

@@ -6,11 +6,11 @@
 //!
 //! ## 模块概述
 //!
-//! This file executes `run_event` and `run_timeline` entries that appear inside Mortar dialogue
+//! Executes `run_event` and `run_timeline` entries that appear inside Mortar dialogue
 //! content. It schedules delayed runs, dispatches gameplay events at the right time, and keeps the
 //! dialogue runtime informed about when run-driven pauses begin and end.
 //!
-//! 这个文件负责执行 Mortar 对话内容里的 `run_event` 和 `run_timeline` 条目。它会安排带延迟
+//! 负责执行 Mortar 对话内容里的 `run_event` 和 `run_timeline` 条目。它会安排带延迟
 //! 的 run，按正确时机分发游戏事件，并让对话运行时知道由 run 驱动的暂停何时开始和结束。
 
 use bevy::asset::Assets;

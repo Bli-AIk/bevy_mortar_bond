@@ -6,11 +6,11 @@
 //!
 //! ## 模块概述
 //!
-//! This file derives runtime text-event indices from Mortar dialogue content. It remaps authored
+//! Derives runtime text-event indices from Mortar dialogue content. It remaps authored
 //! event positions through interpolation and variable expansion so effects bound to dialogue text
 //! still fire at the correct visible character index.
 //!
-//! 这个文件负责从 Mortar 对话内容里推导运行时文本事件索引。它会把作者写下的事件位置经过插值
+//! 负责从 Mortar 对话内容里推导运行时文本事件索引。它会把作者写下的事件位置经过插值
 //! 和变量展开重新映射，确保绑定到对话文本上的效果仍然在正确的可见字符位置触发。
 
 use std::collections::HashMap;

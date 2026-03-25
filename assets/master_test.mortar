@@ -1,7 +1,7 @@
 // ==============================================================================
 // Master Test File for Mortar Language
 // ==============================================================================
-// This file aims to test all syntax features, edge cases, and their
+// Aims to test all syntax features, edge cases, and their
 // interactions. It uses only the functions declared in the dialogue_ui example.
 
 // ------------------------------------------------------------------------------
