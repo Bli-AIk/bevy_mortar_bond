@@ -3,7 +3,7 @@
 //! lookup remains stable, and host functions keep the expected calling contract.
 //!
 //! 覆盖 `bevy_mortar_bond` 最核心的注册表和函数绑定基元。它保证 mortar
-//! 资产可以被正确注册、查询行为保持稳定，同时确保宿主函数的调用约定不会在重构中漂移。
+//! 资源可以被正确注册、查询行为保持稳定，同时确保宿主函数的调用约定不会在重构中漂移。
 
 use super::*;
 

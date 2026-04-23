@@ -10,7 +10,7 @@
 //! registered Mortar assets, active dialogue controllers, pending start or jump requests, and the
 //! bound function registry used when evaluating Mortar logic.
 //!
-//! 定义了支撑 Mortar 运行时的长生命周期资源。它负责记录已注册的 Mortar 资产、活跃的
+//! 定义了支撑 Mortar 运行时的长生命周期资源。它负责记录已注册的 Mortar 资源、活跃的
 //! 对话控制器、待开始或待跳转请求，以及求值 Mortar 逻辑时会用到的函数绑定注册表。
 
 use bevy::prelude::*;
