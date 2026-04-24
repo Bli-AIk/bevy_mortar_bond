@@ -14,21 +14,28 @@
 
 ## Introduction
 
-`bevy_mortar_bond` is a Bevy plugin that integrates the Mortar scripting languag[example.mp4](example.mp4)e into the Bevy game engine. It provides a powerful framework for creating dynamic dialogue systems, interactive events, and complex game logic using Mortar scripts.
+Bringing the power of strict content-logic decoupling to the Bevy engine.
 
-It addresses the problem of integrating a flexible external scripting language for content creators and game designers, allowing users to conveniently define game flow, character interactions, and dynamic scenes.
+`bevy_mortar_bond` is the dedicated bridge for the [mortar](https://github.com/Bli-AIk/mortar) scripting language—a
+Domain Specific Language (DSL) designed specifically to keep narrative text and event logic separate and clean.
 
-You can simply write your game logic and dialogue in `.mortar` script files and seamlessly integrate them into your Bevy application.
-
-In the future, it may also support more advanced scripting features and integrations.
+By integrating Mortar into Bevy, this plugin enables a streamlined workflow where designers can craft fluid, branching
+dialogues in lightweight `.mortar` files without polluting the narrative with technical markers. It provides a native
+framework that bridges Mortar's logic with Bevy's ECS, making it simple to drive game events, animate characters, and
+manage dialogue UI as a natural extension of your Rust codebase.
 
 ## Features
 
-*   **Mortar Script Integration**: Seamlessly load and execute `.mortar` script files within your Bevy application.
-*   **Bevy ECS Compatibility**: Designed to work idiomatically with Bevy's Entity Component System (ECS), allowing scripts to interact with game entities and components.
-*   **Resource Loading**: Provides a Bevy resource loader for `.mortar` files, enabling easy management and hot-reloading of script resources.
-*   **Dialogue System Foundation**: Offers core utilities and examples for building dynamic and branching dialogue systems.
-*   **Bindable Event Indexes**: The `MortarEventBinding` component lets you drive events from any index source (typewriter effects, audio cues, etc.), and the examples include a built-in ECS typewriter utility so you can keep everything self-contained.
+* 📜 **Mortar Script Integration**: Seamlessly load and execute `.mortar` script files within your Bevy application.
+* 🧩 **Bevy ECS Compatibility**: Designed to work idiomatically with Bevy's Entity Component System (ECS), allowing
+  scripts to interact with game entities and components.
+* 📦 **Resource Loading**: Provides a Bevy resource loader for `.mortar` files, enabling easy management and
+  hot-reloading of script resources.
+* 💬 **Dialogue System Foundation**: Offers core utilities and examples for building dynamic and branching dialogue
+  systems.
+* 🔗 **Bindable Event Indexes**: The `MortarEventBinding` component lets you drive events from any index source (
+  typewriter effects, audio cues, etc.), and the examples include a built-in ECS typewriter utility so you can keep
+  everything self-contained.
 
 ## Bevy Version Support
 
@@ -39,26 +46,26 @@ In the future, it may also support more advanced scripting features and integrat
 
 ## Usage
 
-1.  **Add to Cargo.toml**:
+1. **Add to Cargo.toml**:
 
-    ```toml
-    [dependencies]
-    bevy_mortar_bond = "0.3.0"
-    ```
+   ```toml
+   [dependencies]
+   bevy_mortar_bond = "0.3.0"
+   ```
 
-2.  **Basic Usage**:
+2. **Basic Usage**:
 
-    ```rust
-    use bevy::prelude::*;
-    use bevy_mortar_bond::MortarPlugin;
+   ```rust
+   use bevy::prelude::*;
+   use bevy_mortar_bond::MortarPlugin;
 
-    fn main() {
-        App::new()
-            .add_plugins(DefaultPlugins)
-            .add_plugins(MortarPlugin)
-            .run();
-    }
-    ```
+   fn main() {
+       App::new()
+           .add_plugins(DefaultPlugins)
+           .add_plugins(MortarPlugin)
+           .run();
+   }
+   ```
 
 ## Examples
 
@@ -72,41 +79,43 @@ cargo run --example dialogue_ui
 
 ### Example Description
 
-*   **dialogue_ui**: This example showcases a fully functional dialogue UI with typewriter text effects, dynamic Mortar event handling (e.g., animations, color changes, sound playback), variable state management, and conditional text, all integrated into a custom Bevy UI.
-*   Clicking option buttons updates the dialogue text.
-*   Buttons have visual feedback for hover and click states.
+* **dialogue_ui**: This example showcases a fully functional dialogue UI with typewriter text effects, dynamic Mortar
+  event handling (e.g., animations, color changes, sound playback), variable state management, and conditional text, all
+  integrated into a custom Bevy UI.
+* Clicking option buttons updates the dialogue text.
+* Buttons have visual feedback for hover and click states.
 
 ## Dependencies
 
 This project uses the following crates:
 
-| Crate                                                                 | Version | Description                                |
-|-----------------------------------------------------------------------|---------|--------------------------------------------|
-| [bevy](https://crates.io/crates/bevy)                                 | 0.18    | Game Engine                                |
-| [mortar_compiler](https://github.com/Bli-AIk/mortar)                  | Local   | Mortar Language Compiler                   |
-| [serde_json](https://crates.io/crates/serde_json)                     | 1.0     | JSON Serialization/Deserialization         |
-| bevy_mortar_bond_macros                                               | Local   | bevy_mortar_bond Macros                    |
+| Crate                                                | Version | Description                        |
+|------------------------------------------------------|---------|------------------------------------|
+| [bevy](https://crates.io/crates/bevy)                | 0.18    | Game Engine                        |
+| [mortar_compiler](https://github.com/Bli-AIk/mortar) | Local   | Mortar Language Compiler           |
+| [serde_json](https://crates.io/crates/serde_json)    | 1.0     | JSON Serialization/Deserialization |
+| bevy_mortar_bond_macros                              | Local   | bevy_mortar_bond Macros            |
 
 ### Dev Dependencies
 
-| Crate                                                             | Version | Description                        |
-|-------------------------------------------------------------------|---------|------------------------------------|
-| [proptest](https://crates.io/crates/proptest)                     | 1.6     | Property-based / fuzz testing      |
+| Crate                                         | Version | Description                   |
+|-----------------------------------------------|---------|-------------------------------|
+| [proptest](https://crates.io/crates/proptest) | 1.6     | Property-based / fuzz testing |
 
 ## Contribution Guide
 
 Contributions are welcome!
 Whether you want to fix bugs, add features, or improve documentation:
 
-*   Submit an **Issue** or **Pull Request**.
-*   Share ideas and discuss design or architecture.
+* Submit an **Issue** or **Pull Request**.
+* Share ideas and discuss design or architecture.
 
 ## License
 
 This project can be distributed under the terms of either of the following licenses:
 
-*   Apache License 2.0 ([LICENSE-APACHE](LICENSE-APACHE)
-    or [http://www.apache.org/licenses/LICENSE-2.0](http://www.apache.org/licenses/LICENSE-2.0))
-*   MIT License ([LICENSE-MIT](LICENSE-MIT) or [http://opensource.org/licenses/MIT](http://opensource.org/licenses/MIT))
+* Apache License 2.0 ([LICENSE-APACHE](LICENSE-APACHE)
+  or [http://www.apache.org/licenses/LICENSE-2.0](http://www.apache.org/licenses/LICENSE-2.0))
+* MIT License ([LICENSE-MIT](LICENSE-MIT) or [http://opensource.org/licenses/MIT](http://opensource.org/licenses/MIT))
 
 You may choose either one.
