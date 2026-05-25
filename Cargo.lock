@@ -2663,9 +2663,9 @@ dependencies = [
 
 [[package]]
 name = "mortar_compiler"
-version = "0.5.2"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "042d1eaff46077ca8e5428e27eba6aefb3b619fb1c840939d3403257ba78ce8c"
+checksum = "2527b43346e0c092f46bd478ae64ab5f684939c93f66089822051cd4dfe68ab8"
 dependencies = [
  "ariadne",
  "chrono",
@@ -3761,9 +3761,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.149"
+version = "1.0.150"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83fc039473c5595ace860d8c4fafa220ff474b3fc6bfdb4293327f1a37e94d86"
+checksum = "e8014e44b4736ed0538adeecded0fce2a272f22dc9578a7eb6b2d9993c74cfb9"
 dependencies = [
  "itoa",
  "memchr",
